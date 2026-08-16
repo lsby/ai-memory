@@ -1,13 +1,13 @@
-# lsby-playground-ts-lib AI 编码指南
+# lsby-ai-memory AI 编码指南
 
 ## 项目定位
 
-这是一个可发布的 TypeScript 库模板：
+这是一个可发布的、绑定 PGlite 的 TypeScript 库：
 
 - 源代码位于 `src/`，公共 API 从 `src/index.ts` 导出。
 - 构建产物同时提供 ESM、CommonJS 和 TypeScript 类型声明。
 - `test/` 用于单元测试，测试应优先验证公共导出，而不是内部实现细节。
-- 这是库模板，不要引入数据库、Web 服务、Electron、Capacitor 或应用级运行时逻辑。
+- 记忆存储固定使用 PGlite / pgvector；不要引入第二个数据库或把持久化抽象为应用级运行时逻辑。
 
 ## 开发工作流
 
