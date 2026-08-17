@@ -186,4 +186,80 @@ describe('实例级对话历史', () => {
     expect(写入后的下一轮请求.slice(0, 首次请求.length)).toEqual(首次请求)
     expect(写入后的下一轮请求[0]).toEqual(首次请求[0])
   })
+
+  it('同一实例的并发对话严格串行并保留完整前缀', async (): Promise<void> => {
+    let 释放第一轮: () => void = () => {}
+    let 第一轮闸门 = new Promise<void>((resolve) => {
+      释放第一轮 = resolve
+    })
+    流式请求AI模拟.mockReset()
+    流式请求AI模拟.mockImplementation(async (_客户端, _模型, 消息列表) => {
+      请求消息快照.push(JSON.parse(JSON.stringify(消息列表)) as 请求消息[])
+      if (请求消息快照.length === 1) await 第一轮闸门
+      return { 完整文本: `{"轮次":${String(请求消息快照.length)}}`, 工具调用列表: [], 已中断: false }
+    })
+    let 智能体实例 = new 智能体({ 系统提示词: '固定系统提示词' })
+
+    let 第一轮任务 = 智能体实例.对话(创建选项('并发第一轮'))
+    await vi.waitFor(() => expect(流式请求AI模拟).toHaveBeenCalledTimes(1))
+    let 第二轮任务 = 智能体实例.对话(创建选项('并发第二轮'))
+    await new Promise<void>((resolve) => setTimeout(resolve, 10))
+    expect(流式请求AI模拟).toHaveBeenCalledTimes(1)
+    释放第一轮()
+    await Promise.all([第一轮任务, 第二轮任务])
+
+    let 第一轮请求 = 请求消息快照[0]
+    let 第二轮请求 = 请求消息快照[1]
+    if (第一轮请求 === undefined || 第二轮请求 === undefined) throw new Error('缺少并发请求快照')
+    expect(第二轮请求.slice(0, 第一轮请求.length)).toEqual(第一轮请求)
+  })
+
+  it('记忆状态不变时不重复注入并可单独读取界面历史', async (): Promise<void> => {
+    带记忆实例 = new 带记忆的智能体({ 向量模型: { 类型: '无' } })
+    await 带记忆实例.添加记忆({
+      内容: '稳定记忆',
+      关键词: ['稳定'],
+      标签: [],
+      评分: 80,
+      等级: 记忆等级.一级,
+      创建时间: new Date('2026-01-01T00:00:00.000Z'),
+    })
+
+    await 带记忆实例.对话({ ...创建选项('第一轮'), 是否自动召回: false })
+    await 带记忆实例.对话({ ...创建选项('第二轮'), 是否自动召回: false })
+
+    let 完整历史 = 带记忆实例.读取对话历史()
+    let 可见历史 = 带记忆实例.读取可见对话历史()
+    let 记忆状态列表 = 完整历史.filter((消息) => 消息.role === 'user' && 消息.systemInjectionKind === 'memory-state')
+    expect(记忆状态列表).toHaveLength(1)
+    expect(JSON.stringify(完整历史)).toContain('稳定记忆')
+    expect(JSON.stringify(可见历史)).not.toContain('稳定记忆')
+  })
+
+  it('导入完整状态后下一轮对话复用恢复的历史', async (): Promise<void> => {
+    let 原实例 = new 智能体({ 系统提示词: '固定系统提示词' })
+    await 原实例.对话(创建选项('需要恢复的历史'))
+    let 状态 = await 原实例.导出完整状态()
+    let 恢复实例 = new 智能体({ 系统提示词: '固定系统提示词' })
+    await 恢复实例.导入完整状态(状态)
+    await 恢复实例.对话(创建选项('恢复后的新消息'))
+
+    let 恢复后请求 = 请求消息快照[1]
+    if (恢复后请求 === undefined) throw new Error('缺少恢复后的请求快照')
+    expect(JSON.stringify(恢复后请求)).toContain('需要恢复的历史')
+    expect(JSON.stringify(恢复后请求)).toContain('恢复后的新消息')
+  })
+
+  it('执行回合使用调用方历史但不读写实例会话', async (): Promise<void> => {
+    let 智能体实例 = new 智能体({ 系统提示词: '固定系统提示词' })
+    await 智能体实例.执行回合({ ...创建选项('无状态命令'), 消息历史: [{ role: 'user', content: '调用方历史' }] })
+    await 智能体实例.对话(创建选项('实例正式会话'))
+
+    let 无状态请求 = 请求消息快照[0]
+    let 实例请求 = 请求消息快照[1]
+    if (无状态请求 === undefined || 实例请求 === undefined) throw new Error('缺少无状态请求快照')
+    expect(JSON.stringify(无状态请求)).toContain('调用方历史')
+    expect(JSON.stringify(实例请求)).not.toContain('调用方历史')
+    expect(JSON.stringify(实例请求)).not.toContain('无状态命令')
+  })
 })

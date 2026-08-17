@@ -1,4 +1,4 @@
-import type { z } from 'zod'
+import { z } from 'zod'
 import { zodToJsonSchema } from 'zod-to-json-schema'
 import { 构建openai工具列表, 构建系统工具与格式说明 } from './build-messages'
 import { 提交结果函数名 } from './constants'
@@ -7,9 +7,49 @@ import { 流式请求AI } from './stream-request'
 import { 追加系统纠正消息 } from './system-correction'
 import { 从文本提取工具调用, 从文本提取结果 } from './text-fallback'
 import { 处理工具调用 } from './tool-handler'
-import type { REPL选项, 对话选项, 智能体回调, 智能体执行模式, 智能体消息类型, 智能体选项, 解决问题选项 } from './types'
-import { 智能体工具 } from './types'
+import type {
+  REPL选项,
+  对话选项,
+  执行回合选项,
+  智能体回调,
+  智能体执行模式,
+  智能体消息类型,
+  智能体选项,
+  解决问题选项,
+} from './types'
+import { 智能体工具, 智能体消息Schema } from './types'
 import { 运行结果验证器 } from './validator'
+
+let 智能体状态Schema = z.object({ 格式版本: z.literal(2), 消息历史: z.array(智能体消息Schema) })
+
+function 是临时内部消息(消息: 智能体消息类型): boolean {
+  return 消息.role === 'user' && (消息.isSystemCorrection === true || 消息.isSystemInjection === true)
+}
+
+function 复制消息列表(消息列表: 智能体消息类型[]): 智能体消息类型[] {
+  return z.array(智能体消息Schema).parse(消息列表)
+}
+
+function 提取可见消息(消息列表: 智能体消息类型[]): 智能体消息类型[] {
+  return 复制消息列表(消息列表.filter((消息) => 是临时内部消息(消息) === false))
+}
+
+function 校验工具列表(工具列表: 智能体工具[]): void {
+  let 名称集合 = new Set<string>()
+  for (let 工具 of 工具列表) {
+    if (工具.名称 === 提交结果函数名) throw new Error(`工具名称 ${提交结果函数名} 为内置结果提交协议保留名称`)
+    if (名称集合.has(工具.名称)) throw new Error(`工具名称重复: ${工具.名称}`)
+    名称集合.add(工具.名称)
+  }
+}
+
+function 校验结果Schema(预期结果Schema: z.ZodType): void {
+  let 结果 = z
+    .object({ type: z.literal('object') })
+    .passthrough()
+    .safeParse(zodToJsonSchema(预期结果Schema))
+  if (结果.success === false) throw new TypeError('预期结果Schema 的根节点必须是对象，才能作为结果提交工具的参数')
+}
 
 export class 智能体 {
   protected 工具列表: 智能体工具[]
@@ -19,9 +59,11 @@ export class 智能体 {
   private 请求AI时间间隔ms: number
   private 工具返回文本最大长度?: number
   private 对话历史: 智能体消息类型[] = []
+  private 会话任务队列: Promise<void> = Promise.resolve()
 
   public constructor(选项: 智能体选项) {
     this.工具列表 = 选项.工具列表 ?? []
+    校验工具列表(this.工具列表)
     this.系统提示词 = 选项.系统提示词 ?? ''
     this.最大校验重试次数 = 选项.最大校验重试次数 ?? 3
     this.最大循环轮次 = 选项.最大循环轮次 ?? 15
@@ -49,9 +91,11 @@ export class 智能体 {
     新增上下文: 智能体消息类型[]
     结束原因?: '中断' | '超出最大轮次' | '提取结构化数据失败' | '校验失败次数超出上限'
   }> {
-    let 结果 = await this.执行解决问题({ ...选项, 消息历史: this.对话历史 }, '对话')
-    this.对话历史 = [...结果.消息列表]
-    return 结果
+    return await this.执行会话任务(async () => {
+      let 结果 = await this.执行解决问题({ ...选项, 消息历史: this.对话历史 }, '对话')
+      this.对话历史 = 复制消息列表(结果.消息列表)
+      return 结果
+    })
   }
 
   /** 在当前会话环境中临时推演，不追加消息，也不向模型暴露普通工具。 */
@@ -63,7 +107,19 @@ export class 智能体 {
     新增上下文: 智能体消息类型[]
     结束原因?: '中断' | '超出最大轮次' | '提取结构化数据失败' | '校验失败次数超出上限'
   }> {
-    return await this.执行解决问题({ ...选项, 消息历史: this.对话历史 }, '推演')
+    return await this.执行会话任务(async () => await this.执行解决问题({ ...选项, 消息历史: this.对话历史 }, '推演'))
+  }
+
+  /** 执行一个由调用方管理历史的无状态回合，不读写实例会话。 */
+  public async 执行回合<T extends z.ZodType>(
+    选项: 执行回合选项<T>,
+  ): Promise<{
+    结果: z.infer<T> | null
+    消息列表: 智能体消息类型[]
+    新增上下文: 智能体消息类型[]
+    结束原因?: '中断' | '超出最大轮次' | '提取结构化数据失败' | '校验失败次数超出上限'
+  }> {
+    return await this.执行解决问题({ ...选项, 消息历史: 复制消息列表(选项.消息历史 ?? []) }, '普通')
   }
 
   /**
@@ -78,12 +134,40 @@ export class 智能体 {
     新增上下文: 智能体消息类型[]
     结束原因?: '中断' | '超出最大轮次' | '提取结构化数据失败' | '校验失败次数超出上限'
   }> {
-    return await this.执行解决问题({ ...选项, 消息历史: this.对话历史 }, '对话')
+    return await this.执行会话任务(async () => await this.执行解决问题({ ...选项, 消息历史: this.对话历史 }, '对话'))
   }
 
   /** 仅清空本实例的会话历史，不影响记忆库或工具配置。 */
   public 重置对话(): void {
     this.对话历史 = []
+  }
+
+  public 读取对话历史(): 智能体消息类型[] {
+    return 复制消息列表(this.对话历史)
+  }
+
+  public 载入对话历史(消息历史: 智能体消息类型[]): void {
+    this.对话历史 = 复制消息列表(消息历史)
+  }
+
+  /** 仅供界面展示；不可用它恢复模型上下文，否则会破坏前缀缓存。 */
+  public 读取可见对话历史(): 智能体消息类型[] {
+    return 提取可见消息(this.对话历史)
+  }
+
+  private async 执行会话任务<R>(操作: () => Promise<R>): Promise<R> {
+    let 释放队列: () => void = () => {}
+    let 当前任务 = new Promise<void>((resolve) => {
+      释放队列 = resolve
+    })
+    let 前置任务 = this.会话任务队列
+    this.会话任务队列 = 前置任务.then(() => 当前任务)
+    await 前置任务.catch(() => {})
+    try {
+      return await 操作()
+    } finally {
+      释放队列()
+    }
   }
 
   protected async 执行解决问题<T extends z.ZodType>(
@@ -131,11 +215,18 @@ export class 智能体 {
           .padStart(2, '0')
         let 偏移分 = (绝对值偏移 % 60).toString().padStart(2, '0')
         let 本地时间字符串 = `${iso部分}${符号}${偏移小时}:${偏移分}`
-        消息列表.push({ role: 'user', content: `[当前时间: ${本地时间字符串}]`, isSystemInjection: true })
+        消息列表.push({
+          role: 'user',
+          content: `[当前时间: ${本地时间字符串}]`,
+          isSystemInjection: true,
+          systemInjectionKind: 'current-time',
+        })
       }
       消息列表.push({ role: 'user', content: 选项.命令 })
     }
     let 合并工具列表 = 执行模式 === '推演' ? [] : [...this.工具列表, ...(选项.临时追加工具列表 ?? [])]
+    校验工具列表(合并工具列表)
+    校验结果Schema(选项.预期结果Schema)
     let openai工具列表 = 构建openai工具列表(合并工具列表, 选项.预期结果Schema, 选项.预期结果描述)
     let 校验失败次数 = 0
     let 总轮次 = 0
@@ -156,12 +247,22 @@ export class 智能体 {
       if (总轮次 > 1 && this.请求AI时间间隔ms > 0) {
         // await 回调({ 类型: '流程信息', 内容: `防频繁限流中, 等待 ${String(this.请求AI时间间隔ms)}ms...` })
         await new Promise<void>((resolve) => {
-          let timer = setTimeout(resolve, this.请求AI时间间隔ms)
-          if (选项.中断信号 !== undefined) {
-            选项.中断信号.addEventListener('abort', () => {
-              clearTimeout(timer)
-              resolve()
-            })
+          let 信号 = 选项.中断信号
+          let 已完成 = false
+          let 完成 = (): void => {
+            if (已完成 === true) return
+            已完成 = true
+            if (信号 !== undefined) 信号.removeEventListener('abort', 中断处理)
+            resolve()
+          }
+          let timer = setTimeout(完成, this.请求AI时间间隔ms)
+          let 中断处理 = (): void => {
+            clearTimeout(timer)
+            完成()
+          }
+          if (信号 !== undefined) {
+            信号.addEventListener('abort', 中断处理, { once: true })
+            if (信号.aborted === true) 中断处理()
           }
         })
         if (是否中断() === true) {
@@ -370,9 +471,10 @@ export class 智能体 {
       选项.预期结果Schema,
       回调,
       合并工具列表,
-      true,
+      false,
       选项.调试Hook,
       this.工具返回文本最大长度,
+      选项.中断信号,
     )
 
     if (处理结果.类型 === '最终结果') {
@@ -397,14 +499,14 @@ export class 智能体 {
     return { 类型: '继续' }
   }
 
-  public async 导出完整状态(当前消息历史: 智能体消息类型[]): Promise<string> {
-    return JSON.stringify({ 消息历史: 当前消息历史 })
+  public async 导出完整状态(当前消息历史?: 智能体消息类型[]): Promise<string> {
+    return JSON.stringify({ 格式版本: 2, 消息历史: 复制消息列表(当前消息历史 ?? this.对话历史) })
   }
 
   public async 导入完整状态(状态数据: string): Promise<智能体消息类型[]> {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-    let 数据 = JSON.parse(状态数据)
-    return 数据.消息历史 ?? []
+    let 消息历史 = 智能体状态Schema.parse(JSON.parse(状态数据)).消息历史
+    this.载入对话历史(消息历史)
+    return this.读取对话历史()
   }
 
   public async 开启交互调试<T extends z.ZodType>(选项: REPL选项<T>): Promise<void> {

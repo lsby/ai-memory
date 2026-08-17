@@ -25,6 +25,8 @@ export let 智能体用户消息Schema = z.object({
   name: z.string().optional(),
   isSystemCorrection: z.boolean().optional(),
   isSystemInjection: z.boolean().optional(),
+  systemInjectionKind: z.enum(['memory-state', 'recall-context', 'current-time']).optional(),
+  systemInjectionFingerprint: z.string().optional(),
 })
 export type 智能体用户消息 = z.infer<typeof 智能体用户消息Schema>
 
@@ -89,6 +91,8 @@ export type 智能体回调 = (事件: 智能体事件) => Promise<void>
 // 工具类
 // ============================================================
 
+export type 智能体工具上下文 = { 中断信号?: AbortSignal | undefined }
+
 /** 智能体工具: 将工具的定义和实现封装在一起, 通过静态方法 创建() 获得完整的类型推断 */
 export class 智能体工具 {
   /** 类型安全的工厂方法, 泛型 T 确保 实现 的参数类型与 参数Schema 一致 */
@@ -101,7 +105,7 @@ export class 智能体工具 {
     参数Schema: z.ZodObject<T>
     返回值Schema: R
     返回值描述?: string | undefined
-    实现: (参数: z.infer<z.ZodObject<T>>) => Promise<z.infer<R>>
+    实现: (参数: z.infer<z.ZodObject<T>>, 上下文: 智能体工具上下文) => Promise<z.infer<R>>
   }): 智能体工具 {
     return new 智能体工具({
       名称: 配置.名称,
@@ -109,8 +113,8 @@ export class 智能体工具 {
       参数Schema: 配置.参数Schema,
       返回值Schema: 配置.返回值Schema,
       返回值描述: 配置.返回值描述,
-      实现: async (参数): Promise<{ 结果: '成功' | '失败' } & Record<string, unknown>> =>
-        await 配置.实现(配置.参数Schema.parse(参数)),
+      实现: async (参数, 上下文 = {}): Promise<{ 结果: '成功' | '失败' } & Record<string, unknown>> =>
+        await 配置.实现(配置.参数Schema.parse(参数), 上下文),
     })
   }
 
@@ -119,7 +123,10 @@ export class 智能体工具 {
   public readonly 参数Schema: z.ZodObject<z.ZodRawShape>
   public readonly 返回值Schema: z.ZodType<{ 结果: '成功' | '失败' } & Record<string, unknown>>
   public readonly 返回值描述: string | undefined
-  public readonly 实现: (参数: Record<string, unknown>) => Promise<{ 结果: '成功' | '失败' } & Record<string, unknown>>
+  public readonly 实现: (
+    参数: Record<string, unknown>,
+    上下文?: 智能体工具上下文,
+  ) => Promise<{ 结果: '成功' | '失败' } & Record<string, unknown>>
 
   private constructor(配置: {
     名称: string
@@ -127,7 +134,10 @@ export class 智能体工具 {
     参数Schema: z.ZodObject<z.ZodRawShape>
     返回值Schema: z.ZodType<{ 结果: '成功' | '失败' } & Record<string, unknown>>
     返回值描述?: string | undefined
-    实现: (参数: Record<string, unknown>) => Promise<{ 结果: '成功' | '失败' } & Record<string, unknown>>
+    实现: (
+      参数: Record<string, unknown>,
+      上下文?: 智能体工具上下文,
+    ) => Promise<{ 结果: '成功' | '失败' } & Record<string, unknown>>
   }) {
     this.名称 = 配置.名称
     this.描述 = 配置.描述
@@ -187,6 +197,9 @@ export type 解决问题选项<T extends z.ZodType> = {
 
 /** 对话与推演共用的请求参数；实例负责管理对话历史。 */
 export type 对话选项<T extends z.ZodType> = Omit<解决问题选项<T>, '消息历史'>
+
+/** 由调用方管理消息历史的无状态单回合执行选项。 */
+export type 执行回合选项<T extends z.ZodType> = 解决问题选项<T>
 
 export type 智能体执行模式 = '普通' | '对话' | '推演'
 

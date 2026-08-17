@@ -51,6 +51,7 @@ export async function 初始化数据库(数据库查询器: Kysely<记忆数据
   await sql`
           CREATE TABLE IF NOT EXISTS 记忆变更表 (
             id TEXT PRIMARY KEY,
+            序号 BIGSERIAL,
             提交id TEXT NOT NULL REFERENCES 记忆提交表(id) ON DELETE CASCADE,
             操作类型 TEXT NOT NULL,
             目标表 TEXT NOT NULL,
@@ -59,6 +60,8 @@ export async function 初始化数据库(数据库查询器: Kysely<记忆数据
             新值 TEXT
           )
         `.execute(数据库查询器)
+
+  await sql`ALTER TABLE 记忆变更表 ADD COLUMN IF NOT EXISTS 序号 BIGSERIAL;`.execute(数据库查询器)
 
   await sql`
           CREATE TABLE IF NOT EXISTS 记忆元数据表 (
@@ -88,6 +91,18 @@ export async function 初始化数据库(数据库查询器: Kysely<记忆数据
 
   await sql`
     INSERT INTO _agent_session_commit (id, commit_id) VALUES (1, NULL) ON CONFLICT (id) DO NOTHING;
+  `.execute(数据库查询器)
+
+  await sql`CREATE INDEX IF NOT EXISTS 记忆表_等级_创建序号_idx ON 记忆表 (等级, 创建序号);`.execute(数据库查询器)
+  await sql`CREATE INDEX IF NOT EXISTS 记忆表_创建时间_idx ON 记忆表 (创建时间);`.execute(数据库查询器)
+  await sql`CREATE INDEX IF NOT EXISTS 记忆表_关键词_idx ON 记忆表 USING GIN (关键词);`.execute(数据库查询器)
+  await sql`CREATE INDEX IF NOT EXISTS 记忆表_标签_idx ON 记忆表 USING GIN (标签);`.execute(数据库查询器)
+  await sql`CREATE INDEX IF NOT EXISTS 记忆关联表_终点_idx ON 记忆关联表 (终点id);`.execute(数据库查询器)
+  await sql`CREATE INDEX IF NOT EXISTS 记忆变更表_提交_idx ON 记忆变更表 (提交id);`.execute(数据库查询器)
+  await sql`CREATE INDEX IF NOT EXISTS 记忆提交表_创建时间_idx ON 记忆提交表 (创建时间 DESC);`.execute(数据库查询器)
+  await sql`
+    INSERT INTO 记忆元数据表 (键, 值) VALUES ('KERNEL_SCHEMA_VERSION', '2')
+    ON CONFLICT (键) DO UPDATE SET 值 = EXCLUDED.值;
   `.execute(数据库查询器)
 
   let columnsCheck = await sql`
@@ -139,7 +154,12 @@ export async function 初始化数据库(数据库查询器: Kysely<记忆数据
         v_target_id := NEW.id;
         v_new_val := row_to_json(NEW)::TEXT;
       ELSIF TG_OP = 'UPDATE' THEN
-        IF OLD.等级 = NEW.等级 AND OLD.评分 = NEW.评分 AND OLD.内容 = NEW.内容 AND OLD.关键词 = NEW.关键词 AND OLD.标签 = NEW.标签 AND OLD.向量 = NEW.向量 THEN
+        IF OLD.等级 IS NOT DISTINCT FROM NEW.等级
+          AND OLD.评分 IS NOT DISTINCT FROM NEW.评分
+          AND OLD.内容 IS NOT DISTINCT FROM NEW.内容
+          AND OLD.关键词 IS NOT DISTINCT FROM NEW.关键词
+          AND OLD.标签 IS NOT DISTINCT FROM NEW.标签
+          AND OLD.向量 IS NOT DISTINCT FROM NEW.向量 THEN
           RETURN NULL;
         END IF;
         v_op_type := 'update';
@@ -193,7 +213,7 @@ export async function 初始化数据库(数据库查询器: Kysely<记忆数据
         v_target_id := NEW.起点id || '_' || NEW.终点id;
         v_new_val := row_to_json(NEW)::TEXT;
       ELSIF TG_OP = 'UPDATE' THEN
-        IF OLD.关联度 = NEW.关联度 THEN
+        IF OLD.关联度 IS NOT DISTINCT FROM NEW.关联度 THEN
           RETURN NULL;
         END IF;
         v_op_type := 'update';

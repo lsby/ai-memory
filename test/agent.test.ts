@@ -94,4 +94,89 @@ describe('智能体', () => {
     expect(智能体.prototype).toHaveProperty('推演')
     expect(智能体.prototype).not.toHaveProperty('解决问题')
   })
+
+  it('拒绝重复工具名称和内置结果提交保留名称', (): void => {
+    let 创建工具 = (名称: string): 智能体工具 =>
+      智能体工具.创建({
+        名称,
+        描述: '测试工具',
+        参数Schema: z.object({}),
+        返回值Schema: z.object({ 结果: z.enum(['成功', '失败']) }),
+        实现: async (): Promise<{ 结果: '成功' }> => ({ 结果: '成功' }),
+      })
+
+    expect(() => new 智能体({ 工具列表: [创建工具('duplicate'), 创建工具('duplicate')] })).toThrow('工具名称重复')
+    expect(() => new 智能体({ 工具列表: [创建工具('__submit_result__')] })).toThrow('保留名称')
+  })
+
+  it('拒绝不能映射为结果提交参数的非对象 Schema', async (): Promise<void> => {
+    let 智能体实例 = new 智能体({})
+    await expect(
+      智能体实例.对话({
+        命令: '返回文本',
+        预期结果Schema: z.string(),
+        预期结果描述: '文本',
+        回调: async (): Promise<void> => {},
+        openai客户端: new OpenAI({ apiKey: 'test' }),
+        模型名称: 'mock-model',
+      }),
+    ).rejects.toThrow('根节点必须是对象')
+    expect(流式请求AI模拟).not.toHaveBeenCalled()
+  })
+
+  it('工具提示明确声明多个调用会按顺序而非并发执行', (): void => {
+    let 工具 = 智能体工具.创建({
+      名称: 'ordered_tool',
+      描述: '顺序工具',
+      参数Schema: z.object({}),
+      返回值Schema: z.object({ 结果: z.enum(['成功', '失败']) }),
+      实现: async (): Promise<{ 结果: '成功' }> => ({ 结果: '成功' }),
+    })
+    let 智能体实例 = new 智能体({ 工具列表: [工具] })
+    let 提示词 = 智能体实例.组装系统提示词({
+      命令: '',
+      预期结果Schema: z.object({ 完成: z.boolean() }),
+      预期结果描述: '完成状态',
+      回调: async (): Promise<void> => {},
+      openai客户端: new OpenAI({ apiKey: 'test' }),
+      模型名称: 'mock-model',
+    })
+
+    expect(提示词).toContain('按返回顺序依次执行')
+    expect(提示词).not.toContain('并发执行以极大提高效率')
+  })
+
+  it('轮次间延迟结束后移除中断监听器', async (): Promise<void> => {
+    流式请求AI模拟
+      .mockResolvedValueOnce({
+        完整文本: '',
+        工具调用列表: [{ id: 'noop_call', 名称: 'noop', 参数片段: '{}' }],
+        已中断: false,
+      })
+      .mockResolvedValueOnce({ 完整文本: '{"答案":1}', 工具调用列表: [], 已中断: false })
+    let 工具 = 智能体工具.创建({
+      名称: 'noop',
+      描述: '空操作',
+      参数Schema: z.object({}),
+      返回值Schema: z.object({ 结果: z.enum(['成功', '失败']) }),
+      实现: async (): Promise<{ 结果: '成功' }> => ({ 结果: '成功' }),
+    })
+    let 中断控制器 = new AbortController()
+    let 添加监听模拟 = vi.spyOn(中断控制器.signal, 'addEventListener')
+    let 移除监听模拟 = vi.spyOn(中断控制器.signal, 'removeEventListener')
+    let 智能体实例 = new 智能体({ 工具列表: [工具], 请求AI时间间隔ms: 1 })
+
+    await 智能体实例.对话({
+      命令: '执行两轮',
+      预期结果Schema: z.object({ 答案: z.number() }),
+      预期结果描述: '答案',
+      回调: async (): Promise<void> => {},
+      openai客户端: new OpenAI({ apiKey: 'test' }),
+      模型名称: 'mock-model',
+      中断信号: 中断控制器.signal,
+    })
+
+    expect(添加监听模拟).toHaveBeenCalledWith('abort', expect.any(Function), { once: true })
+    expect(移除监听模拟).toHaveBeenCalledWith('abort', 添加监听模拟.mock.calls[0]?.[1])
+  })
 })

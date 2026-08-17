@@ -128,10 +128,12 @@ export async function 检查并清理二级记忆(
   }
 }
 
-export async function 批量注入记忆(上下文: 记忆操作上下文, 记忆项列表: 批量注入记忆项[]): Promise<void> {
+export async function 批量注入记忆(上下文: 记忆操作上下文, 记忆项列表: 批量注入记忆项[]): Promise<string[]> {
   let { 数据库查询器, 配置, 获取向量, 检查并降级一级记忆, 检查并清理二级记忆, 回调 } = 上下文
+  let id列表: string[] = []
   for (let 项 of 记忆项列表) {
     let id = randomUUID()
+    id列表.push(id)
     let 向量结果 = await 获取向量(项.内容)
     let 向量值: string | null = null
     let 维度值: number | null = null
@@ -165,4 +167,5 @@ export async function 批量注入记忆(上下文: 记忆操作上下文, 记�
   }
   await 检查并降级一级记忆()
   await 检查并清理二级记忆()
+  return id列表
 }
