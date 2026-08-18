@@ -31,13 +31,20 @@ export async function 载入快照(数据库查询器: Kysely<记忆数据库>, 
   }
 }
 
-export async function 导出完整状态(数据库查询器: Kysely<记忆数据库>, 当前消息历史: 智能体消息类型[]): Promise<string> {
-  let 完整状态: 完整状态 = { 格式版本: 2, 记忆快照: await 读取快照(数据库查询器), 消息历史: 当前消息历史 }
+export async function 导出完整状态(
+  数据库查询器: Kysely<记忆数据库>,
+  当前消息历史: 智能体消息类型[],
+  会话标识: string,
+): Promise<string> {
+  let 完整状态: 完整状态 = { 格式版本: 2, 会话标识, 记忆快照: await 读取快照(数据库查询器), 消息历史: 当前消息历史 }
   return JSON.stringify(完整状态)
 }
 
-export async function 导入完整状态(数据库查询器: Kysely<记忆数据库>, 状态数据: string): Promise<智能体消息类型[]> {
+export async function 导入完整状态(
+  数据库查询器: Kysely<记忆数据库>,
+  状态数据: string,
+): Promise<{ 消息历史: 智能体消息类型[]; 会话标识?: string | undefined }> {
   let 数据 = 完整状态Schema.parse(JSON.parse(状态数据))
   await 载入快照(数据库查询器, JSON.stringify(数据.记忆快照))
-  return 数据.消息历史
+  return { 消息历史: 数据.消息历史, 会话标识: 数据.会话标识 }
 }

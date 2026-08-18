@@ -1,8 +1,10 @@
 import { z } from 'zod'
 import { zodToJsonSchema } from 'zod-to-json-schema'
+import { 模型审计器, 统计模型输入字符数, 统计模型输出字符数 } from './audit'
 import { 构建openai工具列表, 构建系统工具与格式说明 } from './build-messages'
 import { 提交结果函数名 } from './constants'
 import { 开启交互调试 as runRepl } from './repl'
+import { 复制消息列表, 提取可见消息, 智能体状态Schema } from './session-state'
 import { 流式请求AI } from './stream-request'
 import { 追加系统纠正消息 } from './system-correction'
 import { 从文本提取工具调用, 从文本提取结果 } from './text-fallback'
@@ -15,24 +17,12 @@ import type {
   智能体执行模式,
   智能体消息类型,
   智能体选项,
+  模型审计汇总,
+  模型请求审计记录,
   解决问题选项,
 } from './types'
-import { 智能体工具, 智能体消息Schema } from './types'
+import { 智能体工具 } from './types'
 import { 运行结果验证器 } from './validator'
-
-let 智能体状态Schema = z.object({ 格式版本: z.literal(2), 消息历史: z.array(智能体消息Schema) })
-
-function 是临时内部消息(消息: 智能体消息类型): boolean {
-  return 消息.role === 'user' && (消息.isSystemCorrection === true || 消息.isSystemInjection === true)
-}
-
-function 复制消息列表(消息列表: 智能体消息类型[]): 智能体消息类型[] {
-  return z.array(智能体消息Schema).parse(消息列表)
-}
-
-function 提取可见消息(消息列表: 智能体消息类型[]): 智能体消息类型[] {
-  return 复制消息列表(消息列表.filter((消息) => 是临时内部消息(消息) === false))
-}
 
 function 校验工具列表(工具列表: 智能体工具[]): void {
   let 名称集合 = new Set<string>()
@@ -60,6 +50,7 @@ export class 智能体 {
   private 工具返回文本最大长度?: number
   private 对话历史: 智能体消息类型[] = []
   private 会话任务队列: Promise<void> = Promise.resolve()
+  private 审计器 = new 模型审计器()
 
   public constructor(选项: 智能体选项) {
     this.工具列表 = 选项.工具列表 ?? []
@@ -92,7 +83,12 @@ export class 智能体 {
     结束原因?: '中断' | '超出最大轮次' | '提取结构化数据失败' | '校验失败次数超出上限'
   }> {
     return await this.执行会话任务(async () => {
-      let 结果 = await this.执行解决问题({ ...选项, 消息历史: this.对话历史 }, '对话')
+      let 结果 = await this.执行解决问题(
+        { ...选项, 消息历史: this.对话历史 },
+        '对话',
+        this.审计器.当前会话是否已有请求() === false,
+        true,
+      )
       this.对话历史 = 复制消息列表(结果.消息列表)
       return 结果
     })
@@ -107,7 +103,14 @@ export class 智能体 {
     新增上下文: 智能体消息类型[]
     结束原因?: '中断' | '超出最大轮次' | '提取结构化数据失败' | '校验失败次数超出上限'
   }> {
-    return await this.执行会话任务(async () => await this.执行解决问题({ ...选项, 消息历史: this.对话历史 }, '推演'))
+    return await this.执行会话任务(
+      async () =>
+        await this.执行解决问题(
+          { ...选项, 消息历史: this.对话历史 },
+          '推演',
+          this.审计器.当前会话是否已有请求() === false,
+        ),
+    )
   }
 
   /** 执行一个由调用方管理历史的无状态回合，不读写实例会话。 */
@@ -119,7 +122,8 @@ export class 智能体 {
     新增上下文: 智能体消息类型[]
     结束原因?: '中断' | '超出最大轮次' | '提取结构化数据失败' | '校验失败次数超出上限'
   }> {
-    return await this.执行解决问题({ ...选项, 消息历史: 复制消息列表(选项.消息历史 ?? []) }, '普通')
+    let 消息历史 = 复制消息列表(选项.消息历史 ?? [])
+    return await this.执行解决问题({ ...选项, 消息历史 }, '普通', 消息历史.length === 0)
   }
 
   /**
@@ -134,25 +138,50 @@ export class 智能体 {
     新增上下文: 智能体消息类型[]
     结束原因?: '中断' | '超出最大轮次' | '提取结构化数据失败' | '校验失败次数超出上限'
   }> {
-    return await this.执行会话任务(async () => await this.执行解决问题({ ...选项, 消息历史: this.对话历史 }, '对话'))
+    return await this.执行会话任务(
+      async () =>
+        await this.执行解决问题(
+          { ...选项, 消息历史: this.对话历史 },
+          '对话',
+          this.审计器.当前会话是否已有请求() === false,
+        ),
+    )
   }
 
   /** 仅清空本实例的会话历史，不影响记忆库或工具配置。 */
   public 重置对话(): void {
     this.对话历史 = []
+    this.审计器.切换会话()
   }
 
   public 读取对话历史(): 智能体消息类型[] {
     return 复制消息列表(this.对话历史)
   }
 
-  public 载入对话历史(消息历史: 智能体消息类型[]): void {
+  public 载入对话历史(消息历史: 智能体消息类型[], 会话标识?: string): void {
     this.对话历史 = 复制消息列表(消息历史)
+    this.审计器.切换会话(会话标识, this.对话历史.length > 0)
   }
 
   /** 仅供界面展示；不可用它恢复模型上下文，否则会破坏前缀缓存。 */
   public 读取可见对话历史(): 智能体消息类型[] {
     return 提取可见消息(this.对话历史)
+  }
+
+  public 读取会话标识(): string {
+    return this.审计器.读取会话标识()
+  }
+
+  public 读取模型审计记录(): 模型请求审计记录[] {
+    return this.审计器.读取记录()
+  }
+
+  public 读取模型审计汇总(): 模型审计汇总 {
+    return this.审计器.读取汇总()
+  }
+
+  public 清空模型审计记录(): void {
+    this.审计器.清空记录()
   }
 
   private async 执行会话任务<R>(操作: () => Promise<R>): Promise<R> {
@@ -173,6 +202,8 @@ export class 智能体 {
   protected async 执行解决问题<T extends z.ZodType>(
     选项: 解决问题选项<T>,
     执行模式: 智能体执行模式,
+    首次请求是否新建对话: boolean = false,
+    更新当前会话审计状态: boolean = false,
   ): Promise<{
     结果: z.infer<T> | null
     消息列表: 智能体消息类型[]
@@ -272,6 +303,7 @@ export class 智能体 {
       }
 
       // 流式请求 AI
+      let 发出字符数 = 统计模型输入字符数(消息列表, openai工具列表, 选项.是否支持函数调用, 选项.是否使用引导前缀)
       let 流式结果 = await 流式请求AI(
         选项.openai客户端,
         选项.模型名称,
@@ -287,6 +319,13 @@ export class 智能体 {
         选项.存在惩罚,
         选项.频率惩罚,
       )
+      let 审计记录 = this.审计器.添加记录(
+        总轮次 === 1 && 首次请求是否新建对话,
+        发出字符数,
+        统计模型输出字符数(流式结果.原始完整文本 ?? 流式结果.完整文本, 流式结果.工具调用列表),
+        更新当前会话审计状态,
+      )
+      await 回调({ 类型: '模型请求审计', 记录: 审计记录 })
 
       // 检查是否被中断
       if (流式结果.已中断 === true) {
@@ -500,12 +539,16 @@ export class 智能体 {
   }
 
   public async 导出完整状态(当前消息历史?: 智能体消息类型[]): Promise<string> {
-    return JSON.stringify({ 格式版本: 2, 消息历史: 复制消息列表(当前消息历史 ?? this.对话历史) })
+    return JSON.stringify({
+      格式版本: 2,
+      会话标识: this.读取会话标识(),
+      消息历史: 复制消息列表(当前消息历史 ?? this.对话历史),
+    })
   }
 
   public async 导入完整状态(状态数据: string): Promise<智能体消息类型[]> {
-    let 消息历史 = 智能体状态Schema.parse(JSON.parse(状态数据)).消息历史
-    this.载入对话历史(消息历史)
+    let 状态 = 智能体状态Schema.parse(JSON.parse(状态数据))
+    this.载入对话历史(状态.消息历史, 状态.会话标识)
     return this.读取对话历史()
   }
 

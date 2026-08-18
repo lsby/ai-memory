@@ -364,6 +364,8 @@ export class 带记忆的智能体 extends 智能体 {
   protected override async 执行解决问题<T extends z.ZodType>(
     选项: 带记忆的解决问题选项<T>,
     执行模式: 智能体执行模式,
+    首次请求是否新建对话: boolean = false,
+    更新当前会话审计状态: boolean = false,
   ): Promise<{
     结果: z.infer<T> | null
     消息列表: 智能体消息类型[]
@@ -375,14 +377,19 @@ export class 带记忆的智能体 extends 智能体 {
     if (执行模式 === '推演') {
       await this.确保已初始化()
       let 上下文 = this.构建操作上下文(this.数据库查询器, 选项.回调)
-      return await 外部解决问题(上下文, 选项, async (新选项) => await super.执行解决问题(新选项, 执行模式), 执行模式)
+      return await 外部解决问题(
+        上下文,
+        选项,
+        async (新选项) => await super.执行解决问题(新选项, 执行模式, 首次请求是否新建对话, 更新当前会话审计状态),
+        执行模式,
+      )
     }
     await this.确保已初始化()
     let 上下文 = this.构建操作上下文(this.数据库查询器, 选项.回调)
     return await 外部解决问题(
       上下文,
       { ...选项, 标题 },
-      async (新选项) => await super.执行解决问题(新选项, 执行模式),
+      async (新选项) => await super.执行解决问题(新选项, 执行模式, 首次请求是否新建对话, 更新当前会话审计状态),
       执行模式,
     )
   }
@@ -433,12 +440,12 @@ export class 带记忆的智能体 extends 智能体 {
 
   public override async 导出完整状态(当前消息历史?: 智能体消息类型[]): Promise<string> {
     await this.确保已初始化()
-    return await 外部导出完整状态(this.数据库查询器, 当前消息历史 ?? this.读取对话历史())
+    return await 外部导出完整状态(this.数据库查询器, 当前消息历史 ?? this.读取对话历史(), this.读取会话标识())
   }
 
   public override async 导入完整状态(状态数据: string): Promise<智能体消息类型[]> {
-    let 消息历史 = await this.执行记忆变更任务('导入完整状态', async (trx) => await 外部导入完整状态(trx, 状态数据))
-    this.载入对话历史(消息历史)
+    let 状态 = await this.执行记忆变更任务('导入完整状态', async (trx) => await 外部导入完整状态(trx, 状态数据))
+    this.载入对话历史(状态.消息历史, 状态.会话标识)
     return this.读取对话历史()
   }
 

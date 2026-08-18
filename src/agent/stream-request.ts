@@ -1,28 +1,9 @@
 import type OpenAI from 'openai'
+import { 工具调用引导前缀 } from './constants'
+import { 转换为模型消息 } from './message-serialization'
 import type { 智能体回调, 智能体消息类型, 累积工具调用 } from './types'
 
-function 转换为模型消息(消息: 智能体消息类型): OpenAI.Chat.Completions.ChatCompletionMessageParam {
-  switch (消息.role) {
-    case 'system':
-      return { role: 'system', content: 消息.content, ...(消息.name !== undefined ? { name: 消息.name } : {}) }
-    case 'developer':
-      return { role: 'developer', content: 消息.content, ...(消息.name !== undefined ? { name: 消息.name } : {}) }
-    case 'user':
-      return { role: 'user', content: 消息.content, ...(消息.name !== undefined ? { name: 消息.name } : {}) }
-    case 'assistant':
-      return {
-        role: 'assistant',
-        content: 消息.content ?? null,
-        ...(消息.name !== undefined ? { name: 消息.name } : {}),
-        ...(消息.tool_calls !== undefined ? { tool_calls: 消息.tool_calls } : {}),
-        ...(消息.function_call !== undefined ? { function_call: 消息.function_call } : {}),
-      }
-    case 'tool':
-      return { role: 'tool', content: 消息.content, tool_call_id: 消息.tool_call_id }
-    case 'function':
-      return { role: 'function', content: 消息.content, name: 消息.name }
-  }
-}
+export { 转换为模型消息 } from './message-serialization'
 
 export async function 流式请求AI(
   openai客户端: OpenAI,
@@ -38,19 +19,17 @@ export async function 流式请求AI(
   核采样?: number,
   存在惩罚?: number,
   频率惩罚?: number,
-): Promise<{ 完整文本: string; 工具调用列表: 累积工具调用[]; 已中断: boolean }> {
+): Promise<{ 完整文本: string; 原始完整文本?: string; 工具调用列表: 累积工具调用[]; 已中断: boolean }> {
   let 完整文本 = ''
   let 工具调用映射 = new Map<number, 累积工具调用>()
   let 已中断 = false
 
   let 实际工具列表 = 工具列表
   let 实际消息列表 = 消息列表
-  let 引导前缀 = '```json\n{"type": "function", "function": {"name":'
-
   if (是否支持函数调用 === false) {
     实际工具列表 = []
     if (是否使用引导前缀 !== false) {
-      实际消息列表 = [...消息列表, { role: 'assistant', content: 引导前缀 }]
+      实际消息列表 = [...消息列表, { role: 'assistant', content: 工具调用引导前缀 }]
     }
   }
 
@@ -148,9 +127,10 @@ export async function 流式请求AI(
     }
   }
 
+  let 原始完整文本 = 完整文本
   if (是否支持函数调用 === false && 是否使用引导前缀 !== false) {
-    if (完整文本.trim().startsWith(引导前缀) === false) {
-      完整文本 = 引导前缀 + 完整文本
+    if (完整文本.trim().startsWith(工具调用引导前缀) === false) {
+      完整文本 = 工具调用引导前缀 + 完整文本
     }
   }
 
@@ -160,5 +140,5 @@ export async function 流式请求AI(
   } catch (e) {
     console.error('[Agent Stream] Callback error on 原始AI返回:', e)
   }
-  return { 完整文本, 工具调用列表, 已中断 }
+  return { 完整文本, 原始完整文本, 工具调用列表, 已中断 }
 }

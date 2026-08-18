@@ -21,6 +21,7 @@ export type {
   查询记忆选项,
 } from './agent-memory/agent-memory-types'
 export { 智能体 } from './agent/agent'
+export { 统计字符数 } from './agent/audit'
 export {
   智能体函数消息Schema,
   智能体助手消息Schema,
@@ -48,5 +49,7 @@ export type {
   智能体用户消息,
   智能体系统消息,
   智能体选项,
+  模型审计汇总,
+  模型请求审计记录,
   调试拦截钩子,
 } from './agent/types'

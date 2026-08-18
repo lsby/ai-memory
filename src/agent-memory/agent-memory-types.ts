@@ -199,6 +199,7 @@ export type 快照数据 = z.infer<typeof 快照数据Schema>
 
 export let 完整状态Schema = z.object({
   格式版本: z.literal(2),
+  会话标识: z.string().optional(),
   记忆快照: 快照数据Schema,
   消息历史: z.array(智能体消息Schema),
 })
