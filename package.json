@@ -1,6 +1,6 @@
 {
   "name": "@lsby/ai-memory",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "A PGlite-backed TypeScript library for OpenAI-compatible agents with persistent, layered memory.",
   "keywords": [
     "ai",
