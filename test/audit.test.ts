@@ -75,6 +75,22 @@ describe('模型字符与缓存审计', () => {
     })
   })
 
+  it('提供商返回实际 token 用量时优先用于审计', async (): Promise<void> => {
+    流式请求AI模拟.mockResolvedValue({
+      完整文本: '{"回答":"中A"}',
+      工具调用列表: [],
+      已中断: false,
+      输入token数: 23,
+      输出token数: 5,
+    })
+    let 智能体实例 = new 智能体({})
+
+    await 智能体实例.对话(创建选项('按 token 审计'))
+
+    expect(智能体实例.读取模型审计记录()).toMatchObject([{ 发出字符数: 23, 返回字符数: 5 }])
+    expect(智能体实例.读取模型审计汇总()).toMatchObject({ 发出字符数: 23, 返回字符数: 5 })
+  })
+
   it('同一轮工具循环的后续模型请求判定为复用已有对话', async (): Promise<void> => {
     流式请求AI模拟
       .mockResolvedValueOnce({ 完整文本: '无效结构', 工具调用列表: [], 已中断: false })

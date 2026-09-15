@@ -12,6 +12,14 @@ async function* 创建文本流(内容: string): AsyncGenerator<{ choices: [{ de
   yield { choices: [{ delta: { content: 内容 } }] }
 }
 
+async function* 创建带用量的流(): AsyncGenerator<
+  | { choices: [{ delta: { content: string } }]; usage?: undefined }
+  | { choices: []; usage: { prompt_tokens: number; completion_tokens: number } }
+> {
+  yield { choices: [{ delta: { content: '完成' } }] }
+  yield { choices: [], usage: { prompt_tokens: 12, completion_tokens: 3 } }
+}
+
 describe('模型请求序列化', () => {
   it('不会把会话内部治理字段发送给模型提供商', async (): Promise<void> => {
     let 客户端 = new OpenAI({ apiKey: 'test' })
@@ -60,5 +68,24 @@ describe('模型请求序列化', () => {
     expect(请求配置.messages.at(-1)).toEqual({ role: 'assistant', content: 工具调用引导前缀 })
     expect(结果.原始完整文本).toBe('片段')
     expect(结果.完整文本).toBe(`${工具调用引导前缀}片段`)
+  })
+
+  it('请求并读取流式响应末尾的实际 token 用量', async (): Promise<void> => {
+    let 客户端 = new OpenAI({ apiKey: 'test' })
+    let 创建请求模拟 = vi.spyOn(客户端.chat.completions, 'create').mockReturnValue(创建带用量的流() as never)
+
+    let 结果 = await 流式请求AI(
+      客户端,
+      'mock-model',
+      [{ role: 'user', content: '请求' }],
+      [],
+      async (): Promise<void> => {},
+      undefined,
+    )
+
+    let 请求配置 = 创建请求模拟.mock.calls[0]?.[0]
+    if (请求配置 === undefined) throw new Error('模型请求未发出')
+    expect(请求配置.stream_options).toEqual({ include_usage: true })
+    expect(结果).toMatchObject({ 完整文本: '完成', 输入token数: 12, 输出token数: 3 })
   })
 })

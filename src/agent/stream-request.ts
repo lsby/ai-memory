@@ -19,10 +19,19 @@ export async function 流式请求AI(
   核采样?: number,
   存在惩罚?: number,
   频率惩罚?: number,
-): Promise<{ 完整文本: string; 原始完整文本?: string; 工具调用列表: 累积工具调用[]; 已中断: boolean }> {
+): Promise<{
+  完整文本: string
+  原始完整文本?: string
+  工具调用列表: 累积工具调用[]
+  已中断: boolean
+  输入token数?: number
+  输出token数?: number
+}> {
   let 完整文本 = ''
   let 工具调用映射 = new Map<number, 累积工具调用>()
   let 已中断 = false
+  let 输入token数: number | undefined
+  let 输出token数: number | undefined
 
   let 实际工具列表 = 工具列表
   let 实际消息列表 = 消息列表
@@ -38,6 +47,7 @@ export async function 流式请求AI(
       model: 模型名称,
       messages: 实际消息列表.map(转换为模型消息),
       stream: true,
+      stream_options: { include_usage: true },
     }
     if (最大输出token !== undefined) {
       请求配置.max_tokens = 最大输出token
@@ -67,6 +77,10 @@ export async function 流式请求AI(
     let 流式响应 = await openai客户端.chat.completions.create(请求配置, { signal: 中断信号 })
 
     for await (let chunk of 流式响应) {
+      if (chunk.usage !== undefined && chunk.usage !== null) {
+        输入token数 = chunk.usage.prompt_tokens
+        输出token数 = chunk.usage.completion_tokens
+      }
       // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
       if (chunk.choices === undefined || chunk.choices === null || chunk.choices.length === 0) {
         continue
@@ -140,5 +154,12 @@ export async function 流式请求AI(
   } catch (e) {
     console.error('[Agent Stream] Callback error on 原始AI返回:', e)
   }
-  return { 完整文本, 原始完整文本, 工具调用列表, 已中断 }
+  return {
+    完整文本,
+    原始完整文本,
+    工具调用列表,
+    已中断,
+    ...(输入token数 !== undefined ? { 输入token数 } : {}),
+    ...(输出token数 !== undefined ? { 输出token数 } : {}),
+  }
 }
