@@ -1,25 +1,43 @@
 import { Kysely, sql } from 'kysely'
+import { 校验schema名, 转义标识符, 默认schema } from '../agent-memory-connection'
 import { 记忆数据库 } from '../agent-memory-types'
+import { 确保在事务中执行 } from './common'
 
-export async function 初始化数据库(数据库查询器: Kysely<记忆数据库>): Promise<void> {
-  let enumCheck = await sql`
-          SELECT 1 FROM pg_type WHERE typname = '记忆等级枚举'
-        `.execute(数据库查询器)
-  if (enumCheck.rows.length === 0) {
-    await sql`CREATE TYPE 记忆等级枚举 AS ENUM ('零级', '一级', '二级');`.execute(数据库查询器)
+/**
+ * 在指定 schema 里建表（默认 public，和旧版本的数据布局一致）。
+ * 所有对象（枚举、表、索引、触发器函数）都带 schema 前缀，不依赖会话里当时的 search_path；
+ * vector 扩展只在 public 建一次。整个初始化在一个事务里完成，互斥锁因此不会被别的实例插队。
+ */
+export async function 初始化数据库(数据库查询器: Kysely<记忆数据库>, schema: string = 默认schema): Promise<void> {
+  await 确保在事务中执行(数据库查询器, async (trx) => await 在事务中初始化数据库(trx, 校验schema名(schema)))
+}
+
+async function 在事务中初始化数据库(数据库查询器: Kysely<记忆数据库>, schema: string): Promise<void> {
+  let 名 = (对象名: string): string => `${转义标识符(schema)}.${转义标识符(对象名)}`
+  let 执行 = async (语句: string): Promise<void> => {
+    await sql.raw(语句).execute(数据库查询器)
   }
 
-  await sql`CREATE EXTENSION IF NOT EXISTS vector;`.execute(数据库查询器)
+  if (schema !== 默认schema) await 执行(`CREATE SCHEMA IF NOT EXISTS ${转义标识符(schema)}`)
+  await 执行(`CREATE EXTENSION IF NOT EXISTS vector WITH SCHEMA public`)
 
-  await sql`
-          CREATE TABLE IF NOT EXISTS 记忆表 (
+  let enumCheck = await sql`
+    SELECT 1 FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace
+    WHERE t.typname = '记忆等级枚举' AND n.nspname = ${schema}
+  `.execute(数据库查询器)
+  if (enumCheck.rows.length === 0) {
+    await 执行(`CREATE TYPE ${名('记忆等级枚举')} AS ENUM ('零级', '一级', '二级');`)
+  }
+
+  await 执行(`
+          CREATE TABLE IF NOT EXISTS ${名('记忆表')} (
             id TEXT PRIMARY KEY,
-            等级 记忆等级枚举 NOT NULL,
+            等级 ${名('记忆等级枚举')} NOT NULL,
             评分 DOUBLE PRECISION NOT NULL,
             内容 TEXT NOT NULL,
             关键词 TEXT[] NOT NULL,
             标签 TEXT[] NOT NULL DEFAULT '{}',
-            向量 vector,
+            向量 public.vector,
             向量维度 INTEGER,
             创建时间 TIMESTAMPTZ NOT NULL,
             创建序号 SERIAL,
@@ -28,93 +46,93 @@ export async function 初始化数据库(数据库查询器: Kysely<记忆数据
             x DOUBLE PRECISION NOT NULL DEFAULT 0,
             y DOUBLE PRECISION NOT NULL DEFAULT 0
           )
-        `.execute(数据库查询器)
+        `)
 
-  await sql`
-          CREATE TABLE IF NOT EXISTS 记忆关联表 (
-            起点id TEXT NOT NULL REFERENCES 记忆表(id) ON DELETE CASCADE,
-            终点id TEXT NOT NULL REFERENCES 记忆表(id) ON DELETE CASCADE,
+  await 执行(`
+          CREATE TABLE IF NOT EXISTS ${名('记忆关联表')} (
+            起点id TEXT NOT NULL REFERENCES ${名('记忆表')}(id) ON DELETE CASCADE,
+            终点id TEXT NOT NULL REFERENCES ${名('记忆表')}(id) ON DELETE CASCADE,
             关联度 DOUBLE PRECISION NOT NULL,
             PRIMARY KEY (起点id, 终点id)
           )
-        `.execute(数据库查询器)
+        `)
 
-  await sql`
-          CREATE TABLE IF NOT EXISTS 记忆提交表 (
+  await 执行(`
+          CREATE TABLE IF NOT EXISTS ${名('记忆提交表')} (
             id TEXT PRIMARY KEY,
             父提交id TEXT,
             消息 TEXT NOT NULL,
             创建时间 TIMESTAMPTZ NOT NULL
           )
-        `.execute(数据库查询器)
+        `)
 
-  await sql`
-          CREATE TABLE IF NOT EXISTS 记忆变更表 (
+  await 执行(`
+          CREATE TABLE IF NOT EXISTS ${名('记忆变更表')} (
             id TEXT PRIMARY KEY,
             序号 BIGSERIAL,
-            提交id TEXT NOT NULL REFERENCES 记忆提交表(id) ON DELETE CASCADE,
+            提交id TEXT NOT NULL REFERENCES ${名('记忆提交表')}(id) ON DELETE CASCADE,
             操作类型 TEXT NOT NULL,
             目标表 TEXT NOT NULL,
             目标id TEXT NOT NULL,
             旧值 TEXT,
             新值 TEXT
           )
-        `.execute(数据库查询器)
+        `)
 
-  await sql`ALTER TABLE 记忆变更表 ADD COLUMN IF NOT EXISTS 序号 BIGSERIAL;`.execute(数据库查询器)
+  await 执行(`ALTER TABLE ${名('记忆变更表')} ADD COLUMN IF NOT EXISTS 序号 BIGSERIAL;`)
 
-  await sql`
-          CREATE TABLE IF NOT EXISTS 记忆元数据表 (
+  await 执行(`
+          CREATE TABLE IF NOT EXISTS ${名('记忆元数据表')} (
             键 TEXT PRIMARY KEY,
             值 TEXT NOT NULL
           )
-        `.execute(数据库查询器)
+        `)
 
-  await sql`
-          CREATE TABLE IF NOT EXISTS 动态工具表 (
+  await 执行(`
+          CREATE TABLE IF NOT EXISTS ${名('动态工具表')} (
             id TEXT PRIMARY KEY,
             名称 TEXT NOT NULL UNIQUE,
             描述 TEXT NOT NULL,
             代码 TEXT NOT NULL,
-            向量 vector,
+            向量 public.vector,
             向量维度 INTEGER,
             创建时间 TIMESTAMPTZ NOT NULL
           )
-        `.execute(数据库查询器)
+        `)
 
-  await sql`
-    CREATE TABLE IF NOT EXISTS _agent_session_commit (
+  await 执行(`
+    CREATE TABLE IF NOT EXISTS ${名('_agent_session_commit')} (
       id INTEGER PRIMARY KEY,
       commit_id TEXT
     );
-  `.execute(数据库查询器)
+  `)
 
-  await sql`
-    INSERT INTO _agent_session_commit (id, commit_id) VALUES (1, NULL) ON CONFLICT (id) DO NOTHING;
-  `.execute(数据库查询器)
+  await 执行(`
+    INSERT INTO ${名('_agent_session_commit')} (id, commit_id) VALUES (1, NULL) ON CONFLICT (id) DO NOTHING;
+  `)
 
-  await sql`CREATE INDEX IF NOT EXISTS 记忆表_等级_创建序号_idx ON 记忆表 (等级, 创建序号);`.execute(数据库查询器)
-  await sql`CREATE INDEX IF NOT EXISTS 记忆表_创建时间_idx ON 记忆表 (创建时间);`.execute(数据库查询器)
-  await sql`CREATE INDEX IF NOT EXISTS 记忆表_关键词_idx ON 记忆表 USING GIN (关键词);`.execute(数据库查询器)
-  await sql`CREATE INDEX IF NOT EXISTS 记忆表_标签_idx ON 记忆表 USING GIN (标签);`.execute(数据库查询器)
-  await sql`CREATE INDEX IF NOT EXISTS 记忆关联表_终点_idx ON 记忆关联表 (终点id);`.execute(数据库查询器)
-  await sql`CREATE INDEX IF NOT EXISTS 记忆变更表_提交_idx ON 记忆变更表 (提交id);`.execute(数据库查询器)
-  await sql`CREATE INDEX IF NOT EXISTS 记忆提交表_创建时间_idx ON 记忆提交表 (创建时间 DESC);`.execute(数据库查询器)
-  await sql`
-    INSERT INTO 记忆元数据表 (键, 值) VALUES ('KERNEL_SCHEMA_VERSION', '2')
+  await 执行(`CREATE INDEX IF NOT EXISTS 记忆表_等级_创建序号_idx ON ${名('记忆表')} (等级, 创建序号);`)
+  await 执行(`CREATE INDEX IF NOT EXISTS 记忆表_创建时间_idx ON ${名('记忆表')} (创建时间);`)
+  await 执行(`CREATE INDEX IF NOT EXISTS 记忆表_关键词_idx ON ${名('记忆表')} USING GIN (关键词);`)
+  await 执行(`CREATE INDEX IF NOT EXISTS 记忆表_标签_idx ON ${名('记忆表')} USING GIN (标签);`)
+  await 执行(`CREATE INDEX IF NOT EXISTS 记忆关联表_终点_idx ON ${名('记忆关联表')} (终点id);`)
+  await 执行(`CREATE INDEX IF NOT EXISTS 记忆变更表_提交_idx ON ${名('记忆变更表')} (提交id);`)
+  await 执行(`CREATE INDEX IF NOT EXISTS 记忆提交表_创建时间_idx ON ${名('记忆提交表')} (创建时间 DESC);`)
+  await 执行(`
+    INSERT INTO ${名('记忆元数据表')} (键, 值) VALUES ('KERNEL_SCHEMA_VERSION', '2')
     ON CONFLICT (键) DO UPDATE SET 值 = EXCLUDED.值;
-  `.execute(数据库查询器)
+  `)
 
   let columnsCheck = await sql`
-    SELECT column_name FROM information_schema.columns WHERE table_name = '记忆表'
+    SELECT column_name FROM information_schema.columns WHERE table_schema = ${schema} AND table_name = '记忆表'
   `.execute(数据库查询器)
   let hasX = columnsCheck.rows.some(
     (记录: unknown): boolean =>
       typeof 记录 === 'object' && 记录 !== null && 'column_name' in 记录 && 记录.column_name === 'x',
   )
   if (!hasX) {
-    await sql`ALTER TABLE 记忆表 ADD COLUMN x DOUBLE PRECISION NOT NULL DEFAULT 0;`.execute(数据库查询器)
-    await sql`ALTER TABLE 记忆表 ADD COLUMN y DOUBLE PRECISION NOT NULL DEFAULT 0;`.execute(数据库查询器)
+    await 执行(`ALTER TABLE ${名('记忆表')} ADD COLUMN x DOUBLE PRECISION NOT NULL DEFAULT 0;`)
+    await 执行(`ALTER TABLE ${名('记忆表')} ADD COLUMN y DOUBLE PRECISION NOT NULL DEFAULT 0;`)
   }
 
   // 提升向量检索性能，添加针对余弦距离 (<=>) 的 hnsw 索引
@@ -129,8 +147,8 @@ export async function 初始化数据库(数据库查询器: Kysely<记忆数据
 
   // ==================== 创建用于自动生成提交 Diff 的触发器 ====================
   // 1. 记忆表触发器函数
-  await sql`
-    CREATE OR REPLACE FUNCTION 记录记忆表变更_触发器()
+  await 执行(`
+    CREATE OR REPLACE FUNCTION ${名('记录记忆表变更_触发器')}()
     RETURNS TRIGGER AS $$
     DECLARE
       v_commit_id TEXT;
@@ -140,7 +158,7 @@ export async function 初始化数据库(数据库查询器: Kysely<记忆数据
       v_new_val TEXT := NULL;
     BEGIN
       BEGIN
-        SELECT commit_id INTO v_commit_id FROM _agent_session_commit WHERE id = 1;
+        SELECT commit_id INTO v_commit_id FROM ${名('_agent_session_commit')} WHERE id = 1;
       EXCEPTION WHEN OTHERS THEN
         v_commit_id := NULL;
       END;
@@ -172,24 +190,24 @@ export async function 初始化数据库(数据库查询器: Kysely<记忆数据
         v_old_val := row_to_json(OLD)::TEXT;
       END IF;
 
-      INSERT INTO 记忆变更表 (id, 提交id, 操作类型, 目标表, 目标id, 旧值, 新值)
+      INSERT INTO ${名('记忆变更表')} (id, 提交id, 操作类型, 目标表, 目标id, 旧值, 新值)
       VALUES (gen_random_uuid()::TEXT, v_commit_id, v_op_type, 'node', v_target_id, v_old_val, v_new_val);
 
       RETURN NULL;
     END;
     $$ LANGUAGE plpgsql;
-  `.execute(数据库查询器)
+  `)
 
-  await sql`DROP TRIGGER IF EXISTS trg_记录记忆表变更 ON 记忆表;`.execute(数据库查询器)
-  await sql`
+  await 执行(`DROP TRIGGER IF EXISTS trg_记录记忆表变更 ON ${名('记忆表')};`)
+  await 执行(`
     CREATE TRIGGER trg_记录记忆表变更
-    AFTER INSERT OR UPDATE OR DELETE ON 记忆表
-    FOR EACH ROW EXECUTE FUNCTION 记录记忆表变更_触发器();
-  `.execute(数据库查询器)
+    AFTER INSERT OR UPDATE OR DELETE ON ${名('记忆表')}
+    FOR EACH ROW EXECUTE FUNCTION ${名('记录记忆表变更_触发器')}();
+  `)
 
   // 2. 记忆关联表触发器函数
-  await sql`
-    CREATE OR REPLACE FUNCTION 记录记忆关联表变更_触发器()
+  await 执行(`
+    CREATE OR REPLACE FUNCTION ${名('记录记忆关联表变更_触发器')}()
     RETURNS TRIGGER AS $$
     DECLARE
       v_commit_id TEXT;
@@ -199,7 +217,7 @@ export async function 初始化数据库(数据库查询器: Kysely<记忆数据
       v_new_val TEXT := NULL;
     BEGIN
       BEGIN
-        SELECT commit_id INTO v_commit_id FROM _agent_session_commit WHERE id = 1;
+        SELECT commit_id INTO v_commit_id FROM ${名('_agent_session_commit')} WHERE id = 1;
       EXCEPTION WHEN OTHERS THEN
         v_commit_id := NULL;
       END;
@@ -226,18 +244,18 @@ export async function 初始化数据库(数据库查询器: Kysely<记忆数据
         v_old_val := row_to_json(OLD)::TEXT;
       END IF;
 
-      INSERT INTO 记忆变更表 (id, 提交id, 操作类型, 目标表, 目标id, 旧值, 新值)
+      INSERT INTO ${名('记忆变更表')} (id, 提交id, 操作类型, 目标表, 目标id, 旧值, 新值)
       VALUES (gen_random_uuid()::TEXT, v_commit_id, v_op_type, 'link', v_target_id, v_old_val, v_new_val);
 
       RETURN NULL;
     END;
     $$ LANGUAGE plpgsql;
-  `.execute(数据库查询器)
+  `)
 
-  await sql`DROP TRIGGER IF EXISTS trg_记录记忆关联表变更 ON 记忆关联表;`.execute(数据库查询器)
-  await sql`
+  await 执行(`DROP TRIGGER IF EXISTS trg_记录记忆关联表变更 ON ${名('记忆关联表')};`)
+  await 执行(`
     CREATE TRIGGER trg_记录记忆关联表变更
-    AFTER INSERT OR UPDATE OR DELETE ON 记忆关联表
-    FOR EACH ROW EXECUTE FUNCTION 记录记忆关联表变更_触发器();
-  `.execute(数据库查询器)
+    AFTER INSERT OR UPDATE OR DELETE ON ${名('记忆关联表')}
+    FOR EACH ROW EXECUTE FUNCTION ${名('记录记忆关联表变更_触发器')}();
+  `)
 }

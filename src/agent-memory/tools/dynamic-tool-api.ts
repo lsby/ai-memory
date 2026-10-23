@@ -12,6 +12,16 @@ export type 动态工具上下文 = {
   回调?: ((事件: 智能体事件) => Promise<void>) | undefined
 }
 
+/** 动态工具入库时用来算向量的文本；代码校验不过时返回 null（此时工具不会走到取向量那一步）。 */
+export async function 提取动态工具向量文本(代码: string): Promise<string | null> {
+  try {
+    let 加载结果 = await 加载并校验动态工具(代码)
+    return 加载结果.成功 === true ? `${加载结果.工具.名称} ${加载结果.工具.描述}` : null
+  } catch (_错误: unknown) {
+    return null
+  }
+}
+
 export async function 注册动态工具核心(
   上下文: 动态工具上下文,
   参数: { 代码: string; 测试参数_json: string },
