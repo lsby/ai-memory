@@ -19,6 +19,7 @@ export async function 流式请求AI(
   核采样?: number,
   存在惩罚?: number,
   频率惩罚?: number,
+  额外请求参数?: Record<string, unknown>,
 ): Promise<{
   完整文本: string
   原始完整文本?: string
@@ -45,7 +46,9 @@ export async function 流式请求AI(
   }
 
   try {
+    // 额外请求参数放在最前, 库自己管理的字段和按次传的采样参数都在它之后写入, 不会被覆盖
     let 请求配置: OpenAI.Chat.Completions.ChatCompletionCreateParamsStreaming = {
+      ...额外请求参数,
       model: 模型名称,
       messages: 实际消息列表.map(转换为模型消息),
       stream: true,

@@ -212,6 +212,17 @@ export type 智能体选项 = {
    * 触发token数 仅在拿得到上一次请求的输入token数时优先于 触发字符数 使用。
    */
   自动截断?: { 触发字符数: number; 保留字符数: number; 触发token数?: number }
+  /**
+   * 额外请求参数: 合并进每次请求体, 各家模型的私有参数(比如豆包的 thinking)从这里传。
+   * 不能包含库自己管理的字段 model、messages、tools、stream、stream_options, 否则构造时报错。
+   * 它不改变消息和工具, 所以不算进前缀指纹; 一个对话里请自己保证不换参数。
+   */
+  额外请求参数?: Record<string, unknown>
+  /**
+   * 时区(IANA 名称, 如 Asia/Shanghai)。用于注入的 [当前时间: …] 和记忆状态里的"记录于…"。
+   * 实例上设置默认值, 单次调用的 时区 优先。不传用服务器时区。
+   */
+  时区?: string
 }
 
 /** 追加注入消息: 每轮可传, 追加在本轮末尾。类型 相同且内容和历史中同类型最后一条相同时不重复追加 */
@@ -226,6 +237,8 @@ export type 解决问题选项<T extends z.ZodType> = {
   预期结果描述: string
   回调: 智能体回调
   当前时间?: Date | undefined
+  /** 本次调用使用的时区(IANA 名称), 优先于实例上的 时区。时间注入是按次追加的, 不影响前缀 */
+  时区?: string | undefined
   消息历史?: Array<智能体消息类型>
   openai客户端: openai
   模型名称: string

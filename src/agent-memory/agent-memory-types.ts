@@ -2,6 +2,7 @@ import type { PGlite } from '@electric-sql/pglite'
 import type { Kysely } from 'kysely'
 import type OpenAI from 'openai'
 import { z } from 'zod'
+import { 格式化当前时间 } from '../agent/injection'
 import {
   智能体消息Schema,
   type 内部注入消息,
@@ -137,6 +138,22 @@ export type 带记忆的智能体选项 = 智能体选项 & {
    * 工具定义是前缀的一部分, 所以只能在实例上设置, 不能按次传。
    */
   禁用深度推演?: boolean
+  /**
+   * 记忆工具筛选, 默认全开。返回 false 的工具既不挂给模型, 也不出现在默认记忆提示词里。
+   * 工具定义是前缀的一部分, 所以只能在实例上设置, 换了筛选会导致已有对话 前缀已变。
+   * 构造时对每个工具名只调用一次, 结果在实例生命周期内固定。工具名见导出的 记忆工具名。
+   */
+  记忆工具筛选?: (工具名: string) => boolean
+  /**
+   * 记忆提示词。不传用库自带的, 按启用的工具拼段落; 传字符串整段替换;
+   * 传函数则收到启用的工具名列表(构造时调用一次), 返回提示词。它是前缀的一部分, 只能在实例上设置。
+   */
+  记忆提示词?: string | ((启用的工具名: string[]) => string)
+  /**
+   * 遗忘豁免: 返回 true 的二级记忆不参与自然遗忘和末位淘汰。默认不豁免任何记忆。
+   * 在清理的事务里同步调用, 不要在里面做网络请求。被豁免的记忆仍计入二级记忆数量上限。
+   */
+  遗忘豁免?: (记忆: 公开记忆) => boolean
 }
 
 export type 存储配置 =
@@ -146,7 +163,14 @@ export type 存储配置 =
 
 export type 变更记录配置 = { 保留提交数: number } | false
 
-export type 内部带记忆的智能体配置 = 智能体选项 & Required<Omit<带记忆的智能体选项, keyof 智能体选项>>
+export type 内部带记忆的智能体配置 = 智能体选项 &
+  Required<Omit<带记忆的智能体选项, keyof 智能体选项 | '记忆工具筛选' | '记忆提示词' | '遗忘豁免'>> & {
+    记忆工具筛选?: (工具名: string) => boolean
+    记忆提示词?: string | ((启用的工具名: string[]) => string)
+    /** 已经按 记忆工具筛选 和 禁用深度推演 算好的启用工具名, 构造时固定 */
+    启用的记忆工具名: string[]
+    遗忘豁免: (记忆: 公开记忆) => boolean
+  }
 
 export type 带记忆的解决问题选项<T extends z.ZodType> = 解决问题选项<T> & {
   标题?: string | undefined
@@ -263,16 +287,7 @@ export type 记忆操作上下文 = {
   回调?: ((事件: 智能体事件) => Promise<void>) | undefined
 }
 
-export function 格式化为本地时间字符串(时间: Date): string {
-  let 偏移分钟 = 时间.getTimezoneOffset()
-  let 偏移毫秒 = 偏移分钟 * 60000
-  let 本地时间 = new Date(时间.getTime() - 偏移毫秒)
-  let iso部分 = 本地时间.toISOString().slice(0, -1)
-  let 符号 = 偏移分钟 > 0 ? '-' : '+'
-  let 绝对值偏移 = Math.abs(偏移分钟)
-  let 偏移小时 = Math.floor(绝对值偏移 / 60)
-    .toString()
-    .padStart(2, '0')
-  let 偏移分 = (绝对值偏移 % 60).toString().padStart(2, '0')
-  return `${iso部分}${符号}${偏移小时}:${偏移分}`
+/** 不传时区用服务器时区, 传了按 IANA 时区名 */
+export function 格式化为本地时间字符串(时间: Date, 时区?: string): string {
+  return 格式化当前时间(时间, 时区)
 }

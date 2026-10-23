@@ -23,6 +23,9 @@ export type {
   更新记忆选项,
   查询记忆选项,
 } from './agent-memory/agent-memory-types'
+export { 生成默认记忆提示词 } from './agent-memory/memory-prompt'
+export { 全部记忆工具名, 记忆工具名 } from './agent-memory/memory-tool-names'
+export type { 记忆工具名类型 } from './agent-memory/memory-tool-names'
 export { 智能体 } from './agent/agent'
 export { 统计字符数 } from './agent/audit'
 export { 从头截断 } from './agent/truncate'
