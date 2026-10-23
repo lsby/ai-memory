@@ -1,6 +1,7 @@
 import { sql } from 'kysely'
 import { createHash } from 'node:crypto'
 import { z } from 'zod'
+import { 构造前缀已变结果 } from '../agent/prefix'
 import type { 内部注入消息, 回合结果, 智能体执行模式 } from '../agent/types'
 import { 智能体工具 } from '../agent/types'
 import {
@@ -120,6 +121,7 @@ export async function 解决问题<T extends z.ZodType>(
   选项: 带记忆的解决问题选项<T>,
   执行器: (选项: 带记忆的解决问题选项<T>) => Promise<回合结果<T>>,
   执行模式: 智能体执行模式,
+  检查前缀: (选项: 带记忆的解决问题选项<T>) => string,
 ): Promise<回合结果<T>> {
   let { 配置, 数据库查询器, 获取向量, 保存快照 } = 上下文
   let 当前时间 = 选项.当前时间 ?? new Date()
@@ -179,6 +181,12 @@ export async function 解决问题<T extends z.ZodType>(
           创建事务化记忆工具(记忆工具上下文, 删除动态工具工具),
           调用动态工具工具(记忆工具上下文),
         ]
+
+  // 前缀已变时不能有任何副作用: 在自动召回(会更新访问计数、走事务)之前先检查, 变了就直接返回
+  let 追加工具列表 = 执行模式 === '推演' ? [] : [...(选项.临时追加工具列表 ?? []), ...记忆专用工具列表]
+  if (检查前缀({ ...选项, 临时追加工具列表: 追加工具列表 }) === '前缀已变') {
+    return 构造前缀已变结果(选项.消息历史 ?? [])
+  }
 
   let 零级记忆文本 = '### 当前零级记忆 (核心法则)\n'
   if (零级记忆列表.length > 0) {
@@ -328,7 +336,7 @@ export async function 解决问题<T extends z.ZodType>(
   let 新选项: 带记忆的解决问题选项<T> = {
     ...选项,
     追加注入消息: [...本轮注入消息列表, ...(选项.追加注入消息 ?? [])],
-    临时追加工具列表: 执行模式 === '推演' ? [] : [...(选项.临时追加工具列表 ?? []), ...记忆专用工具列表],
+    临时追加工具列表: 追加工具列表,
   }
 
   // 执行基类的流程
