@@ -2,12 +2,14 @@ import OpenAI from 'openai'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 import { 带记忆的智能体, 记忆等级 } from '../src/index'
+import { 使用共享PGlite } from './helpers/shared-pglite-fixture'
 
 let 流式请求AI模拟 = vi.hoisted(() => vi.fn())
 
 vi.mock('../src/agent/stream-request', () => ({ 流式请求AI: 流式请求AI模拟 }))
 
 describe('记忆工具工作流', () => {
+  let 夹具 = 使用共享PGlite()
   let 智能体实例: 带记忆的智能体 | undefined
 
   beforeEach((): void => {
@@ -22,7 +24,7 @@ describe('记忆工具工作流', () => {
   })
 
   it('通过模型工具调用写入一级记忆', async (): Promise<void> => {
-    智能体实例 = new 带记忆的智能体({ 向量模型: { 类型: '无' }, 二级记忆遗忘分数阈值: 0 })
+    智能体实例 = 夹具.新建智能体({ 向量模型: { 类型: '无' }, 二级记忆遗忘分数阈值: 0 })
     流式请求AI模拟
       .mockResolvedValueOnce({
         完整文本: '',
@@ -60,7 +62,7 @@ describe('记忆工具工作流', () => {
   })
 
   it('在一次模型响应中顺序更新关键词和标签', async (): Promise<void> => {
-    智能体实例 = new 带记忆的智能体({ 向量模型: { 类型: '无' }, 二级记忆遗忘分数阈值: 0 })
+    智能体实例 = 夹具.新建智能体({ 向量模型: { 类型: '无' }, 二级记忆遗忘分数阈值: 0 })
     await 智能体实例.批量注入记忆([
       {
         内容: '待更新记忆',

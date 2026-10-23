@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { 带记忆的智能体, 记忆等级 } from '../src/index'
+import { 使用共享PGlite } from './helpers/shared-pglite-fixture'
 
 let 特征提取管线模拟 = vi.hoisted(() => vi.fn())
 
@@ -9,6 +10,7 @@ vi.mock('@huggingface/transformers', () => ({
 }))
 
 describe('带记忆的智能体的本地向量模型', () => {
+  let 夹具 = 使用共享PGlite()
   let 智能体实例列表: 带记忆的智能体[] = []
 
   afterEach(async (): Promise<void> => {
@@ -23,9 +25,9 @@ describe('带记忆的智能体的本地向量模型', () => {
     特征提取管线模拟.mockImplementation(async (): Promise<(文本: string) => Promise<{ data: Float32Array }>> => {
       return async (): Promise<{ data: Float32Array }> => ({ data: new Float32Array([1, 0]) })
     })
-    let 第一个智能体 = new 带记忆的智能体({ 向量模型: { 类型: '本地', 模型名称: 'test-model-a' } })
-    let 第二个智能体 = new 带记忆的智能体({ 向量模型: { 类型: '本地', 模型名称: 'test-model-b' } })
-    let 第三个智能体 = new 带记忆的智能体({ 向量模型: { 类型: '本地', 模型名称: 'test-model-a' } })
+    let 第一个智能体 = 夹具.新建智能体({ 向量模型: { 类型: '本地', 模型名称: 'test-model-a' } })
+    let 第二个智能体 = 夹具.新建智能体({ 向量模型: { 类型: '本地', 模型名称: 'test-model-b' } })
+    let 第三个智能体 = 夹具.新建智能体({ 向量模型: { 类型: '本地', 模型名称: 'test-model-a' } })
     智能体实例列表.push(第一个智能体, 第二个智能体, 第三个智能体)
 
     for (let 智能体实例 of 智能体实例列表) {

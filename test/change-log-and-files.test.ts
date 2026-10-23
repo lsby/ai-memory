@@ -6,6 +6,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { 带记忆的智能体, 记忆等级, type 批量注入记忆项 } from '../src/index'
+import { 使用共享PGlite } from './helpers/shared-pglite-fixture'
 import { 限时 } from './helpers/shared-storage-helper'
 
 function 记忆项(内容: string, 关键词: string[] = [内容], 等级: 记忆等级 = 记忆等级.一级): 批量注入记忆项 {
@@ -13,10 +14,15 @@ function 记忆项(内容: string, 关键词: string[] = [内容], 等级: 记�
 }
 
 describe('变更记录', { timeout: 90000 }, () => {
+  let 夹具 = 使用共享PGlite()
   let 智能体列表: 带记忆的智能体[] = []
 
   function 创建实例(选项: Partial<ConstructorParameters<typeof 带记忆的智能体>[0]> = {}): 带记忆的智能体 {
-    let 实例 = new 带记忆的智能体({ 向量模型: { 类型: '无' }, ...选项 })
+    // 自己带存储配置的用例（自己管 PGlite 句柄）保持原样，其余用共享 PGlite
+    let 实例 =
+      选项.存储 !== undefined
+        ? new 带记忆的智能体({ 向量模型: { 类型: '无' }, ...选项 })
+        : 夹具.新建智能体({ 向量模型: { 类型: '无' }, ...选项 })
     智能体列表.push(实例)
     return 实例
   }
