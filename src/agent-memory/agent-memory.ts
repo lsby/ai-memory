@@ -32,7 +32,7 @@ import {
   导出完整状态 as 外部导出完整状态,
   载入快照 as 外部载入快照,
 } from './agent-memory-snapshot'
-import { 解决问题 as 外部解决问题, 记忆提示词 } from './agent-memory-solve'
+import { 解决问题 as 外部解决问题 } from './agent-memory-solve'
 import { 清除共享初始化锁, 获取或创建PGlite, 获取或创建共享初始化锁, 销毁存储 } from './agent-memory-storage'
 import {
   批量注入记忆项Schema,
@@ -52,6 +52,8 @@ import {
   type 记忆数据库,
 } from './agent-memory-types'
 import { 向量未预取错误, 新向量缓存, 预取向量, type 向量缓存 } from './agent-memory-vector-cache'
+import { 生成默认记忆提示词 } from './memory-prompt'
+import { 全部记忆工具名, 记忆工具名 } from './memory-tool-names'
 import { 初始化数据库 } from './tools/db-schema'
 import {
   删除动态工具核心,
@@ -69,6 +71,7 @@ export class 带记忆的智能体 extends 智能体 {
   private 数据库查询器: Kysely<记忆数据库>
   private schema名: string
   private readonly 上下文依赖: 上下文依赖
+  private readonly 记忆提示词文本: string
   private 数据库是否已初始化: boolean = false
   private 距上次回收空间的提交数 = 0
   private 初始化锁: Promise<void> | null = null
@@ -84,8 +87,16 @@ export class 带记忆的智能体 extends 智能体 {
       if (Number.isInteger(变更记录.保留提交数) === false || 变更记录.保留提交数 < 1)
         throw new Error('变更记录.保留提交数 必须是不小于 1 的整数')
     }
+    let 禁用深度推演 = 选项.禁用深度推演 ?? false
+    let 筛选 = 选项.记忆工具筛选
+    let 启用的记忆工具名 = 全部记忆工具名.filter(
+      (名称): boolean =>
+        (名称 !== 记忆工具名.深度推演 || 禁用深度推演 === false) && (筛选 === undefined || 筛选(名称) === true),
+    )
     this.配置 = {
       ...选项,
+      启用的记忆工具名,
+      遗忘豁免: 选项.遗忘豁免 ?? ((): boolean => false),
       一级记忆容量: 选项.一级记忆容量 ?? 10,
       二级记忆遗忘分数阈值: 选项.二级记忆遗忘分数阈值 ?? 10.0,
       二级记忆数量上限: 选项.二级记忆数量上限 ?? 5000,
@@ -98,8 +109,16 @@ export class 带记忆的智能体 extends 智能体 {
       向量相似度关联阈值: 选项.向量相似度关联阈值 ?? 0.6,
       存储,
       变更记录,
-      禁用深度推演: 选项.禁用深度推演 ?? false,
+      禁用深度推演,
     }
+    let 自定义提示词 = 选项.记忆提示词
+    // 记忆提示词是前缀的一部分: 构造时算一次固定下来, 调用方的函数不会被反复调用
+    this.记忆提示词文本 =
+      自定义提示词 === undefined
+        ? 生成默认记忆提示词(启用的记忆工具名)
+        : typeof 自定义提示词 === 'string'
+          ? 自定义提示词
+          : 自定义提示词([...启用的记忆工具名])
     this.schema名 = 存储.schema ?? 默认schema
     this.上下文依赖 = { 配置: this.配置, 执行记忆变更任务: this.执行记忆变更任务.bind(this) }
     let pglite选项: PGliteOptions = { extensions: { vector } }
@@ -123,7 +142,7 @@ export class 带记忆的智能体 extends 智能体 {
 
   /** 记忆操作指南是前缀的一部分, 固定拼在系统提示词里 */
   protected override 提供附加系统提示词(): string | undefined {
-    return 记忆提示词
+    return this.记忆提示词文本
   }
 
   public async 初始化(): Promise<void> {

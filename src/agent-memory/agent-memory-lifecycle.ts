@@ -88,20 +88,43 @@ export async function 检查并清理二级记忆(
     WHERE m.等级 = '二级'
   `.execute(数据库查询器)
 
+  // 遗忘豁免: 先查出候选记忆, 按回调过滤后才进入淘汰名单。回调是同步的, 这里不会发网络请求。
+  let 豁免回调 = 配置.遗忘豁免
+  let 筛出可淘汰ID = async (候选IDs: string[]): Promise<string[]> => {
+    if (候选IDs.length === 0) return []
+    let 记忆列表 = await 数据库查询器
+      .selectFrom('记忆表')
+      .select(['id', '等级', '评分', '内容', '关键词', '标签', '创建时间'])
+      .where('id', 'in', 候选IDs)
+      .execute()
+    let 豁免IDs = new Set(
+      记忆列表
+        .filter((记忆): boolean => 豁免回调({ ...记忆, 关键词: [...记忆.关键词], 标签: [...记忆.标签] }) === true)
+        .map((记忆) => 记忆.id),
+    )
+    return 候选IDs.filter((id): boolean => 豁免IDs.has(id) === false)
+  }
+
   let 要淘汰的IDs: string[] = []
 
   // 1. 阈值自然遗忘：找出保留指数低于阈值的记忆
-  let 低于阈值IDs = 淘汰结果.rows.filter((r) => r.保留指数 < 遗忘分数阈值).map((r) => r.id)
+  let 低于阈值IDs = await 筛出可淘汰ID(淘汰结果.rows.filter((r) => r.保留指数 < 遗忘分数阈值).map((r) => r.id))
   要淘汰的IDs.push(...低于阈值IDs)
 
   // 2. 兜底防爆：如果自然遗忘后，剩余数量依然超过兜底上限，触发末位淘汰
+  //    被豁免的记忆仍占数量, 但不会被淘汰; 末位淘汰按保留指数从低到高逐批挑选非豁免的记忆
   let 剩余数量 = 现有数量 - 要淘汰的IDs.length
   if (剩余数量 > 兜底上限) {
     let 还需要淘汰的数量 = 剩余数量 - 兜底上限
     let 剩余行 = 淘汰结果.rows.filter((r) => r.保留指数 >= 遗忘分数阈值)
     // 按保留指数升序排序，取分数最低的 N 条
     剩余行.sort((a, b) => a.保留指数 - b.保留指数)
-    let 兜底淘汰IDs = 剩余行.slice(0, 还需要淘汰的数量).map((r) => r.id)
+    let 兜底淘汰IDs: string[] = []
+    for (let 起点 = 0; 起点 < 剩余行.length && 兜底淘汰IDs.length < 还需要淘汰的数量;) {
+      let 批大小 = 还需要淘汰的数量 - 兜底淘汰IDs.length
+      兜底淘汰IDs.push(...(await 筛出可淘汰ID(剩余行.slice(起点, 起点 + 批大小).map((r) => r.id))))
+      起点 += 批大小
+    }
     要淘汰的IDs.push(...兜底淘汰IDs)
   }
 
