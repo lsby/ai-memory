@@ -5,7 +5,7 @@ import path from 'node:path'
 import type OpenAI from 'openai'
 import { z } from 'zod'
 import { 智能体 } from '../agent/agent'
-import { type 智能体事件, type 智能体执行模式, type 智能体消息类型 } from '../agent/types'
+import { type 回合结果, type 智能体事件, type 智能体执行模式, type 智能体消息类型 } from '../agent/types'
 import { 创建记忆提交, 回退记忆提交 as 外部回退记忆提交, 尝试清理空提交 } from './agent-memory-commit'
 import {
   批量注入记忆 as 外部批量注入记忆,
@@ -26,7 +26,7 @@ import {
   导出完整状态 as 外部导出完整状态,
   载入快照 as 外部载入快照,
 } from './agent-memory-snapshot'
-import { 解决问题 as 外部解决问题 } from './agent-memory-solve'
+import { 解决问题 as 外部解决问题, 记忆提示词 } from './agent-memory-solve'
 import {
   清除共享初始化锁,
   获取共享任务队列锁,
@@ -90,6 +90,7 @@ export class 带记忆的智能体 extends 智能体 {
       自动检索动态工具数量: 选项.自动检索动态工具数量 ?? 3,
       向量相似度关联阈值: 选项.向量相似度关联阈值 ?? 0.6,
       存储,
+      禁用深度推演: 选项.禁用深度推演 ?? false,
     }
     let pglite选项: PGliteOptions = { extensions: { vector } }
     if (this.配置.存储.模式 === '文件') {
@@ -100,6 +101,11 @@ export class 带记忆的智能体 extends 智能体 {
       this.是否使用全局缓存的PGlite = false
     }
     this.数据库查询器 = new Kysely<记忆数据库>({ dialect: new PGliteDialect({ pglite: this.内存数据库 }) })
+  }
+
+  /** 记忆操作指南是前缀的一部分, 固定拼在系统提示词里 */
+  protected override 提供附加系统提示词(): string | undefined {
+    return 记忆提示词
   }
 
   public async 初始化(): Promise<void> {
@@ -339,25 +345,11 @@ export class 带记忆的智能体 extends 智能体 {
     )
   }
 
-  public override async 对话<T extends z.ZodType>(
-    选项: 带记忆的对话选项<T>,
-  ): Promise<{
-    结果: z.infer<T> | null
-    消息列表: 智能体消息类型[]
-    新增上下文: 智能体消息类型[]
-    结束原因?: '中断' | '超出最大轮次' | '提取结构化数据失败' | '校验失败次数超出上限'
-  }> {
+  public override async 对话<T extends z.ZodType>(选项: 带记忆的对话选项<T>): Promise<回合结果<T>> {
     return await super.对话(选项)
   }
 
-  public override async 推演<T extends z.ZodType>(
-    选项: 带记忆的对话选项<T>,
-  ): Promise<{
-    结果: z.infer<T> | null
-    消息列表: 智能体消息类型[]
-    新增上下文: 智能体消息类型[]
-    结束原因?: '中断' | '超出最大轮次' | '提取结构化数据失败' | '校验失败次数超出上限'
-  }> {
+  public override async 推演<T extends z.ZodType>(选项: 带记忆的对话选项<T>): Promise<回合结果<T>> {
     return await super.推演(选项)
   }
 
@@ -366,12 +358,7 @@ export class 带记忆的智能体 extends 智能体 {
     执行模式: 智能体执行模式,
     首次请求是否新建对话: boolean = false,
     更新当前会话审计状态: boolean = false,
-  ): Promise<{
-    结果: z.infer<T> | null
-    消息列表: 智能体消息类型[]
-    新增上下文: 智能体消息类型[]
-    结束原因?: '中断' | '超出最大轮次' | '提取结构化数据失败' | '校验失败次数超出上限'
-  }> {
+  ): Promise<回合结果<T>> {
     let 简短命令 = 选项.命令.replace(/\n/g, ' ')
     let 标题 = 选项.标题 ?? `对话: ${简短命令.slice(0, 20)}`
     if (执行模式 === '推演') {
@@ -394,14 +381,7 @@ export class 带记忆的智能体 extends 智能体 {
     )
   }
 
-  public async 私有反思<T extends z.ZodType>(
-    选项: 带记忆的对话选项<T>,
-  ): Promise<{
-    结果: z.infer<T> | null
-    消息列表: 智能体消息类型[]
-    新增上下文: 智能体消息类型[]
-    结束原因?: '中断' | '超出最大轮次' | '提取结构化数据失败' | '校验失败次数超出上限'
-  }> {
+  public async 私有反思<T extends z.ZodType>(选项: 带记忆的对话选项<T>): Promise<回合结果<T>> {
     let 新选项 = {
       ...选项,
       标题: '私有反思',
@@ -411,14 +391,7 @@ export class 带记忆的智能体 extends 智能体 {
   }
 
   /** 将反思过程作为一轮正常对话写入会话历史。 */
-  public async 会话反思<T extends z.ZodType>(
-    选项: 带记忆的对话选项<T>,
-  ): Promise<{
-    结果: z.infer<T> | null
-    消息列表: 智能体消息类型[]
-    新增上下文: 智能体消息类型[]
-    结束原因?: '中断' | '超出最大轮次' | '提取结构化数据失败' | '校验失败次数超出上限'
-  }> {
+  public async 会话反思<T extends z.ZodType>(选项: 带记忆的对话选项<T>): Promise<回合结果<T>> {
     let 新选项 = {
       ...选项,
       标题: '会话反思',

@@ -1,7 +1,7 @@
 import { sql } from 'kysely'
 import { createHash } from 'node:crypto'
 import { z } from 'zod'
-import type { 智能体执行模式, 智能体消息类型 } from '../agent/types'
+import type { 内部注入消息, 回合结果, 智能体执行模式 } from '../agent/types'
 import { 智能体工具 } from '../agent/types'
 import {
   格式化为本地时间字符串,
@@ -41,7 +41,7 @@ export function 格式化相对时间(记忆时间: Date, 当前时间: Date): s
   return `${String(差值月)}个月前`
 }
 
-let 记忆提示词 = `## 记忆系统操作指南
+export let 记忆提示词 = `## 记忆系统操作指南
 你是一个拥有三级记忆系统的高级自治智能体。这不仅是你的存储网络，更是你进行科学验证和认知进化的引擎:
 1. [零级记忆 (自动附带)]: 你的核心法则与人设。它们永远生效，系统会**无条件将其完整附带**在每次对话的上下文中。请极度谨慎地追加或修改。
 2. [一级记忆 (自动附带)]: 你的工作记忆区。系统也会**无条件将其完整附带**在每次对话的上下文中。请及时将当前任务的关键线索加入其中。添加时务必给出一个浮点数评分。满载时，低分记忆将被自动降级。
@@ -118,19 +118,9 @@ function 创建事务化记忆工具(上下文: 记忆工具上下文, 工厂: �
 export async function 解决问题<T extends z.ZodType>(
   上下文: 记忆操作上下文,
   选项: 带记忆的解决问题选项<T>,
-  执行器: (选项: 带记忆的解决问题选项<T>) => Promise<{
-    结果: z.infer<T> | null
-    消息列表: 智能体消息类型[]
-    新增上下文: 智能体消息类型[]
-    结束原因?: '中断' | '超出最大轮次' | '提取结构化数据失败' | '校验失败次数超出上限'
-  }>,
+  执行器: (选项: 带记忆的解决问题选项<T>) => Promise<回合结果<T>>,
   执行模式: 智能体执行模式,
-): Promise<{
-  结果: z.infer<T> | null
-  消息列表: 智能体消息类型[]
-  新增上下文: 智能体消息类型[]
-  结束原因?: '中断' | '超出最大轮次' | '提取结构化数据失败' | '校验失败次数超出上限'
-}> {
+): Promise<回合结果<T>> {
   let { 配置, 数据库查询器, 获取向量, 保存快照 } = 上下文
   let 当前时间 = 选项.当前时间 ?? new Date()
 
@@ -150,7 +140,7 @@ export async function 解决问题<T extends z.ZodType>(
       ? []
       : [
           执行代码工具,
-          ...(选项.禁用深度推演 === true
+          ...(配置.禁用深度推演 === true
             ? []
             : [深度推演工具({ 配置, 当前解决问题选项: 选项, 保存快照: async () => await 保存快照() })]),
 
@@ -190,7 +180,6 @@ export async function 解决问题<T extends z.ZodType>(
           调用动态工具工具(记忆工具上下文),
         ]
 
-  let 记忆部分系统提示词 = 记忆提示词
   let 零级记忆文本 = '### 当前零级记忆 (核心法则)\n'
   if (零级记忆列表.length > 0) {
     for (let 记忆 of 零级记忆列表) {
@@ -309,8 +298,7 @@ export async function 解决问题<T extends z.ZodType>(
     }
   }
 
-  let 历史 = 选项.消息历史 !== undefined ? [...选项.消息历史] : []
-  let 本轮注入消息列表: 智能体消息类型[] = []
+  // 记忆状态和召回内容交给智能体按统一规则追加: 记忆状态按指纹和历史中最后一条比较去重, 召回内容每轮都追加
   let 记忆状态指纹 = createHash('sha256')
     .update(
       JSON.stringify(
@@ -326,40 +314,23 @@ export async function 解决问题<T extends z.ZodType>(
       ),
     )
     .digest('hex')
-  let 上次记忆状态 = 历史.findLast(
-    (消息) => 消息.role === 'user' && 消息.isSystemInjection === true && 消息.systemInjectionKind === 'memory-state',
-  )
-  if (上次记忆状态?.role !== 'user' || 上次记忆状态.systemInjectionFingerprint !== 记忆状态指纹) {
-    let 系统注入消息: 智能体消息类型 = {
-      role: 'user',
-      content: `### 本轮最新记忆状态\n以下是当前完整状态，如果与历史中更早的记忆状态冲突，以本条为准。\n\n${记忆状态文本}`,
-      isSystemInjection: true,
-      systemInjectionKind: 'memory-state',
-      systemInjectionFingerprint: 记忆状态指纹,
-    }
-    历史.push(系统注入消息)
-    本轮注入消息列表.push(系统注入消息)
-  }
-
+  let 本轮注入消息列表: 内部注入消息[] = [
+    {
+      类型: 'memory-state',
+      内容: `### 本轮最新记忆状态\n以下是当前完整状态，如果与历史中更早的记忆状态冲突，以本条为准。\n\n${记忆状态文本}`,
+      指纹: 记忆状态指纹,
+    },
+  ]
   if (本轮召回内容片段.length > 0) {
-    let 系统注入消息: 智能体消息类型 = {
-      role: 'user',
-      content: 本轮召回内容片段.join('\n'),
-      isSystemInjection: true,
-      systemInjectionKind: 'recall-context',
-    }
-    历史.push(系统注入消息)
-    本轮注入消息列表.push(系统注入消息)
+    本轮注入消息列表.push({ 类型: 'recall-context', 内容: 本轮召回内容片段.join('\n'), 总是追加: true })
   }
 
-  let 新选项: 带记忆的解决问题选项<T> = { ...选项, 消息历史: 历史 }
-  新选项.临时追加系统提示词 = 记忆部分系统提示词
-  新选项.临时追加工具列表 = 执行模式 === '推演' ? [] : [...(选项.临时追加工具列表 ?? []), ...记忆专用工具列表]
+  let 新选项: 带记忆的解决问题选项<T> = {
+    ...选项,
+    追加注入消息: [...本轮注入消息列表, ...(选项.追加注入消息 ?? [])],
+    临时追加工具列表: 执行模式 === '推演' ? [] : [...(选项.临时追加工具列表 ?? []), ...记忆专用工具列表],
+  }
 
   // 执行基类的流程
-  let 结果 = await 执行器(新选项)
-
-  let 返回新增上下文 = [...本轮注入消息列表, ...结果.新增上下文]
-
-  return { ...结果, 新增上下文: 返回新增上下文 }
+  return await 执行器(新选项)
 }

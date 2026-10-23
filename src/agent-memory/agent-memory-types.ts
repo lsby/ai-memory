@@ -114,12 +114,16 @@ export type 带记忆的智能体选项 = 智能体选项 & {
   自动检索动态工具数量?: number
   向量相似度关联阈值?: number
   存储?: { 模式: '内存' } | { 模式: '文件'; 路径: string }
+  /**
+   * 是否不挂深度推演工具, 默认 false。
+   * 工具定义是前缀的一部分, 所以只能在实例上设置, 不能按次传。
+   */
+  禁用深度推演?: boolean
 }
 
 export type 内部带记忆的智能体配置 = 智能体选项 & Required<Omit<带记忆的智能体选项, keyof 智能体选项>>
 
 export type 带记忆的解决问题选项<T extends z.ZodType> = 解决问题选项<T> & {
-  禁用深度推演?: boolean | undefined
   标题?: string | undefined
   是否自动召回?: boolean | undefined
 }

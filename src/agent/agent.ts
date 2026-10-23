@@ -3,43 +3,33 @@ import { zodToJsonSchema } from 'zod-to-json-schema'
 import { 模型审计器, 统计模型输入字符数, 统计模型输出字符数 } from './audit'
 import { 构建openai工具列表, 构建系统工具与格式说明 } from './build-messages'
 import { 提交结果函数名 } from './constants'
+import { 格式化当前时间, 追加注入消息到列表 } from './injection'
+import { 计算前缀指纹 } from './prefix'
 import { 开启交互调试 as runRepl } from './repl'
 import { 复制消息列表, 提取可见消息, 智能体状态Schema } from './session-state'
+import { 校验工具列表, 校验结果Schema } from './setup-validation'
 import { 流式请求AI } from './stream-request'
 import { 追加系统纠正消息 } from './system-correction'
 import { 从文本提取工具调用, 从文本提取结果 } from './text-fallback'
 import { 处理工具调用 } from './tool-handler'
+import { 按需自动截断 } from './truncate'
 import type {
   REPL选项,
+  回合结果,
   对话选项,
   执行回合选项,
   智能体回调,
   智能体执行模式,
   智能体消息类型,
+  智能体结束原因,
   智能体选项,
   模型审计汇总,
+  模型用量,
   模型请求审计记录,
   解决问题选项,
 } from './types'
 import { 智能体工具 } from './types'
 import { 运行结果验证器 } from './validator'
-
-function 校验工具列表(工具列表: 智能体工具[]): void {
-  let 名称集合 = new Set<string>()
-  for (let 工具 of 工具列表) {
-    if (工具.名称 === 提交结果函数名) throw new Error(`工具名称 ${提交结果函数名} 为内置结果提交协议保留名称`)
-    if (名称集合.has(工具.名称)) throw new Error(`工具名称重复: ${工具.名称}`)
-    名称集合.add(工具.名称)
-  }
-}
-
-function 校验结果Schema(预期结果Schema: z.ZodType): void {
-  let 结果 = z
-    .object({ type: z.literal('object') })
-    .passthrough()
-    .safeParse(zodToJsonSchema(预期结果Schema))
-  if (结果.success === false) throw new TypeError('预期结果Schema 的根节点必须是对象，才能作为结果提交工具的参数')
-}
 
 export class 智能体 {
   protected 工具列表: 智能体工具[]
@@ -48,6 +38,8 @@ export class 智能体 {
   private 最大循环轮次: number
   private 请求AI时间间隔ms: number
   private 工具返回文本最大长度?: number
+  private 自动截断?: 智能体选项['自动截断']
+  private 上次输入token数: number | undefined
   private 对话历史: 智能体消息类型[] = []
   private 会话任务队列: Promise<void> = Promise.resolve()
   private 审计器 = new 模型审计器()
@@ -60,13 +52,22 @@ export class 智能体 {
     this.最大循环轮次 = 选项.最大循环轮次 ?? 15
     this.请求AI时间间隔ms = 选项.请求AI时间间隔ms ?? 0
     this.工具返回文本最大长度 = 选项.工具返回文本最大长度 ?? 50000
+    if (选项.自动截断 !== undefined) this.自动截断 = 选项.自动截断
+  }
+
+  /**
+   * 子类提供的、拼在工具说明之后的固定系统提示词。
+   * 它是前缀的一部分, 一个对话里必须保持不变, 所以不接受按次参数。
+   */
+  protected 提供附加系统提示词(): string | undefined {
+    return undefined
   }
 
   public 组装系统提示词<T extends z.ZodType>(选项: 解决问题选项<T>, 执行模式: 智能体执行模式 = '普通'): string {
     let 合并工具列表 = 执行模式 === '推演' ? [] : [...this.工具列表, ...(选项.临时追加工具列表 ?? [])]
     let 工具与格式说明 = 构建系统工具与格式说明(合并工具列表, 选项)
 
-    let parts = [this.系统提示词, 工具与格式说明, 选项.临时追加系统提示词].filter((p) => p !== undefined && p !== '')
+    let parts = [this.系统提示词, 工具与格式说明, this.提供附加系统提示词()].filter((p) => p !== undefined && p !== '')
     return parts.join('\n\n')
   }
 
@@ -74,35 +75,23 @@ export class 智能体 {
    * 在当前实例的会话历史上追加一轮可读写对话。
    * 历史消息一经写入便不再改动，以便复用模型提供商的前缀缓存。
    */
-  public async 对话<T extends z.ZodType>(
-    选项: 对话选项<T>,
-  ): Promise<{
-    结果: z.infer<T> | null
-    消息列表: 智能体消息类型[]
-    新增上下文: 智能体消息类型[]
-    结束原因?: '中断' | '超出最大轮次' | '提取结构化数据失败' | '校验失败次数超出上限'
-  }> {
+  public async 对话<T extends z.ZodType>(选项: 对话选项<T>): Promise<回合结果<T>> {
     return await this.执行会话任务(async () => {
       let 结果 = await this.执行解决问题(
-        { ...选项, 消息历史: this.对话历史 },
+        { ...选项, 消息历史: this.对话历史, 上次输入token数: this.上次输入token数 },
         '对话',
         this.审计器.当前会话是否已有请求() === false,
         true,
       )
       this.对话历史 = 复制消息列表(结果.消息列表)
+      this.上次输入token数 =
+        结果.用量.findLast((项) => 项.输入token数 !== undefined)?.输入token数 ?? this.上次输入token数
       return 结果
     })
   }
 
   /** 在当前会话环境中临时推演，不追加消息，也不向模型暴露普通工具。 */
-  public async 推演<T extends z.ZodType>(
-    选项: 对话选项<T>,
-  ): Promise<{
-    结果: z.infer<T> | null
-    消息列表: 智能体消息类型[]
-    新增上下文: 智能体消息类型[]
-    结束原因?: '中断' | '超出最大轮次' | '提取结构化数据失败' | '校验失败次数超出上限'
-  }> {
+  public async 推演<T extends z.ZodType>(选项: 对话选项<T>): Promise<回合结果<T>> {
     return await this.执行会话任务(
       async () =>
         await this.执行解决问题(
@@ -114,14 +103,7 @@ export class 智能体 {
   }
 
   /** 执行一个由调用方管理历史的无状态回合，不读写实例会话。 */
-  public async 执行回合<T extends z.ZodType>(
-    选项: 执行回合选项<T>,
-  ): Promise<{
-    结果: z.infer<T> | null
-    消息列表: 智能体消息类型[]
-    新增上下文: 智能体消息类型[]
-    结束原因?: '中断' | '超出最大轮次' | '提取结构化数据失败' | '校验失败次数超出上限'
-  }> {
+  public async 执行回合<T extends z.ZodType>(选项: 执行回合选项<T>): Promise<回合结果<T>> {
     let 消息历史 = 复制消息列表(选项.消息历史 ?? [])
     return await this.执行解决问题({ ...选项, 消息历史 }, '普通', 消息历史.length === 0)
   }
@@ -130,14 +112,7 @@ export class 智能体 {
    * 在当前会话环境中执行可读写操作，但不把本轮消息写入对话历史。
    * 供子类实现私有工作流时使用。
    */
-  protected async 执行不追加历史的对话<T extends z.ZodType>(
-    选项: 对话选项<T>,
-  ): Promise<{
-    结果: z.infer<T> | null
-    消息列表: 智能体消息类型[]
-    新增上下文: 智能体消息类型[]
-    结束原因?: '中断' | '超出最大轮次' | '提取结构化数据失败' | '校验失败次数超出上限'
-  }> {
+  protected async 执行不追加历史的对话<T extends z.ZodType>(选项: 对话选项<T>): Promise<回合结果<T>> {
     return await this.执行会话任务(
       async () =>
         await this.执行解决问题(
@@ -151,6 +126,7 @@ export class 智能体 {
   /** 仅清空本实例的会话历史，不影响记忆库或工具配置。 */
   public 重置对话(): void {
     this.对话历史 = []
+    this.上次输入token数 = undefined
     this.审计器.切换会话()
   }
 
@@ -160,6 +136,7 @@ export class 智能体 {
 
   public 载入对话历史(消息历史: 智能体消息类型[], 会话标识?: string): void {
     this.对话历史 = 复制消息列表(消息历史)
+    this.上次输入token数 = undefined
     this.审计器.切换会话(会话标识, this.对话历史.length > 0)
   }
 
@@ -204,61 +181,90 @@ export class 智能体 {
     执行模式: 智能体执行模式,
     首次请求是否新建对话: boolean = false,
     更新当前会话审计状态: boolean = false,
-  ): Promise<{
-    结果: z.infer<T> | null
-    消息列表: 智能体消息类型[]
-    新增上下文: 智能体消息类型[]
-    结束原因?: '中断' | '超出最大轮次' | '提取结构化数据失败' | '校验失败次数超出上限'
-  }> {
+  ): Promise<回合结果<T>> {
     let 回调 = 选项.回调
-    let 消息列表: 智能体消息类型[] = 选项.消息历史 !== undefined ? [...选项.消息历史] : []
-    let 初始消息列表长度 = 消息列表.length
-    let 是否有unshift = false
+    let 原历史 = 选项.消息历史 ?? []
+    let 用量列表: 模型用量[] = []
 
+    let 合并工具列表 = 执行模式 === '推演' ? [] : [...this.工具列表, ...(选项.临时追加工具列表 ?? [])]
+    校验工具列表(合并工具列表)
+    校验结果Schema(选项.预期结果Schema)
+    let openai工具列表 = 构建openai工具列表(合并工具列表, 选项.预期结果Schema, 选项.预期结果描述)
     let 完整系统提示词 = this.组装系统提示词(选项, 执行模式)
-    if (完整系统提示词 !== '') {
-      if (消息列表.length > 0 && 消息列表[0]?.role === 'system') {
-        let 原内容 = 消息列表[0].content
-        let 历史前缀已冻结 = 执行模式 === '对话' || 执行模式 === '推演'
-        if (历史前缀已冻结 === false && !原内容.includes(完整系统提示词)) {
-          消息列表[0] = { role: 'system', content: `${原内容}\n\n${完整系统提示词}` }
+    let 前缀指纹 = 计算前缀指纹(完整系统提示词, 选项.是否支持函数调用 === false ? [] : openai工具列表)
+
+    // 前缀 = 第一条 system + 工具定义。前缀变了就不发请求, 由调用方决定新开对话还是用新前缀重开。推演是从主历史分出去的支线, 不检查。
+    if (执行模式 !== '推演' && 原历史.length > 0) {
+      let 第一条 = 原历史[0]
+      if (第一条?.role !== 'system' || 第一条.prefixFingerprint !== 前缀指纹) {
+        await 回调({ 类型: '流程信息', 内容: '前缀已变: 系统提示词或工具定义与历史不一致, 未发出请求' })
+        return {
+          结果: null,
+          消息列表: [...原历史],
+          新增上下文: [],
+          结束原因: '前缀已变',
+          用量: 用量列表,
+          历史已截断: false,
         }
-      } else {
-        消息列表.unshift({ role: 'system', content: 完整系统提示词 })
-        是否有unshift = true
       }
     }
 
-    let 提取新增上下文 = (): 智能体消息类型[] => {
-      return 消息列表.slice(初始消息列表长度 + (是否有unshift ? 1 : 0))
+    // 自动截断: 只在本轮请求前、整体替换历史时发生
+    let 基础历史 = 原历史
+    let 历史已截断 = false
+    if (执行模式 !== '推演' && this.自动截断 !== undefined) {
+      let 截断结果 = 按需自动截断(原历史, this.自动截断, 选项.上次输入token数)
+      if (截断结果 !== null) {
+        基础历史 = 截断结果
+        历史已截断 = true
+        await 回调({
+          类型: '流程信息',
+          内容: `历史过长, 已从头截断: ${String(原历史.length)} 条 -> ${String(截断结果.length)} 条`,
+        })
+      }
     }
+
+    let 消息列表: 智能体消息类型[] = [...基础历史]
+    // 返回给调用方的新增上下文从这里开始。首轮插入的带指纹的 system 属于新增上下文; 推演临时补的 system 不是。
+    let 新增起点 = 消息列表.length
+    if (消息列表.length === 0) {
+      if (执行模式 === '推演') {
+        消息列表.push({ role: 'system', content: 完整系统提示词 })
+        新增起点 = 1
+      } else {
+        消息列表.push({ role: 'system', content: 完整系统提示词, prefixFingerprint: 前缀指纹 })
+        新增起点 = 0
+      }
+    } else if (执行模式 === '推演' && 消息列表[0]?.role !== 'system') {
+      消息列表.unshift({ role: 'system', content: 完整系统提示词 })
+      新增起点 += 1
+    }
+
+    let 提取新增上下文 = (): 智能体消息类型[] => 消息列表.slice(新增起点)
+    let 结束 = (结果: z.infer<T> | null, 结束原因?: 智能体结束原因): 回合结果<T> => ({
+      结果,
+      消息列表,
+      新增上下文: 提取新增上下文(),
+      ...(结束原因 !== undefined ? { 结束原因 } : {}),
+      用量: 用量列表,
+      历史已截断,
+      ...(历史已截断 === true ? { 截断后历史: 基础历史 } : {}),
+    })
+
+    // 本轮追加顺序: 记忆状态 -> 召回 -> 调用方注入(按传入顺序) -> 当前时间 -> 用户命令
+    追加注入消息到列表(消息列表, 选项.追加注入消息 ?? [])
 
     if (选项.命令 !== '') {
       if (选项.当前时间 !== undefined) {
-        let 偏移分钟 = 选项.当前时间.getTimezoneOffset()
-        let 偏移毫秒 = 偏移分钟 * 60000
-        let 本地时间 = new Date(选项.当前时间.getTime() - 偏移毫秒)
-        let iso部分 = 本地时间.toISOString().slice(0, -1)
-        let 符号 = 偏移分钟 > 0 ? '-' : '+'
-        let 绝对值偏移 = Math.abs(偏移分钟)
-        let 偏移小时 = Math.floor(绝对值偏移 / 60)
-          .toString()
-          .padStart(2, '0')
-        let 偏移分 = (绝对值偏移 % 60).toString().padStart(2, '0')
-        let 本地时间字符串 = `${iso部分}${符号}${偏移小时}:${偏移分}`
         消息列表.push({
           role: 'user',
-          content: `[当前时间: ${本地时间字符串}]`,
+          content: `[当前时间: ${格式化当前时间(选项.当前时间)}]`,
           isSystemInjection: true,
           systemInjectionKind: 'current-time',
         })
       }
       消息列表.push({ role: 'user', content: 选项.命令 })
     }
-    let 合并工具列表 = 执行模式 === '推演' ? [] : [...this.工具列表, ...(选项.临时追加工具列表 ?? [])]
-    校验工具列表(合并工具列表)
-    校验结果Schema(选项.预期结果Schema)
-    let openai工具列表 = 构建openai工具列表(合并工具列表, 选项.预期结果Schema, 选项.预期结果描述)
     let 校验失败次数 = 0
     let 总轮次 = 0
     let 是否中断 = (): boolean => {
@@ -270,7 +276,7 @@ export class 智能体 {
     while (总轮次 < this.最大循环轮次) {
       if (是否中断() === true) {
         await 回调({ 类型: '流程信息', 内容: '操作被中断' })
-        return { 结果: null, 消息列表, 新增上下文: 提取新增上下文(), 结束原因: '中断' }
+        return 结束(null, '中断')
       }
       总轮次++
       await 回调({ 类型: '流程信息', 内容: `第 ${String(总轮次)} 轮开始` })
@@ -298,7 +304,7 @@ export class 智能体 {
         })
         if (是否中断() === true) {
           await 回调({ 类型: '流程信息', 内容: '操作被中断' })
-          return { 结果: null, 消息列表, 新增上下文: 提取新增上下文(), 结束原因: '中断' }
+          return 结束(null, '中断')
         }
       }
 
@@ -326,18 +332,23 @@ export class 智能体 {
         更新当前会话审计状态,
       )
       await 回调({ 类型: '模型请求审计', 记录: 审计记录 })
+      用量列表.push({
+        ...(流式结果.输入token数 !== undefined ? { 输入token数: 流式结果.输入token数 } : {}),
+        ...(流式结果.缓存命中token数 !== undefined ? { 缓存命中token数: 流式结果.缓存命中token数 } : {}),
+        ...(流式结果.输出token数 !== undefined ? { 输出token数: 流式结果.输出token数 } : {}),
+      })
 
       // 检查是否被中断
       if (流式结果.已中断 === true) {
         await 回调({ 类型: '流程信息', 内容: '操作被中断' })
-        return { 结果: null, 消息列表, 新增上下文: 提取新增上下文(), 结束原因: '中断' }
+        return 结束(null, '中断')
       }
 
       // 情况1: AI 返回了 tool_calls
       if (流式结果.工具调用列表.length > 0) {
         if (是否中断() === true) {
           await 回调({ 类型: '流程信息', 内容: '操作被中断' })
-          return { 结果: null, 消息列表, 新增上下文: 提取新增上下文(), 结束原因: '中断' }
+          return 结束(null, '中断')
         }
         let 结果 = await this.处理工具调用并验证(
           流式结果.工具调用列表,
@@ -348,10 +359,10 @@ export class 智能体 {
           校验失败次数,
           回调,
         )
-        if (结果.类型 === '返回') return { 结果: 结果.数据, 消息列表, 新增上下文: 提取新增上下文() }
+        if (结果.类型 === '返回') return 结束(结果.数据)
         if (结果.类型 === '校验失败上限') {
           await 回调({ 类型: '流程信息', 内容: 结果.错误信息 })
-          return { 结果: null, 消息列表, 新增上下文: 提取新增上下文(), 结束原因: '校验失败次数超出上限' }
+          return 结束(null, '校验失败次数超出上限')
         }
         if (结果.类型 === '更新次数') {
           校验失败次数 = 结果.新次数
@@ -373,10 +384,10 @@ export class 智能体 {
             校验失败次数,
             回调,
           )
-          if (结果.类型 === '返回') return { 结果: 结果.数据, 消息列表, 新增上下文: 提取新增上下文() }
+          if (结果.类型 === '返回') return 结束(结果.数据)
           if (结果.类型 === '校验失败上限') {
             await 回调({ 类型: '流程信息', 内容: 结果.错误信息 })
-            return { 结果: null, 消息列表, 新增上下文: 提取新增上下文(), 结束原因: '校验失败次数超出上限' }
+            return 结束(null, '校验失败次数超出上限')
           }
           if (结果.类型 === '更新次数') {
             校验失败次数 = 结果.新次数
@@ -400,7 +411,7 @@ export class 智能体 {
             continue
           }
           await 回调({ 类型: '最终结果', 结果: 文本提取结果 })
-          return { 结果: 文本提取结果, 消息列表, 新增上下文: 提取新增上下文() }
+          return 结束(文本提取结果)
         }
 
         // ====== 新增：纯文本兜底（自动包装） ======
@@ -448,7 +459,7 @@ export class 智能体 {
                   continue
                 }
                 await 回调({ 类型: '最终结果', 结果: 校验结果.data as Record<string, unknown> })
-                return { 结果: 校验结果.data as z.infer<T>, 消息列表, 新增上下文: 提取新增上下文() }
+                return 结束(校验结果.data as z.infer<T>)
               }
             }
           }
@@ -458,7 +469,7 @@ export class 智能体 {
         校验失败次数++
         if (校验失败次数 > this.最大校验重试次数) {
           await 回调({ 类型: '流程信息', 内容: 'AI 多次未能返回有效的结构化数据, 提前结束' })
-          return { 结果: null, 消息列表, 新增上下文: 提取新增上下文(), 结束原因: '提取结构化数据失败' }
+          return 结束(null, '提取结构化数据失败')
         }
 
         let 预期JsonSchema = zodToJsonSchema(选项.预期结果Schema)
@@ -485,7 +496,7 @@ export class 智能体 {
     }
 
     await 回调({ 类型: '流程信息', 内容: `超出最大循环轮次 (${String(this.最大循环轮次)})` })
-    return { 结果: null, 消息列表, 新增上下文: 提取新增上下文(), 结束原因: '超出最大轮次' }
+    return 结束(null, '超出最大轮次')
   }
 
   // 统一处理 "工具调用 → 验证 → 返回/继续" 的逻辑
