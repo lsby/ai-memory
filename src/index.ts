@@ -1,5 +1,5 @@
 export { 带记忆的智能体 } from './agent-memory/agent-memory'
-export { 删除记忆空间 } from './agent-memory/agent-memory-connection'
+export { 删除记忆空间, 在互斥锁内执行 } from './agent-memory/agent-memory-connection'
 export {
   完整状态Schema,
   快照数据Schema,

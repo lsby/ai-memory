@@ -2,7 +2,7 @@ import type { PGlite } from '@electric-sql/pglite'
 import OpenAI from 'openai'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
-import { 删除记忆空间, 带记忆的智能体, 记忆等级, type 批量注入记忆项 } from '../src/index'
+import { 删除记忆空间, 在互斥锁内执行, 带记忆的智能体, 记忆等级, type 批量注入记忆项 } from '../src/index'
 import { 创建假向量客户端, 创建带向量的PGlite, 等待, 限时, type 假向量请求记录 } from './helpers/shared-storage-helper'
 
 let 流式请求AI模拟 = vi.hoisted(() => vi.fn())
@@ -292,5 +292,44 @@ describe('共用一个 PGlite 的多 schema 并发', { timeout: 90000 }, () => {
     expect(记录.filter((项) => 项.句柄被占用)).toEqual([])
     let 行 = await pglite.query<{ 维度: number | null }>(`SELECT 向量维度 AS 维度 FROM "tool_vec"."记忆表"`)
     expect(行.rows.map((项) => 项.维度)).toEqual([4])
+  })
+})
+
+describe('导出的连接锁', { timeout: 60000 }, () => {
+  it('锁内操作要等库的事务结束，不会和事务交错', async (): Promise<void> => {
+    let pglite = 创建带向量的PGlite()
+    let 实例 = new 带记忆的智能体({ 存储: { 模式: '外部', pglite, schema: 'lock_case' }, 向量模型: { 类型: '无' } })
+    try {
+      await 实例.初始化()
+      let 放行: () => void = () => {}
+      let 闸门 = new Promise<void>((resolve) => {
+        放行 = resolve
+      })
+      let 状态 = { 已进入事务: false, 锁内已执行: false }
+      let 写入任务 = 实例.批量注入记忆(
+        [记忆项('锁测试一', ['共同词']), 记忆项('锁测试二', ['共同词'])],
+        async (): Promise<void> => {
+          状态.已进入事务 = true
+          await 闸门
+        },
+      )
+      while (状态.已进入事务 === false) await 等待(10)
+
+      let 锁内任务 = 在互斥锁内执行(pglite, async (): Promise<number> => {
+        状态.锁内已执行 = true
+        let 结果 = await pglite.query<{ 数量: number }>(`SELECT count(*)::int AS 数量 FROM "lock_case"."记忆表"`)
+        return 结果.rows[0]?.数量 ?? -1
+      })
+      await 等待(300)
+      expect(状态.锁内已执行).toBe(false)
+
+      放行()
+      await 限时(写入任务, 20000, '事务提交')
+      expect(await 限时(锁内任务, 20000, '锁内查询')).toBe(2)
+      expect(状态.锁内已执行).toBe(true)
+    } finally {
+      await 实例.销毁()
+      await pglite.close()
+    }
   })
 })
