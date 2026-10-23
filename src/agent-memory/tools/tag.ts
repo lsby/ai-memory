@@ -1,12 +1,17 @@
 import { Kysely } from 'kysely'
 import { z } from 'zod'
 import { 智能体事件, 智能体工具 } from '../../agent/types'
-import { 记忆数据库 } from '../agent-memory-types'
+import { 内部带记忆的智能体配置, 记忆数据库 } from '../agent-memory-types'
+import { 应用受保护标签 } from './common'
 
-type 标签管理上下文 = { 数据库查询器: Kysely<记忆数据库>; 回调?: ((事件: 智能体事件) => Promise<void>) | undefined }
+type 标签管理上下文 = {
+  数据库查询器: Kysely<记忆数据库>
+  配置: 内部带记忆的智能体配置
+  回调?: ((事件: 智能体事件) => Promise<void>) | undefined
+}
 
 export function 追加记忆标签工具(上下文: 标签管理上下文): 智能体工具 {
-  let { 数据库查询器, 回调 } = 上下文
+  let { 数据库查询器, 回调, 配置 } = 上下文
 
   return 智能体工具.创建({
     名称: 'append_memory_tags',
@@ -30,7 +35,7 @@ export function 追加记忆标签工具(上下文: 标签管理上下文): 智�
           return { 结果: '失败', 错误信息: `找不到指定 ID (${参数.id}) 的记忆。` }
         }
         let 旧标签 = 记忆.标签
-        let 新标签 = Array.from(new Set([...旧标签, ...参数.标签列表]))
+        let 新标签 = Array.from(new Set(应用受保护标签(旧标签, [...旧标签, ...参数.标签列表], 配置.受保护标签)))
 
         await 数据库查询器.updateTable('记忆表').set({ 标签: 新标签 }).where('id', '=', 参数.id).execute()
 
@@ -49,7 +54,7 @@ export function 追加记忆标签工具(上下文: 标签管理上下文): 智�
 }
 
 export function 移除记忆标签工具(上下文: 标签管理上下文): 智能体工具 {
-  let { 数据库查询器, 回调 } = 上下文
+  let { 数据库查询器, 回调, 配置 } = 上下文
 
   return 智能体工具.创建({
     名称: 'remove_memory_tags',
@@ -75,7 +80,7 @@ export function 移除记忆标签工具(上下文: 标签管理上下文): 智�
         let 旧标签 = 记忆.标签
         let 新标签 = 旧标签.filter((k: string): boolean => {
           let 包含 = 参数.标签列表.includes(k)
-          return 包含 === false
+          return 包含 === false || 配置.受保护标签?.(k) === true
         })
 
         await 数据库查询器.updateTable('记忆表').set({ 标签: 新标签 }).where('id', '=', 参数.id).execute()
@@ -95,7 +100,7 @@ export function 移除记忆标签工具(上下文: 标签管理上下文): 智�
 }
 
 export function 覆盖记忆标签工具(上下文: 标签管理上下文): 智能体工具 {
-  let { 数据库查询器, 回调 } = 上下文
+  let { 数据库查询器, 回调, 配置 } = 上下文
 
   return 智能体工具.创建({
     名称: 'overwrite_memory_tags',
@@ -114,11 +119,11 @@ export function 覆盖记忆标签工具(上下文: 标签管理上下文): 智�
       标签列表: string[]
     }): Promise<{ 结果: '成功' | '失败'; 错误信息?: string; 最新状态?: string }> => {
       try {
-        let 记忆 = await 数据库查询器.selectFrom('记忆表').select(['id']).where('id', '=', 参数.id).executeTakeFirst()
+        let 记忆 = await 数据库查询器.selectFrom('记忆表').select(['标签']).where('id', '=', 参数.id).executeTakeFirst()
         if (记忆 === undefined) {
           return { 结果: '失败', 错误信息: `找不到指定 ID (${参数.id}) 的记忆。` }
         }
-        let 新标签 = 参数.标签列表
+        let 新标签 = 应用受保护标签(记忆.标签, 参数.标签列表, 配置.受保护标签)
 
         await 数据库查询器.updateTable('记忆表').set({ 标签: 新标签 }).where('id', '=', 参数.id).execute()
 

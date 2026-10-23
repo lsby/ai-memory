@@ -175,3 +175,29 @@ export async function 刷新记忆关联网络(
     }
   })
 }
+
+/**
+ * 模型工具改标签时套受保护规则: 旧标签里命中规则的保留, 请求里命中规则的新增被忽略。
+ * 没配置受保护标签时原样返回请求的标签。
+ */
+export function 应用受保护标签(
+  旧标签: string[],
+  请求标签: string[],
+  受保护标签: ((标签: string) => boolean) | undefined,
+): string[] {
+  if (受保护标签 === undefined) return 请求标签
+  let 保留 = 旧标签.filter((标签: string): boolean => 受保护标签(标签) === true)
+  let 普通 = 请求标签.filter((标签: string): boolean => 受保护标签(标签) === false)
+  return Array.from(new Set([...保留, ...普通]))
+}
+
+/** 读出记忆当前的标签，仅在配置了受保护标签时才查库。找不到记忆返回空数组。 */
+export async function 读取旧标签用于保护(
+  数据库查询器: Kysely<记忆数据库>,
+  id: string,
+  受保护标签: ((标签: string) => boolean) | undefined,
+): Promise<string[]> {
+  if (受保护标签 === undefined) return []
+  let 记忆 = await 数据库查询器.selectFrom('记忆表').select(['标签']).where('id', '=', id).executeTakeFirst()
+  return 记忆?.标签 ?? []
+}

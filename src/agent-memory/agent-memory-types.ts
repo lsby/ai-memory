@@ -154,6 +154,15 @@ export type 带记忆的智能体选项 = 智能体选项 & {
    * 在清理的事务里同步调用, 不要在里面做网络请求。被豁免的记忆仍计入二级记忆数量上限。
    */
   遗忘豁免?: (记忆: 公开记忆) => boolean
+  /**
+   * 受保护标签: 返回 true 的标签不能被模型工具改动。
+   * 模型工具(edit_level_0/1_memory、overwrite_memory_tags、remove_memory_tags、append_memory_tags、
+   * 三个 add_level_*_memory)改标签时: 原记忆上命中的标签一律保留; 模型想新增命中的标签会被忽略。
+   * 调用方自己用公开方法(添加记忆、更新记忆、批量注入记忆)改标签不受限制。
+   * 只影响工具的执行结果, 不改系统提示词和工具定义, 所以不影响前缀。默认不保护任何标签。
+   * 在工具执行的事务里同步调用, 不要在里面做网络请求。
+   */
+  受保护标签?: (标签: string) => boolean
 }
 
 export type 存储配置 =
@@ -164,12 +173,13 @@ export type 存储配置 =
 export type 变更记录配置 = { 保留提交数: number } | false
 
 export type 内部带记忆的智能体配置 = 智能体选项 &
-  Required<Omit<带记忆的智能体选项, keyof 智能体选项 | '记忆工具筛选' | '记忆提示词' | '遗忘豁免'>> & {
+  Required<Omit<带记忆的智能体选项, keyof 智能体选项 | '记忆工具筛选' | '记忆提示词' | '遗忘豁免' | '受保护标签'>> & {
     记忆工具筛选?: (工具名: string) => boolean
     记忆提示词?: string | ((启用的工具名: string[]) => string)
     /** 已经按 记忆工具筛选 和 禁用深度推演 算好的启用工具名, 构造时固定 */
     启用的记忆工具名: string[]
     遗忘豁免: (记忆: 公开记忆) => boolean
+    受保护标签?: (标签: string) => boolean
   }
 
 export type 带记忆的解决问题选项<T extends z.ZodType> = 解决问题选项<T> & {

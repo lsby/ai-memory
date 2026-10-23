@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto'
 import { z } from 'zod'
 import { 智能体事件, 智能体工具 } from '../../agent/types'
 import { 内部带记忆的智能体配置, 记忆数据库, 记忆等级 } from '../agent-memory-types'
-import { 刷新记忆关联网络 } from './common'
+import { 刷新记忆关联网络, 应用受保护标签, 读取旧标签用于保护 } from './common'
 import { 增量排版 } from './layout'
 
 type 一级记忆上下文 = {
@@ -44,6 +44,7 @@ export function 添加一级记忆工具(上下文: 一级记忆上下文): 智�
     }): Promise<{ 结果: '成功' | '失败'; id?: string; 错误信息?: string; 最新状态?: string }> => {
       try {
         let id = randomUUID()
+        let 最终标签 = 应用受保护标签([], 参数.标签, 配置.受保护标签)
         let 向量 = await 获取向量(参数.内容)
         let 插入结果 = await 数据库查询器
           .insertInto('记忆表')
@@ -53,7 +54,7 @@ export function 添加一级记忆工具(上下文: 一级记忆上下文): 智�
             评分: 参数.评分,
             内容: 参数.内容,
             关键词: 参数.关键词,
-            标签: 参数.标签,
+            标签: 最终标签,
             向量: 向量 !== null ? JSON.stringify(向量) : null,
             向量维度: 向量 !== null ? 向量.length : null,
             创建时间: new Date(),
@@ -82,7 +83,7 @@ export function 添加一级记忆工具(上下文: 一级记忆上下文): 智�
         return {
           结果: '成功',
           id,
-          最新状态: `[一级记忆 ID: ${id}] (评分: ${String(参数.评分)}) 内容: ${参数.内容} (关键词: ${参数.关键词.join(', ')}, 标签: ${参数.标签.join(', ')})`,
+          最新状态: `[一级记忆 ID: ${id}] (评分: ${String(参数.评分)}) 内容: ${参数.内容} (关键词: ${参数.关键词.join(', ')}, 标签: ${最终标签.join(', ')})`,
         }
       } catch (error: unknown) {
         return { 结果: '失败', 错误信息: String(error instanceof Error ? error.message : error) }
@@ -118,6 +119,11 @@ export function 修改一级记忆工具(上下文: 一级记忆上下文): 智�
     }): Promise<{ 结果: '成功' | '失败'; 错误信息?: string; 最新状态?: string }> => {
       try {
         let 向量 = await 获取向量(参数.新内容)
+        let 最终标签 = 应用受保护标签(
+          await 读取旧标签用于保护(数据库查询器, 参数.id, 配置.受保护标签),
+          参数.新标签,
+          配置.受保护标签,
+        )
         let updateData: {
           内容: string
           关键词: string[]
@@ -131,7 +137,7 @@ export function 修改一级记忆工具(上下文: 一级记忆上下文): 智�
           评分: 参数.新评分,
           向量: 向量 !== null ? JSON.stringify(向量) : null,
           向量维度: 向量 !== null ? 向量.length : null,
-          标签: 参数.新标签,
+          标签: 最终标签,
         }
         await 数据库查询器
           .updateTable('记忆表')
@@ -151,7 +157,7 @@ export function 修改一级记忆工具(上下文: 一级记忆上下文): 智�
         await 检查并降级一级记忆()
         return {
           结果: '成功',
-          最新状态: `[一级记忆 ID: ${参数.id}] (评分: ${String(参数.新评分)}) 内容: ${参数.新内容} (关键词: ${参数.新关键词.join(', ')}, 标签: ${参数.新标签.join(', ')})`,
+          最新状态: `[一级记忆 ID: ${参数.id}] (评分: ${String(参数.新评分)}) 内容: ${参数.新内容} (关键词: ${参数.新关键词.join(', ')}, 标签: ${最终标签.join(', ')})`,
         }
       } catch (error: unknown) {
         return { 结果: '失败', 错误信息: String(error instanceof Error ? error.message : error) }
