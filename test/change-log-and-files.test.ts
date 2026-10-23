@@ -1,0 +1,226 @@
+import { PGlite } from '@electric-sql/pglite'
+import { vector } from '@electric-sql/pglite-pgvector'
+import { randomBytes } from 'node:crypto'
+import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import os from 'node:os'
+import path from 'node:path'
+import { afterEach, describe, expect, it } from 'vitest'
+import { 带记忆的智能体, 记忆等级, type 批量注入记忆项 } from '../src/index'
+import { 限时 } from './helpers/shared-storage-helper'
+
+function 记忆项(内容: string, 关键词: string[] = [内容], 等级: 记忆等级 = 记忆等级.一级): 批量注入记忆项 {
+  return { 内容, 关键词, 标签: [], 评分: 80, 等级, 创建时间: new Date('2026-01-01T00:00:00.000Z') }
+}
+
+describe('变更记录', { timeout: 90000 }, () => {
+  let 智能体列表: 带记忆的智能体[] = []
+
+  function 创建实例(选项: Partial<ConstructorParameters<typeof 带记忆的智能体>[0]> = {}): 带记忆的智能体 {
+    let 实例 = new 带记忆的智能体({ 向量模型: { 类型: '无' }, ...选项 })
+    智能体列表.push(实例)
+    return 实例
+  }
+
+  afterEach(async (): Promise<void> => {
+    for (let 实例 of 智能体列表) await 实例.销毁()
+    智能体列表 = []
+  })
+
+  it('默认保留全部变更记录，回退最近记忆提交可用', async (): Promise<void> => {
+    let 实例 = 创建实例()
+    await 实例.添加记忆(记忆项('第一条'))
+    await 实例.添加记忆(记忆项('第二条'))
+    expect((await 实例.查询记忆提交()).length).toBe(2)
+    expect(await 实例.回退最近记忆提交()).toBe(true)
+    expect((await 实例.查询记忆()).map((记忆) => 记忆.内容)).toEqual(['第一条'])
+  })
+
+  it('变更记录为 false 时不写变更，回退最近记忆提交返回失败', async (): Promise<void> => {
+    let 实例 = 创建实例({ 变更记录: false })
+    await 实例.添加记忆(记忆项('不留痕的记忆'))
+    await 实例.更新记忆((await 实例.查询记忆())[0]?.id ?? '', { 内容: '改过的内容' })
+
+    expect(await 实例.查询记忆提交()).toEqual([])
+    expect(await 实例.回退最近记忆提交()).toBe(false)
+    expect((await 实例.查询记忆()).map((记忆) => 记忆.内容)).toEqual(['改过的内容'])
+  })
+
+  it('保留提交数生效：只留最近的几个提交，且最近的提交仍可回退', async (): Promise<void> => {
+    let 实例 = 创建实例({ 变更记录: { 保留提交数: 2 } })
+    for (let i = 1; i <= 5; i++) await 实例.添加记忆(记忆项(`第${String(i)}条`))
+
+    let 提交列表 = await 实例.查询记忆提交()
+    expect(提交列表).toHaveLength(2)
+    expect(提交列表.map((提交) => 提交.变更列表.length > 0)).toEqual([true, true])
+    expect(await 实例.回退最近记忆提交()).toBe(true)
+    expect((await 实例.查询记忆()).map((记忆) => 记忆.内容)).not.toContain('第5条')
+    expect(await 实例.查询记忆提交()).toHaveLength(2)
+  })
+
+  it('保留提交数必须是不小于 1 的整数', (): void => {
+    expect(() => new 带记忆的智能体({ 变更记录: { 保留提交数: 0 } })).toThrow('保留提交数')
+    expect(() => new 带记忆的智能体({ 变更记录: { 保留提交数: 1.5 } })).toThrow('保留提交数')
+  })
+
+  it('彻底删除记忆会抹掉变更表里这条记忆的旧值和新值，原来的删除记忆不变', async (): Promise<void> => {
+    let 实例 = 创建实例()
+    let 保留 = await 实例.添加记忆(记忆项('这条正常删除-机密甲', ['机密甲']))
+    let 抹除 = await 实例.添加记忆(记忆项('这条彻底删除-机密乙', ['机密乙', '机密甲']))
+    await 实例.更新记忆(抹除.id, { 内容: '更新后的内容-机密乙改' })
+
+    let 删除前 = JSON.stringify(await 实例.查询记忆提交(100))
+    expect(删除前).toContain('机密乙')
+
+    // 原来的删除记忆：记忆没了，但变更记录里还留着，可以回退
+    expect(await 实例.删除记忆(保留.id)).toBe(true)
+    expect(JSON.stringify(await 实例.查询记忆提交(100))).toContain('机密甲')
+
+    expect(await 实例.彻底删除记忆(抹除.id)).toBe(true)
+    let 删除后 = JSON.stringify(await 实例.查询记忆提交(100))
+    expect(删除后).not.toContain('机密乙')
+    expect(删除后).not.toContain(抹除.id)
+    expect(await 实例.查询记忆()).toEqual([])
+
+    // 之前用普通删除删掉的记忆，也能事后彻底清除残留的变更记录
+    expect(await 实例.彻底删除记忆(保留.id)).toBe(true)
+    expect(JSON.stringify(await 实例.查询记忆提交(100))).not.toContain('机密甲')
+    // 已经没有任何痕迹时返回 false
+    expect(await 实例.彻底删除记忆(保留.id)).toBe(false)
+  })
+
+  it('裁剪旧提交后会回收空间，变更表占用不会随写入次数一直变大', async (): Promise<void> => {
+    let pglite = new PGlite({ extensions: { vector } })
+    try {
+      let 裁剪实例 = 创建实例({ 存储: { 模式: '外部', pglite, schema: 'prune_keep' }, 变更记录: { 保留提交数: 2 } })
+      let 不裁剪实例 = 创建实例({ 存储: { 模式: '外部', pglite, schema: 'prune_all' } })
+      for (let i = 0; i < 40; i++) {
+        // 随机内容压缩不了，让变更记录实实在在占空间
+        let 内容 = randomBytes(3000).toString('hex')
+        await 裁剪实例.添加记忆(记忆项(内容, [`词${String(i)}`]))
+        await 不裁剪实例.添加记忆(记忆项(内容, [`词${String(i)}`]))
+      }
+      let 查询大小 = async (schema: string): Promise<number> => {
+        let 结果 = await pglite.query<{ 大小: string }>(
+          `SELECT pg_total_relation_size('"${schema}"."记忆变更表"'::regclass)::text AS 大小`,
+        )
+        return Number(结果.rows[0]?.大小 ?? '0')
+      }
+      let 裁剪后大小 = await 查询大小('prune_keep')
+      let 不裁剪大小 = await 查询大小('prune_all')
+      expect(裁剪后大小).toBeLessThan(不裁剪大小 * 0.6)
+      expect(await 裁剪实例.查询记忆提交()).toHaveLength(2)
+      expect(await 不裁剪实例.查询记忆提交(100)).toHaveLength(40)
+    } finally {
+      for (let 实例 of 智能体列表) await 实例.销毁()
+      智能体列表 = []
+      await pglite.close()
+    }
+  })
+
+  it('变更记录为 false 时彻底删除记忆同样可用', async (): Promise<void> => {
+    let 实例 = 创建实例({ 变更记录: false })
+    let 记忆 = await 实例.添加记忆(记忆项('将被彻底删除'))
+    expect(await 实例.彻底删除记忆(记忆.id)).toBe(true)
+    expect(await 实例.查询记忆()).toEqual([])
+  })
+})
+
+describe('文件模式', { timeout: 90000 }, () => {
+  let 临时目录列表: string[] = []
+  let 智能体列表: 带记忆的智能体[] = []
+
+  afterEach(async (): Promise<void> => {
+    for (let 实例 of 智能体列表) await 实例.销毁()
+    智能体列表 = []
+    for (let 目录 of 临时目录列表) await rm(目录, { recursive: true, force: true })
+    临时目录列表 = []
+  })
+
+  async function 创建临时数据目录(): Promise<string> {
+    let 目录 = await mkdtemp(path.join(os.tmpdir(), 'ai-memory-files-'))
+    临时目录列表.push(目录)
+    return path.join(目录, 'db')
+  }
+
+  it('0.2.3 在 public 里建的旧数据目录能被正常打开、读写和回退', async (): Promise<void> => {
+    let 数据目录 = await 创建临时数据目录()
+    let 旧库 = new PGlite({ dataDir: 数据目录, extensions: { vector } })
+    await 旧库.exec(await readFile(path.join(import.meta.dirname, 'fixtures', 'legacy-public-schema.sql'), 'utf8'))
+    await 旧库.exec(`
+      INSERT INTO 记忆提交表 (id, 父提交id, 消息, 创建时间) VALUES ('旧提交', NULL, '旧版本写入', now());
+      INSERT INTO 记忆元数据表 (键, 值) VALUES ('HEAD_COMMIT', '旧提交');
+      INSERT INTO 记忆表 (id, 等级, 评分, 内容, 关键词, 创建时间) VALUES ('old-1', '一级', 70, '旧版本留下的记忆', ARRAY['旧'], now());
+    `)
+    await 旧库.close()
+
+    let 实例 = new 带记忆的智能体({ 存储: { 模式: '文件', 路径: 数据目录 }, 向量模型: { 类型: '无' } })
+    智能体列表.push(实例)
+    await 实例.初始化()
+
+    expect((await 实例.查询记忆()).map((记忆) => 记忆.内容)).toEqual(['旧版本留下的记忆'])
+    let 新记忆 = await 实例.添加记忆(记忆项('新版本写入的记忆', ['新']))
+    expect((await 实例.查询记忆()).map((记忆) => 记忆.内容).sort()).toEqual(
+      ['新版本写入的记忆', '旧版本留下的记忆'].sort(),
+    )
+    expect(await 实例.回退最近记忆提交()).toBe(true)
+    expect((await 实例.查询记忆()).map((记忆) => 记忆.内容)).toEqual(['旧版本留下的记忆'])
+    expect(await 实例.彻底删除记忆(新记忆.id)).toBe(true)
+
+    // 数据都在 public 里，没有凭空多出别的 schema 的表
+    await 实例.销毁()
+    智能体列表 = []
+    let 复查 = new PGlite({ dataDir: 数据目录, extensions: { vector } })
+    let 表所在schema = await 复查.query<{ 名称: string }>(
+      `SELECT table_schema AS 名称 FROM information_schema.tables WHERE table_name = '记忆表'`,
+    )
+    expect(表所在schema.rows.map((行) => 行.名称)).toEqual(['public'])
+    await 复查.close()
+  })
+
+  it('文件模式也可以带 schema，同一个目录里不同 schema 互不干扰', async (): Promise<void> => {
+    let 数据目录 = await 创建临时数据目录()
+    let 甲 = new 带记忆的智能体({ 存储: { 模式: '文件', 路径: 数据目录, schema: 'file_a' }, 向量模型: { 类型: '无' } })
+    let 乙 = new 带记忆的智能体({ 存储: { 模式: '文件', 路径: 数据目录, schema: 'file_b' }, 向量模型: { 类型: '无' } })
+    智能体列表.push(甲, 乙)
+    await 限时(Promise.all([甲.初始化(), 乙.初始化()]), 60000, '文件模式两个 schema 初始化')
+    await 限时(Promise.all([甲.添加记忆(记忆项('甲')), 乙.添加记忆(记忆项('乙'))]), 60000, '并发写入')
+    expect((await 甲.查询记忆()).map((记忆) => 记忆.内容)).toEqual(['甲'])
+    expect((await 乙.查询记忆()).map((记忆) => 记忆.内容)).toEqual(['乙'])
+  })
+
+  it('同一路径正在关闭时，新的打开要等关完再进行，数据不丢', async (): Promise<void> => {
+    let 数据目录 = await 创建临时数据目录()
+    let 第一实例 = new 带记忆的智能体({ 存储: { 模式: '文件', 路径: 数据目录 }, 向量模型: { 类型: '无' } })
+    智能体列表.push(第一实例)
+    await 第一实例.初始化()
+    await 第一实例.添加记忆(记忆项('关闭前写入的记忆'))
+
+    // 不等关闭完成就立刻在同一路径上新开实例
+    let 关闭任务 = 第一实例.销毁()
+    let 第二实例 = new 带记忆的智能体({ 存储: { 模式: '文件', 路径: 数据目录 }, 向量模型: { 类型: '无' } })
+    智能体列表.push(第二实例)
+    await 限时(Promise.all([关闭任务, 第二实例.初始化()]), 60000, '关闭与重新打开')
+    expect((await 第二实例.查询记忆()).map((记忆) => 记忆.内容)).toEqual(['关闭前写入的记忆'])
+    await 第二实例.添加记忆(记忆项('重新打开后写入的记忆', ['重新']))
+    expect(await 第二实例.查询记忆()).toHaveLength(2)
+  })
+
+  it('很多实例交替打开关闭同一路径，不会出现两个句柄同时占用目录', async (): Promise<void> => {
+    let 数据目录 = await 创建临时数据目录()
+    let 任务列表: Promise<void>[] = []
+    for (let i = 0; i < 4; i++) {
+      任务列表.push(
+        (async (): Promise<void> => {
+          let 实例 = new 带记忆的智能体({ 存储: { 模式: '文件', 路径: 数据目录 }, 向量模型: { 类型: '无' } })
+          await 实例.初始化()
+          await 实例.添加记忆(记忆项(`轮换写入-${String(i)}`, [`词${String(i)}`]))
+          await 实例.销毁()
+        })(),
+      )
+    }
+    await 限时(Promise.all(任务列表), 80000, '多实例轮换打开关闭')
+    let 检查实例 = new 带记忆的智能体({ 存储: { 模式: '文件', 路径: 数据目录 }, 向量模型: { 类型: '无' } })
+    智能体列表.push(检查实例)
+    expect(await 检查实例.查询记忆()).toHaveLength(4)
+  })
+})
