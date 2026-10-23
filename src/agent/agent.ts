@@ -3,6 +3,8 @@ import { zodToJsonSchema } from 'zod-to-json-schema'
 import { 模型审计器, 统计模型输入字符数, 统计模型输出字符数 } from './audit'
 import { 构建openai工具列表, 构建系统工具与格式说明 } from './build-messages'
 import { 提交结果函数名 } from './constants'
+import { 可中断等待 } from './delay'
+import { 校验并复制额外请求参数 } from './extra-request-params'
 import { 格式化当前时间, 追加注入消息到列表 } from './injection'
 import { 前缀是否一致, 构造前缀已变结果, 计算前缀指纹 } from './prefix'
 import { 开启交互调试 as runRepl } from './repl'
@@ -11,6 +13,7 @@ import { 校验工具列表, 校验结果Schema } from './setup-validation'
 import { 流式请求AI } from './stream-request'
 import { 追加系统纠正消息 } from './system-correction'
 import { 从文本提取工具调用, 从文本提取结果 } from './text-fallback'
+import { 校验时区 } from './timezone'
 import { 处理工具调用 } from './tool-handler'
 import { 按需自动截断 } from './truncate'
 import type {
@@ -40,6 +43,8 @@ export class 智能体 {
   private 请求AI时间间隔ms: number
   private 工具返回文本最大长度?: number
   private 自动截断?: 智能体选项['自动截断']
+  private 额外请求参数: Record<string, unknown> | undefined
+  protected 时区?: string
   private 上次输入token数: number | undefined
   private 对话历史: 智能体消息类型[] = []
   private 会话任务队列: Promise<void> = Promise.resolve()
@@ -54,6 +59,11 @@ export class 智能体 {
     this.请求AI时间间隔ms = 选项.请求AI时间间隔ms ?? 0
     this.工具返回文本最大长度 = 选项.工具返回文本最大长度 ?? 50000
     if (选项.自动截断 !== undefined) this.自动截断 = 选项.自动截断
+    this.额外请求参数 = 校验并复制额外请求参数(选项.额外请求参数)
+    if (选项.时区 !== undefined) {
+      校验时区(选项.时区)
+      this.时区 = 选项.时区
+    }
   }
 
   /**
@@ -212,6 +222,8 @@ export class 智能体 {
     更新当前会话审计状态: boolean = false,
   ): Promise<回合结果<T>> {
     let 回调 = 选项.回调
+    let 时区 = 选项.时区 ?? this.时区
+    if (时区 !== undefined) 校验时区(时区)
     let 原历史 = 选项.消息历史 ?? []
     let 用量列表: 模型用量[] = []
 
@@ -272,7 +284,7 @@ export class 智能体 {
       if (选项.当前时间 !== undefined) {
         消息列表.push({
           role: 'user',
-          content: `[当前时间: ${格式化当前时间(选项.当前时间)}]`,
+          content: `[当前时间: ${格式化当前时间(选项.当前时间, 时区)}]`,
           isSystemInjection: true,
           systemInjectionKind: 'current-time',
         })
@@ -297,25 +309,7 @@ export class 智能体 {
 
       if (总轮次 > 1 && this.请求AI时间间隔ms > 0) {
         // await 回调({ 类型: '流程信息', 内容: `防频繁限流中, 等待 ${String(this.请求AI时间间隔ms)}ms...` })
-        await new Promise<void>((resolve) => {
-          let 信号 = 选项.中断信号
-          let 已完成 = false
-          let 完成 = (): void => {
-            if (已完成 === true) return
-            已完成 = true
-            if (信号 !== undefined) 信号.removeEventListener('abort', 中断处理)
-            resolve()
-          }
-          let timer = setTimeout(完成, this.请求AI时间间隔ms)
-          let 中断处理 = (): void => {
-            clearTimeout(timer)
-            完成()
-          }
-          if (信号 !== undefined) {
-            信号.addEventListener('abort', 中断处理, { once: true })
-            if (信号.aborted === true) 中断处理()
-          }
-        })
+        await 可中断等待(this.请求AI时间间隔ms, 选项.中断信号)
         if (是否中断() === true) {
           await 回调({ 类型: '流程信息', 内容: '操作被中断' })
           return 结束(null, '中断')
@@ -338,6 +332,7 @@ export class 智能体 {
         选项.核采样,
         选项.存在惩罚,
         选项.频率惩罚,
+        this.额外请求参数,
       )
       let 审计记录 = this.审计器.添加记录(
         总轮次 === 1 && 首次请求是否新建对话,

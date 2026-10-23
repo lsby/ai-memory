@@ -1,4 +1,5 @@
 import { 计算内容指纹 } from './prefix'
+import { 格式化为指定时区时间 } from './timezone'
 import type { 内部注入消息, 智能体消息类型 } from './types'
 
 /**
@@ -24,8 +25,9 @@ export function 追加注入消息到列表(消息列表: 智能体消息类型[
   }
 }
 
-/** 本地时间的 ISO 字符串, 带时区偏移 */
-export function 格式化当前时间(当前时间: Date): string {
+/** 时间的 ISO 字符串, 带时区偏移。不传时区用服务器时区, 传了按 IANA 时区名 */
+export function 格式化当前时间(当前时间: Date, 时区?: string): string {
+  if (时区 !== undefined) return 格式化为指定时区时间(当前时间, 时区)
   let 偏移分钟 = 当前时间.getTimezoneOffset()
   let 本地时间 = new Date(当前时间.getTime() - 偏移分钟 * 60000)
   let iso部分 = 本地时间.toISOString().slice(0, -1)
