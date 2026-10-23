@@ -1,4 +1,3 @@
-import * as Transformers from '@huggingface/transformers'
 import type OpenAI from 'openai'
 import { 智能体事件 } from '../../agent/types'
 import type { 获取向量结果 } from '../agent-memory-types'
@@ -24,6 +23,8 @@ async function 获取本地向量提取器(
   if (已缓存提取器 !== undefined) return await 已缓存提取器
 
   let 初始化任务 = (async (): Promise<本地向量提取器类型> => {
+    // 按需加载：transformers 会连带加载 onnxruntime-node（只有 glibc 版本），静态引入会让 musl/alpine 下导入库就崩溃
+    let Transformers: typeof import('@huggingface/transformers') = await import('@huggingface/transformers')
     if (下载缓存目录 !== undefined) {
       Transformers.env.cacheDir = 下载缓存目录
     }
