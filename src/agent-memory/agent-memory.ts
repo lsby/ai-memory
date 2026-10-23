@@ -87,6 +87,10 @@ export class 带记忆的智能体 extends 智能体 {
       if (Number.isInteger(变更记录.保留提交数) === false || 变更记录.保留提交数 < 1)
         throw new Error('变更记录.保留提交数 必须是不小于 1 的整数')
     }
+    if (选项.向量模型?.类型 === '在线' && 选项.向量模型.维度 !== undefined) {
+      let 维度 = 选项.向量模型.维度
+      if (Number.isInteger(维度) === false || 维度 < 1) throw new Error('向量模型.维度 必须是正整数')
+    }
     let 禁用深度推演 = 选项.禁用深度推演 ?? false
     let 筛选 = 选项.记忆工具筛选
     let 启用的记忆工具名 = 全部记忆工具名.filter(
