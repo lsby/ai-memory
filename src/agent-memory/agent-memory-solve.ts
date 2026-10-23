@@ -13,6 +13,7 @@ import {
 } from './agent-memory-types'
 import { 加载并校验动态工具 } from './dynamic-tool-loader'
 import { 深度推演工具 } from './tools/deep-deduction'
+import { 提取动态工具向量文本 } from './tools/dynamic-tool-api'
 import {
   创建动态工具工具,
   删除动态工具工具,
@@ -86,8 +87,9 @@ function 解包向量结果(
   return null
 }
 
-type 记忆工具上下文 = Omit<记忆操作上下文, '获取向量' | '执行记忆变更'> & {
+type 记忆工具上下文 = Omit<记忆操作上下文, '获取向量' | '执行记忆变更' | '带向量缓存'> & {
   获取向量: (内容: string) => Promise<number[] | null>
+  带向量缓存: (内容列表: string[]) => Promise<记忆工具上下文>
   执行记忆变更: <R>(消息: string, 操作: (上下文: 记忆工具上下文) => Promise<R>) => Promise<R>
 }
 
@@ -97,9 +99,35 @@ function 构建记忆工具上下文(上下文: 记忆操作上下文): 记忆�
   return {
     ...上下文,
     获取向量: async (内容: string): Promise<number[] | null> => 解包向量结果(await 上下文.获取向量(内容)),
+    带向量缓存: async (内容列表: string[]): Promise<记忆工具上下文> =>
+      构建记忆工具上下文(await 上下文.带向量缓存(内容列表)),
     执行记忆变更: async <R>(消息: string, 操作: (上下文: 记忆工具上下文) => Promise<R>): Promise<R> =>
       await 上下文.执行记忆变更(消息, async (事务上下文) => await 操作(构建记忆工具上下文(事务上下文))),
   }
+}
+
+function 读取文本参数(参数: Record<string, unknown>, 字段: string): string[] {
+  let 值 = 参数[字段]
+  return typeof 值 === 'string' ? [值] : []
+}
+
+/** 工具参数里需要向量化的文本。事务外先算好，事务内的 获取向量 只查缓存。 */
+async function 提取工具向量文本(工具名称: string, 参数: Record<string, unknown>): Promise<string[]> {
+  let 内容字段: Record<string, string> = {
+    add_level_0_memory: '内容',
+    add_level_1_memory: '内容',
+    add_level_2_memory: '内容',
+    edit_level_0_memory: '新内容',
+    edit_level_1_memory: '新内容',
+    extend_memory: '查询内容',
+  }
+  let 代码字段: Record<string, string> = { create_dynamic_tool: '代码', update_dynamic_tool: '新代码' }
+  let 文本字段 = 内容字段[工具名称]
+  if (文本字段 !== undefined) return 读取文本参数(参数, 文本字段)
+  let 动态工具代码字段 = 代码字段[工具名称]
+  if (动态工具代码字段 === undefined) return []
+  let 文本 = await 提取动态工具向量文本(读取文本参数(参数, 动态工具代码字段)[0] ?? '')
+  return 文本 === null ? [] : [文本]
 }
 
 function 创建事务化记忆工具(上下文: 记忆工具上下文, 工厂: 记忆工具工厂): 智能体工具 {
@@ -110,8 +138,14 @@ function 创建事务化记忆工具(上下文: 记忆工具上下文, 工厂: �
     参数Schema: 模板.参数Schema,
     返回值Schema: 模板.返回值Schema,
     返回值描述: 模板.返回值描述,
-    实现: async (参数): Promise<{ 结果: '成功' | '失败' } & Record<string, unknown>> =>
-      await 上下文.执行记忆变更(`工具: ${模板.名称}`, async (事务上下文) => await 工厂(事务上下文).实现(参数)),
+    实现: async (参数): Promise<{ 结果: '成功' | '失败' } & Record<string, unknown>> => {
+      // 两段式：先在事务外把向量算好，再开事务；事务期间互斥锁一直被占着，不能在里面等网络
+      let 带缓存上下文 = await 上下文.带向量缓存(await 提取工具向量文本(模板.名称, 参数))
+      return await 带缓存上下文.执行记忆变更(
+        `工具: ${模板.名称}`,
+        async (事务上下文) => await 工厂(事务上下文).实现(参数),
+      )
+    },
   })
 }
 
@@ -131,7 +165,7 @@ export async function 解决问题<T extends z.ZodType>(
   新增上下文: 智能体消息类型[]
   结束原因?: '中断' | '超出最大轮次' | '提取结构化数据失败' | '校验失败次数超出上限'
 }> {
-  let { 配置, 数据库查询器, 获取向量, 保存快照 } = 上下文
+  let { 配置, 数据库查询器, 保存快照 } = 上下文
   let 当前时间 = 选项.当前时间 ?? new Date()
 
   let 记忆列表 = await 数据库查询器
@@ -216,13 +250,22 @@ export async function 解决问题<T extends z.ZodType>(
   let 自动检索二级记忆数量 = 配置.自动检索二级记忆数量
   let 自动检索二级记忆起点数 = 配置.自动检索二级记忆起点数
 
+  // 自动召回要用命令的向量：先在事务外算好，后面开事务时只读缓存
+  let 自动召回上下文 =
+    执行模式 !== '推演' &&
+    选项.是否自动召回 !== false &&
+    选项.命令 !== '' &&
+    (自动检索二级记忆数量 > 0 || 自动检索二级记忆起点数 > 0 || 配置.自动检索动态工具数量 > 0)
+      ? await 上下文.带向量缓存([选项.命令])
+      : 上下文
+
   if (
     执行模式 !== '推演' &&
     选项.是否自动召回 !== false &&
     选项.命令 !== '' &&
     (自动检索二级记忆数量 > 0 || 自动检索二级记忆起点数 > 0)
   ) {
-    let 结果 = await 上下文.执行记忆变更(
+    let 结果 = await 自动召回上下文.执行记忆变更(
       '自动记忆召回',
       async (事务上下文) =>
         await 回忆延伸工具(构建记忆工具上下文(事务上下文)).实现({
@@ -275,7 +318,7 @@ export async function 解决问题<T extends z.ZodType>(
   // ---- 动态工具自动召回 ----
   let 自动检索动态工具数量 = 配置.自动检索动态工具数量
   if (执行模式 !== '推演' && 选项.是否自动召回 !== false && 选项.命令 !== '' && 自动检索动态工具数量 > 0) {
-    let 查询向量 = 解包向量结果(await 获取向量(选项.命令))
+    let 查询向量 = 解包向量结果(await 自动召回上下文.获取向量(选项.命令))
     if (查询向量 !== null) {
       let 当前维度 = 查询向量.length
       let 向量字符串 = JSON.stringify(查询向量)

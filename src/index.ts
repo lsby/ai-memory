@@ -1,4 +1,5 @@
 export { 带记忆的智能体 } from './agent-memory/agent-memory'
+export { 删除记忆空间 } from './agent-memory/agent-memory-connection'
 export {
   完整状态Schema,
   快照数据Schema,
@@ -12,6 +13,8 @@ export type {
   公开记忆关联,
   公开记忆变更,
   公开记忆提交,
+  变更记录配置,
+  存储配置,
   完整状态,
   带记忆的对话选项,
   带记忆的智能体选项,

@@ -1,3 +1,4 @@
+import type { PGlite } from '@electric-sql/pglite'
 import type { Kysely } from 'kysely'
 import type OpenAI from 'openai'
 import { z } from 'zod'
@@ -113,8 +114,26 @@ export type 带记忆的智能体选项 = 智能体选项 & {
   自动检索二级记忆起点数?: number
   自动检索动态工具数量?: number
   向量相似度关联阈值?: number
-  存储?: { 模式: '内存' } | { 模式: '文件'; 路径: string }
+  /**
+   * 存储位置。默认内存。三种模式都可以带 schema（默认 public，和旧版本的数据布局一致）。
+   * 外部模式由调用方自己创建和关闭 PGlite（必须带 pgvector 扩展），实例的 销毁() 不会关闭这个句柄。
+   * 多个实例共用一个 PGlite 时，库内部按 PGlite 对象加连接互斥锁，所有读写排同一个队。
+   */
+  存储?: 存储配置
+  /**
+   * 变更记录（供 回退最近记忆提交 使用）。默认无限保留。
+   * - `{ 保留提交数 }`：每次提交后裁掉超出数量的旧提交（连同它们的变更）；
+   * - `false`：不写变更记录，回退最近记忆提交 不可用（返回 false）。
+   */
+  变更记录?: 变更记录配置
 }
+
+export type 存储配置 =
+  | { 模式: '内存'; schema?: string }
+  | { 模式: '文件'; 路径: string; schema?: string }
+  | { 模式: '外部'; pglite: PGlite; schema?: string }
+
+export type 变更记录配置 = { 保留提交数: number } | false
 
 export type 内部带记忆的智能体配置 = 智能体选项 & Required<Omit<带记忆的智能体选项, keyof 智能体选项>>
 
@@ -218,7 +237,10 @@ export type 获取向量结果 = { 类型: '成功'; 向量: number[] } | { 类�
 export type 记忆操作上下文 = {
   数据库查询器: Kysely<记忆数据库>
   配置: 内部带记忆的智能体配置
+  /** 只读取本次调用的向量缓存，缓存里没有就报错；事务内绝不发网络请求。需要向量时先用 带向量缓存 预取。 */
   获取向量: (内容: string) => Promise<获取向量结果>
+  /** 在事务外把这些文本的向量先算好，返回一个带有新向量缓存的上下文（数据库查询器不变）。 */
+  带向量缓存: (内容列表: string[]) => Promise<记忆操作上下文>
   检查并降级一级记忆: () => Promise<void>
   检查并清理二级记忆: () => Promise<void>
   保存快照: () => Promise<string>
