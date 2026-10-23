@@ -58,7 +58,7 @@ async function 获取本地向量提取器(
 
 export async function 获取向量(
   向量模型配置:
-    | { 类型: '在线'; openai客户端: OpenAI; 模型名称: string }
+    | { 类型: '在线'; openai客户端: OpenAI; 模型名称: string; 维度?: number }
     | {
         类型: '本地'
         模型名称?:
@@ -94,12 +94,24 @@ export async function 获取向量(
 
   try {
     let 模型 = 向量模型配置.模型名称
-    let 响应 = await 向量模型配置.openai客户端.embeddings.create({ model: 模型, input: 内容 })
+    let 维度 = 向量模型配置.维度
+    let 响应 = await 向量模型配置.openai客户端.embeddings.create(
+      维度 === undefined ? { model: 模型, input: 内容 } : { model: 模型, input: 内容, dimensions: 维度 },
+    )
     let 向量数据 = 响应.data[0]?.embedding
     if (向量数据 === undefined) {
       let 错误信息 = `在线向量API返回数据为空`
       if (回调 !== undefined) {
         await 回调({ 类型: '错误', 错误信息 })
+      }
+      return { 类型: '失败', 错误信息 }
+    }
+    if (维度 !== undefined && 向量数据.length !== 维度) {
+      let 错误信息 = `在线向量API返回的向量长度 ${向量数据.length} 与指定的维度 ${维度} 不一致`
+      if (回调 !== undefined) {
+        await 回调({ 类型: '错误', 错误信息 })
+      } else {
+        console.error(`⚠️ ${错误信息}`)
       }
       return { 类型: '失败', 错误信息 }
     }

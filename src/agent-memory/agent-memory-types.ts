@@ -105,7 +105,7 @@ export type 带记忆的智能体选项 = 智能体选项 & {
    */
   二级记忆访问次数上限?: number
   向量模型?:
-    | { 类型: '在线'; openai客户端: OpenAI; 模型名称: string }
+    | { 类型: '在线'; openai客户端: OpenAI; 模型名称: string; 维度?: number }
     | {
         类型: '本地'
         模型名称?:
