@@ -5,56 +5,65 @@ import { z } from 'zod'
 // 事件类型 - 智能体通过回调推送给外部的所有事件
 // ============================================================
 
-export let 智能体系统消息Schema = z.object({
-  role: z.literal('system'),
-  content: z.string(),
-  name: z.string().optional(),
-})
+export let 智能体系统消息Schema = z
+  .object({
+    role: z.literal('system'),
+    content: z.string(),
+    name: z.string().optional(),
+    /** 前缀指纹: 系统提示词全文与工具定义的 sha256, 仅供库内部校验, 发给模型时不携带 */
+    prefixFingerprint: z.string().optional(),
+  })
+  .passthrough()
 export type 智能体系统消息 = z.infer<typeof 智能体系统消息Schema>
 
-export let 智能体开发者消息Schema = z.object({
-  role: z.literal('developer'),
-  content: z.string(),
-  name: z.string().optional(),
-})
+export let 智能体开发者消息Schema = z
+  .object({ role: z.literal('developer'), content: z.string(), name: z.string().optional() })
+  .passthrough()
 export type 智能体开发者消息 = z.infer<typeof 智能体开发者消息Schema>
 
-export let 智能体用户消息Schema = z.object({
-  role: z.literal('user'),
-  content: z.string(),
-  name: z.string().optional(),
-  isSystemCorrection: z.boolean().optional(),
-  isSystemInjection: z.boolean().optional(),
-  systemInjectionKind: z.enum(['memory-state', 'recall-context', 'current-time']).optional(),
-  systemInjectionFingerprint: z.string().optional(),
-})
+export let 智能体用户消息Schema = z
+  .object({
+    role: z.literal('user'),
+    content: z.string(),
+    name: z.string().optional(),
+    isSystemCorrection: z.boolean().optional(),
+    isSystemInjection: z.boolean().optional(),
+    /** 注入消息的类型。库自己使用 memory-state、recall-context、current-time, 调用方可传任意字符串 */
+    systemInjectionKind: z.string().optional(),
+    systemInjectionFingerprint: z.string().optional(),
+  })
+  .passthrough()
 export type 智能体用户消息 = z.infer<typeof 智能体用户消息Schema>
 
-export let 智能体助手消息Schema = z.object({
-  role: z.literal('assistant'),
-  content: z.string().nullable().optional(),
-  name: z.string().optional(),
-  tool_calls: z
-    .array(
-      z.object({
-        id: z.string(),
-        type: z.literal('function'),
-        function: z.object({ name: z.string(), arguments: z.string() }),
-      }),
-    )
-    .optional(),
-  function_call: z.object({ name: z.string(), arguments: z.string() }).nullable().optional(),
-})
+export let 智能体助手消息Schema = z
+  .object({
+    role: z.literal('assistant'),
+    content: z.string().nullable().optional(),
+    name: z.string().optional(),
+    tool_calls: z
+      .array(
+        z
+          .object({
+            id: z.string(),
+            type: z.literal('function'),
+            function: z.object({ name: z.string(), arguments: z.string() }).passthrough(),
+          })
+          .passthrough(),
+      )
+      .optional(),
+    function_call: z.object({ name: z.string(), arguments: z.string() }).passthrough().nullable().optional(),
+  })
+  .passthrough()
 export type 智能体助手消息 = z.infer<typeof 智能体助手消息Schema>
 
-export let 智能体工具消息Schema = z.object({ role: z.literal('tool'), content: z.string(), tool_call_id: z.string() })
+export let 智能体工具消息Schema = z
+  .object({ role: z.literal('tool'), content: z.string(), tool_call_id: z.string() })
+  .passthrough()
 export type 智能体工具消息 = z.infer<typeof 智能体工具消息Schema>
 
-export let 智能体函数消息Schema = z.object({
-  role: z.literal('function'),
-  content: z.string().nullable(),
-  name: z.string(),
-})
+export let 智能体函数消息Schema = z
+  .object({ role: z.literal('function'), content: z.string().nullable(), name: z.string() })
+  .passthrough()
 export type 智能体函数消息 = z.infer<typeof 智能体函数消息Schema>
 
 export let 智能体消息Schema = z.discriminatedUnion('role', [
@@ -96,6 +105,25 @@ export type 模型请求审计记录 = {
   缓存判定: '新建对话' | '复用已有对话'
   发出字符数: number
   返回字符数: number
+}
+
+/** 一次模型请求的真实 token 用量; 模型商没有返回的字段留空 */
+export type 模型用量 = { 输入token数?: number; 缓存命中token数?: number; 输出token数?: number }
+
+export type 智能体结束原因 = '中断' | '超出最大轮次' | '提取结构化数据失败' | '校验失败次数超出上限' | '前缀已变'
+
+/** 一轮执行的返回结果 */
+export type 回合结果<T extends z.ZodType> = {
+  结果: z.infer<T> | null
+  消息列表: 智能体消息类型[]
+  /** 本轮新增的消息, 调用方按顺序追加到自己保存的历史末尾。首轮包含带前缀指纹的 system 消息 */
+  新增上下文: 智能体消息类型[]
+  结束原因?: 智能体结束原因
+  /** 每次模型请求一项 */
+  用量: 模型用量[]
+  /** 本轮请求前是否触发了自动截断; 为 true 时调用方需要用 截断后历史 整体替换自己保存的历史, 再追加 新增上下文 */
+  历史已截断: boolean
+  截断后历史?: 智能体消息类型[]
 }
 
 export type 模型审计汇总 = {
@@ -178,7 +206,19 @@ export type 智能体选项 = {
   最大循环轮次?: number // 默认 15
   请求AI时间间隔ms?: number // 默认 0, 表示不延迟
   工具返回文本最大长度?: number // 默认 50000
+  /**
+   * 自动从头截断历史。本轮请求前历史超过触发值时, 截到保留值。
+   * 两个值之间留出较大的回差, 可以让一次截断撑很多轮, 缓存失效的次数尽量少。
+   * 触发token数 仅在拿得到上一次请求的输入token数时优先于 触发字符数 使用。
+   */
+  自动截断?: { 触发字符数: number; 保留字符数: number; 触发token数?: number }
 }
+
+/** 追加注入消息: 每轮可传, 追加在本轮末尾。类型 相同且内容和历史中同类型最后一条相同时不重复追加 */
+export type 追加注入消息 = { 类型: string; 内容: string }
+
+/** 库内部使用的注入消息, 在 追加注入消息 的基础上可指定去重指纹, 或者每次都追加。不对外导出 */
+export type 内部注入消息 = 追加注入消息 & { 指纹?: string; 总是追加?: boolean }
 
 export type 解决问题选项<T extends z.ZodType> = {
   命令: string
@@ -208,11 +248,16 @@ export type 解决问题选项<T extends z.ZodType> = {
   频率惩罚?: number | undefined
   /** 调试拦截钩子：用于 REPL 等交互式调试场景 */
   调试Hook?: 调试拦截钩子 | undefined
-  /** 单次解决问题时追加的临时系统提示词，放置于工具说明之后 */
-  临时追加系统提示词?: string | undefined
+  /** 单次解决问题时追加的注入消息, 追加在本轮末尾。顺序: 记忆状态、召回、这里的注入(按传入顺序)、当前时间、用户命令 */
+  追加注入消息?: 追加注入消息[] | undefined
+  /** 上一次请求的输入token数。实例对话会自动填写; 无状态的 执行回合 由调用方按需传入 */
+  上次输入token数?: number | undefined
   /** 单次解决问题时追加的临时工具列表，不污染实例的工具列表 */
   临时追加工具列表?: 智能体工具[] | undefined
 }
+
+/** 库内部在选项上附带的注入消息(记忆状态、召回), 先于调用方的 追加注入消息 追加。不对外导出 */
+export type 内部解决问题选项<T extends z.ZodType> = 解决问题选项<T> & { 内部注入消息?: 内部注入消息[] | undefined }
 
 /** 对话与推演共用的请求参数；实例负责管理对话历史。 */
 export type 对话选项<T extends z.ZodType> = Omit<解决问题选项<T>, '消息历史'>

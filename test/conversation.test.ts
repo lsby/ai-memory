@@ -252,11 +252,12 @@ describe('实例级对话历史', () => {
 
   it('执行回合使用调用方历史但不读写实例会话', async (): Promise<void> => {
     let 智能体实例 = new 智能体({ 系统提示词: '固定系统提示词' })
-    await 智能体实例.执行回合({ ...创建选项('无状态命令'), 消息历史: [{ role: 'user', content: '调用方历史' }] })
+    let 调用方历史 = (await 智能体实例.执行回合({ ...创建选项('调用方历史'), 消息历史: [] })).新增上下文
+    await 智能体实例.执行回合({ ...创建选项('无状态命令'), 消息历史: 调用方历史 })
     await 智能体实例.对话(创建选项('实例正式会话'))
 
-    let 无状态请求 = 请求消息快照[0]
-    let 实例请求 = 请求消息快照[1]
+    let 无状态请求 = 请求消息快照[1]
+    let 实例请求 = 请求消息快照[2]
     if (无状态请求 === undefined || 实例请求 === undefined) throw new Error('缺少无状态请求快照')
     expect(JSON.stringify(无状态请求)).toContain('调用方历史')
     expect(JSON.stringify(实例请求)).not.toContain('调用方历史')

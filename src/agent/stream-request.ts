@@ -25,6 +25,7 @@ export async function 流式请求AI(
   工具调用列表: 累积工具调用[]
   已中断: boolean
   输入token数?: number
+  缓存命中token数?: number
   输出token数?: number
 }> {
   let 完整文本 = ''
@@ -32,6 +33,7 @@ export async function 流式请求AI(
   let 已中断 = false
   let 输入token数: number | undefined
   let 输出token数: number | undefined
+  let 缓存命中token数: number | undefined
 
   let 实际工具列表 = 工具列表
   let 实际消息列表 = 消息列表
@@ -80,6 +82,7 @@ export async function 流式请求AI(
       if (chunk.usage !== undefined && chunk.usage !== null) {
         输入token数 = chunk.usage.prompt_tokens
         输出token数 = chunk.usage.completion_tokens
+        缓存命中token数 = chunk.usage.prompt_tokens_details?.cached_tokens
       }
       // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
       if (chunk.choices === undefined || chunk.choices === null || chunk.choices.length === 0) {
@@ -160,6 +163,7 @@ export async function 流式请求AI(
     工具调用列表,
     已中断,
     ...(输入token数 !== undefined ? { 输入token数 } : {}),
+    ...(缓存命中token数 !== undefined ? { 缓存命中token数 } : {}),
     ...(输出token数 !== undefined ? { 输出token数 } : {}),
   }
 }
