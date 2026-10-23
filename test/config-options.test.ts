@@ -11,11 +11,13 @@ import {
 } from '../src/index'
 import { 创建假客户端, 创建选项, 提交, 结果Schema, type 假客户端, type 请求记录 } from './append-only-cache-helper'
 import { 旧版记忆提示词 } from './fixtures/legacy-memory-prompt'
+import { 使用共享PGlite } from './helpers/shared-pglite-fixture'
 
+let 夹具 = 使用共享PGlite()
 let 实例列表: 带记忆的智能体[] = []
 
 function 创建记忆实例(额外选项: Partial<ConstructorParameters<typeof 带记忆的智能体>[0]> = {}): 带记忆的智能体 {
-  let 实例 = new 带记忆的智能体({ 向量模型: { 类型: '无' }, ...额外选项 })
+  let 实例 = 夹具.新建智能体({ 向量模型: { 类型: '无' }, ...额外选项 })
   实例列表.push(实例)
   return 实例
 }

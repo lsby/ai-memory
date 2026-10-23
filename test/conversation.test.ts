@@ -2,6 +2,7 @@ import OpenAI from 'openai'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 import { 带记忆的智能体, 智能体, 记忆等级 } from '../src/index'
+import { 使用共享PGlite } from './helpers/shared-pglite-fixture'
 
 let 流式请求AI模拟 = vi.hoisted(() => vi.fn())
 
@@ -10,6 +11,7 @@ vi.mock('../src/agent/stream-request', () => ({ 流式请求AI: 流式请求AI�
 type 请求消息 = { role: string; content?: string | null }
 
 describe('实例级对话历史', () => {
+  let 夹具 = 使用共享PGlite()
   let 请求消息快照: 请求消息[][] = []
   let 带记忆实例: 带记忆的智能体 | undefined
 
@@ -85,7 +87,7 @@ describe('实例级对话历史', () => {
   })
 
   it('私有反思可使用记忆工具但不会写入对话历史', async (): Promise<void> => {
-    带记忆实例 = new 带记忆的智能体({ 向量模型: { 类型: '无' } })
+    带记忆实例 = 夹具.新建智能体({ 向量模型: { 类型: '无' } })
 
     await 带记忆实例.对话({ ...创建选项('建立正式会话'), 是否自动召回: false })
     await 带记忆实例.私有反思({ ...创建选项('整理刚才的线索'), 是否自动召回: false })
@@ -103,7 +105,7 @@ describe('实例级对话历史', () => {
   })
 
   it('会话反思会写入对话历史', async (): Promise<void> => {
-    带记忆实例 = new 带记忆的智能体({ 向量模型: { 类型: '无' } })
+    带记忆实例 = 夹具.新建智能体({ 向量模型: { 类型: '无' } })
 
     await 带记忆实例.对话({ ...创建选项('建立正式会话'), 是否自动召回: false })
     await 带记忆实例.会话反思({ ...创建选项('整理刚才的线索'), 是否自动召回: false })
@@ -130,7 +132,7 @@ describe('实例级对话历史', () => {
   })
 
   it('推演不向带记忆智能体暴露写记忆工具，也不会修改已有记忆', async (): Promise<void> => {
-    带记忆实例 = new 带记忆的智能体({ 向量模型: { 类型: '无' } })
+    带记忆实例 = 夹具.新建智能体({ 向量模型: { 类型: '无' } })
     await 带记忆实例.批量注入记忆([
       {
         内容: '原始记忆',
@@ -151,7 +153,7 @@ describe('实例级对话历史', () => {
   })
 
   it('对话写入记忆后仍不重写已发送的系统前缀', async (): Promise<void> => {
-    带记忆实例 = new 带记忆的智能体({ 向量模型: { 类型: '无' } })
+    带记忆实例 = 夹具.新建智能体({ 向量模型: { 类型: '无' } })
     let 响应列表 = [
       {
         完整文本: '',
@@ -215,7 +217,7 @@ describe('实例级对话历史', () => {
   })
 
   it('记忆状态不变时不重复注入并可单独读取界面历史', async (): Promise<void> => {
-    带记忆实例 = new 带记忆的智能体({ 向量模型: { 类型: '无' } })
+    带记忆实例 = 夹具.新建智能体({ 向量模型: { 类型: '无' } })
     await 带记忆实例.添加记忆({
       内容: '稳定记忆',
       关键词: ['稳定'],

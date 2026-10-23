@@ -5,6 +5,7 @@ import OpenAI from 'openai'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 import { 带记忆的智能体, 记忆等级 } from '../src/index'
+import { 使用共享PGlite } from './helpers/shared-pglite-fixture'
 
 let 流式请求AI模拟 = vi.hoisted(() => vi.fn())
 
@@ -45,6 +46,7 @@ function 创建对话选项(命令: string): {
 }
 
 describe('记忆事务边界与隔离', () => {
+  let 夹具 = 使用共享PGlite()
   let 智能体列表: 带记忆的智能体[] = []
   let 临时目录列表: string[] = []
 
@@ -60,11 +62,8 @@ describe('记忆事务边界与隔离', () => {
   })
 
   async function 创建带基础记忆的智能体(存储?: { 模式: '文件'; 路径: string }): Promise<带记忆的智能体> {
-    let 智能体实例 = new 带记忆的智能体({
-      向量模型: { 类型: '无' },
-      二级记忆遗忘分数阈值: 0,
-      ...(存储 !== undefined ? { 存储 } : {}),
-    })
+    let 选项 = { 向量模型: { 类型: '无' }, 二级记忆遗忘分数阈值: 0 } as const
+    let 智能体实例 = 存储 !== undefined ? new 带记忆的智能体({ ...选项, 存储 }) : 夹具.新建智能体(选项)
     智能体列表.push(智能体实例)
     await 智能体实例.添加记忆({
       内容: '基础记忆',

@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { 从头截断, 带记忆的智能体, 智能体, 记忆等级, type 智能体消息类型 } from '../src/index'
+import { 从头截断, 智能体, 记忆等级, type 智能体消息类型 } from '../src/index'
 import { 创建假客户端, 创建选项, 加法工具, 提交 } from './append-only-cache-helper'
+import { 使用共享PGlite } from './helpers/shared-pglite-fixture'
+
+let 夹具 = 使用共享PGlite()
 
 afterEach((): void => {
   vi.restoreAllMocks()
@@ -66,7 +69,7 @@ describe('从头截断', () => {
 
   it('自动截断: 回差生效，不会每轮都截；截断后记忆状态下一轮自动补回', async (): Promise<void> => {
     let 假 = 创建假客户端(Array.from({ length: 20 }, (_, i) => 提交(i)))
-    let 实例 = new 带记忆的智能体({
+    let 实例 = 夹具.新建智能体({
       向量模型: { 类型: '无' },
       自动截断: { 触发字符数: 30000, 保留字符数: 15000 },
     })
