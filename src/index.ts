@@ -35,7 +35,6 @@ export {
 } from './agent/types'
 export type {
   REPL选项,
-  内部注入消息,
   回合结果,
   对话选项,
   执行回合选项,

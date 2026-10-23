@@ -42,6 +42,7 @@ import {
   type 公开记忆关联,
   type 公开记忆提交,
   type 内部带记忆的智能体配置,
+  type 内部带记忆的解决问题选项,
   type 带记忆的对话选项,
   type 带记忆的智能体选项,
   type 带记忆的解决问题选项,
@@ -354,7 +355,7 @@ export class 带记忆的智能体 extends 智能体 {
   }
 
   protected override async 执行解决问题<T extends z.ZodType>(
-    选项: 带记忆的解决问题选项<T>,
+    选项: 内部带记忆的解决问题选项<T>,
     执行模式: 智能体执行模式,
     首次请求是否新建对话: boolean = false,
     更新当前会话审计状态: boolean = false,
