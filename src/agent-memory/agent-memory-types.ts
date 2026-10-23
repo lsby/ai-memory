@@ -2,7 +2,13 @@ import type { PGlite } from '@electric-sql/pglite'
 import type { Kysely } from 'kysely'
 import type OpenAI from 'openai'
 import { z } from 'zod'
-import { 智能体消息Schema, type 智能体事件, type 智能体选项, type 解决问题选项 } from '../agent/types'
+import {
+  智能体消息Schema,
+  type 内部注入消息,
+  type 智能体事件,
+  type 智能体选项,
+  type 解决问题选项,
+} from '../agent/types'
 
 export enum 记忆等级 {
   零级 = '零级',
@@ -126,6 +132,11 @@ export type 带记忆的智能体选项 = 智能体选项 & {
    * - `false`：不写变更记录，回退最近记忆提交 不可用（返回 false）。
    */
   变更记录?: 变更记录配置
+  /**
+   * 是否不挂深度推演工具, 默认 false。
+   * 工具定义是前缀的一部分, 所以只能在实例上设置, 不能按次传。
+   */
+  禁用深度推演?: boolean
 }
 
 export type 存储配置 =
@@ -138,9 +149,13 @@ export type 变更记录配置 = { 保留提交数: number } | false
 export type 内部带记忆的智能体配置 = 智能体选项 & Required<Omit<带记忆的智能体选项, keyof 智能体选项>>
 
 export type 带记忆的解决问题选项<T extends z.ZodType> = 解决问题选项<T> & {
-  禁用深度推演?: boolean | undefined
   标题?: string | undefined
   是否自动召回?: boolean | undefined
+}
+
+/** 库内部使用: 在公开选项上附带内部注入消息。不对外导出 */
+export type 内部带记忆的解决问题选项<T extends z.ZodType> = 带记忆的解决问题选项<T> & {
+  内部注入消息?: 内部注入消息[] | undefined
 }
 
 /** 实例管理对话历史时使用的请求参数。 */

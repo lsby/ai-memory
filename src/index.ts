@@ -25,6 +25,7 @@ export type {
 } from './agent-memory/agent-memory-types'
 export { 智能体 } from './agent/agent'
 export { 统计字符数 } from './agent/audit'
+export { 从头截断 } from './agent/truncate'
 export {
   智能体函数消息Schema,
   智能体助手消息Schema,
@@ -37,6 +38,7 @@ export {
 } from './agent/types'
 export type {
   REPL选项,
+  回合结果,
   对话选项,
   执行回合选项,
   拦截策略,
@@ -51,8 +53,11 @@ export type {
   智能体消息类型,
   智能体用户消息,
   智能体系统消息,
+  智能体结束原因,
   智能体选项,
   模型审计汇总,
+  模型用量,
   模型请求审计记录,
   调试拦截钩子,
+  追加注入消息,
 } from './agent/types'
