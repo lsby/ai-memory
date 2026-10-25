@@ -119,7 +119,7 @@ async function 在事务中初始化数据库(数据库查询器: Kysely<记忆�
   await 执行(`CREATE INDEX IF NOT EXISTS 记忆变更表_提交_idx ON ${名('记忆变更表')} (提交id);`)
   await 执行(`CREATE INDEX IF NOT EXISTS 记忆提交表_创建时间_idx ON ${名('记忆提交表')} (创建时间 DESC);`)
   await 执行(`
-    INSERT INTO ${名('记忆元数据表')} (键, 值) VALUES ('KERNEL_SCHEMA_VERSION', '2')
+    INSERT INTO ${名('记忆元数据表')} (键, 值) VALUES ('KERNEL_SCHEMA_VERSION', '3')
     ON CONFLICT (键) DO UPDATE SET 值 = EXCLUDED.值;
   `)
 
@@ -164,7 +164,7 @@ async function 在事务中初始化数据库(数据库查询器: Kysely<记忆�
       END;
       
       IF v_commit_id IS NULL OR v_commit_id = '' THEN
-        RETURN NULL;
+        RAISE EXCEPTION '记忆表只能在活动提交中修改';
       END IF;
 
       IF TG_OP = 'INSERT' THEN
@@ -177,7 +177,14 @@ async function 在事务中初始化数据库(数据库查询器: Kysely<记忆�
           AND OLD.内容 IS NOT DISTINCT FROM NEW.内容
           AND OLD.关键词 IS NOT DISTINCT FROM NEW.关键词
           AND OLD.标签 IS NOT DISTINCT FROM NEW.标签
-          AND OLD.向量 IS NOT DISTINCT FROM NEW.向量 THEN
+          AND OLD.向量 IS NOT DISTINCT FROM NEW.向量
+          AND OLD.向量维度 IS NOT DISTINCT FROM NEW.向量维度
+          AND OLD.创建时间 IS NOT DISTINCT FROM NEW.创建时间
+          AND OLD.创建序号 IS NOT DISTINCT FROM NEW.创建序号
+          AND OLD.最后访问序号 IS NOT DISTINCT FROM NEW.最后访问序号
+          AND OLD.访问次数 IS NOT DISTINCT FROM NEW.访问次数
+          AND OLD.x IS NOT DISTINCT FROM NEW.x
+          AND OLD.y IS NOT DISTINCT FROM NEW.y THEN
           RETURN NULL;
         END IF;
         v_op_type := 'update';
@@ -223,7 +230,7 @@ async function 在事务中初始化数据库(数据库查询器: Kysely<记忆�
       END;
 
       IF v_commit_id IS NULL OR v_commit_id = '' THEN
-        RETURN NULL;
+        RAISE EXCEPTION '记忆关联表只能在活动提交中修改';
       END IF;
 
       IF TG_OP = 'INSERT' THEN
@@ -257,5 +264,64 @@ async function 在事务中初始化数据库(数据库查询器: Kysely<记忆�
     CREATE TRIGGER trg_记录记忆关联表变更
     AFTER INSERT OR UPDATE OR DELETE ON ${名('记忆关联表')}
     FOR EACH ROW EXECUTE FUNCTION ${名('记录记忆关联表变更_触发器')}();
+  `)
+
+  // 3. 动态工具表触发器函数。动态工具会参与模型上下文，也必须跟随提交历史回退。
+  await 执行(`
+    CREATE OR REPLACE FUNCTION ${名('记录动态工具表变更_触发器')}()
+    RETURNS TRIGGER AS $$
+    DECLARE
+      v_commit_id TEXT;
+      v_op_type TEXT;
+      v_target_id TEXT;
+      v_old_val TEXT := NULL;
+      v_new_val TEXT := NULL;
+    BEGIN
+      BEGIN
+        SELECT commit_id INTO v_commit_id FROM ${名('_agent_session_commit')} WHERE id = 1;
+      EXCEPTION WHEN OTHERS THEN
+        v_commit_id := NULL;
+      END;
+
+      IF v_commit_id IS NULL OR v_commit_id = '' THEN
+        RAISE EXCEPTION '动态工具表只能在活动提交中修改';
+      END IF;
+
+      IF TG_OP = 'INSERT' THEN
+        v_op_type := 'add';
+        v_target_id := NEW.id;
+        v_new_val := row_to_json(NEW)::TEXT;
+      ELSIF TG_OP = 'UPDATE' THEN
+        IF OLD.名称 IS NOT DISTINCT FROM NEW.名称
+          AND OLD.描述 IS NOT DISTINCT FROM NEW.描述
+          AND OLD.代码 IS NOT DISTINCT FROM NEW.代码
+          AND OLD.向量 IS NOT DISTINCT FROM NEW.向量
+          AND OLD.向量维度 IS NOT DISTINCT FROM NEW.向量维度
+          AND OLD.创建时间 IS NOT DISTINCT FROM NEW.创建时间 THEN
+          RETURN NULL;
+        END IF;
+        v_op_type := 'update';
+        v_target_id := NEW.id;
+        v_old_val := row_to_json(OLD)::TEXT;
+        v_new_val := row_to_json(NEW)::TEXT;
+      ELSIF TG_OP = 'DELETE' THEN
+        v_op_type := 'delete';
+        v_target_id := OLD.id;
+        v_old_val := row_to_json(OLD)::TEXT;
+      END IF;
+
+      INSERT INTO ${名('记忆变更表')} (id, 提交id, 操作类型, 目标表, 目标id, 旧值, 新值)
+      VALUES (gen_random_uuid()::TEXT, v_commit_id, v_op_type, 'tool', v_target_id, v_old_val, v_new_val);
+
+      RETURN NULL;
+    END;
+    $$ LANGUAGE plpgsql;
+  `)
+
+  await 执行(`DROP TRIGGER IF EXISTS trg_记录动态工具表变更 ON ${名('动态工具表')};`)
+  await 执行(`
+    CREATE TRIGGER trg_记录动态工具表变更
+    AFTER INSERT OR UPDATE OR DELETE ON ${名('动态工具表')}
+    FOR EACH ROW EXECUTE FUNCTION ${名('记录动态工具表变更_触发器')}();
   `)
 }

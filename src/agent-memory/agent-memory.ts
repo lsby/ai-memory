@@ -6,7 +6,7 @@ import type OpenAI from 'openai'
 import { z } from 'zod'
 import { 智能体 } from '../agent/agent'
 import { type 回合结果, type 智能体事件, type 智能体执行模式, type 智能体消息类型 } from '../agent/types'
-import { 回收表空间, 在提交中执行, 回退记忆提交 as 外部回退记忆提交, 抹除记忆变更记录 } from './agent-memory-commit'
+import { 在提交中执行, 回退记忆提交 as 外部回退记忆提交 } from './agent-memory-commit'
 import { 带互斥的PGlite方言, 校验schema名, 默认schema } from './agent-memory-connection'
 import {
   创建向量缓存 as 外部创建向量缓存,
@@ -73,7 +73,6 @@ export class 带记忆的智能体 extends 智能体 {
   private readonly 上下文依赖: 上下文依赖
   private readonly 记忆提示词文本: string
   private 数据库是否已初始化: boolean = false
-  private 距上次回收空间的提交数 = 0
   private 初始化锁: Promise<void> | null = null
   private _已销毁 = false
 
@@ -82,11 +81,6 @@ export class 带记忆的智能体 extends 智能体 {
     let 存储: 存储配置 = 选项.存储 ?? { 模式: '内存' }
     if (存储.模式 === '文件') 存储 = { ...存储, 路径: path.resolve(存储.路径) }
     if (存储.schema !== undefined) 校验schema名(存储.schema)
-    let 变更记录 = 选项.变更记录 ?? { 保留提交数: Number.POSITIVE_INFINITY }
-    if (变更记录 !== false && 变更记录.保留提交数 !== Number.POSITIVE_INFINITY) {
-      if (Number.isInteger(变更记录.保留提交数) === false || 变更记录.保留提交数 < 1)
-        throw new Error('变更记录.保留提交数 必须是不小于 1 的整数')
-    }
     if (选项.向量模型?.类型 === '在线' && 选项.向量模型.维度 !== undefined) {
       let 维度 = 选项.向量模型.维度
       if (Number.isInteger(维度) === false || 维度 < 1) throw new Error('向量模型.维度 必须是正整数')
@@ -112,7 +106,6 @@ export class 带记忆的智能体 extends 智能体 {
       自动检索动态工具数量: 选项.自动检索动态工具数量 ?? 3,
       向量相似度关联阈值: 选项.向量相似度关联阈值 ?? 0.6,
       存储,
-      变更记录,
       禁用深度推演,
     }
     let 自定义提示词 = 选项.记忆提示词
@@ -200,11 +193,10 @@ export class 带记忆的智能体 extends 智能体 {
     for (let 尝试次数 = 1; ; 尝试次数++) {
       try {
         let 结果 = await this.数据库查询器.transaction().execute(async (trx) => {
-          let 事务结果 = await 在提交中执行(trx, this.配置.变更记录, 消息, 操作)
+          let 事务结果 = await 在提交中执行(trx, 消息, 操作)
           if (缓存.缺失.size > 0) throw new 向量未预取错误([...缓存.缺失][0] ?? '')
           return 事务结果
         })
-        await this.按提交数回收空间()
         return 结果
       } catch (错误) {
         if (错误 instanceof 向量未预取错误 === false || 尝试次数 >= 3) throw 错误
@@ -212,23 +204,6 @@ export class 带记忆的智能体 extends 智能体 {
         缓存.缺失.clear()
       }
     }
-  }
-
-  /** 配置了保留提交数时，裁掉的旧提交只是被标记删除；每过一轮保留窗口，在事务外回收一次它们占的空间。 */
-  private async 按提交数回收空间(): Promise<void> {
-    let 变更记录 = this.配置.变更记录
-    if (变更记录 === false || Number.isFinite(变更记录.保留提交数) === false) return
-    this.距上次回收空间的提交数++
-    if (this.距上次回收空间的提交数 < Math.max(变更记录.保留提交数, 5)) return
-    this.距上次回收空间的提交数 = 0
-    await this.回收空间()
-  }
-
-  /** 回收空间失败（比如实例刚好被销毁）不影响已经提交的业务结果。 */
-  private async 回收空间(): Promise<void> {
-    try {
-      await 回收表空间(this.数据库查询器, this.schema名)
-    } catch (_错误) {}
   }
 
   public async 批量注入记忆(记忆项列表: 批量注入记忆项[], 回调?: (事件: 智能体事件) => Promise<void>): Promise<void> {
@@ -286,23 +261,6 @@ export class 带记忆的智能体 extends 智能体 {
     })
   }
 
-  /**
-   * 彻底删除一条记忆：删掉记忆本身，并抹掉变更表里这条记忆相关的全部旧值、新值，
-   * 之后无法再通过回退找回。用户主动删除、注销时用。已经被 删除记忆 删掉的记忆也可以用它清除残留的变更记录。
-   * 返回是否删掉了记忆或抹掉了变更记录。
-   */
-  public async 彻底删除记忆(id: string): Promise<boolean> {
-    let 已校验id = z.string().trim().min(1).parse(id)
-    let 已抹除 = await this.执行记忆变更任务('彻底删除记忆', async (trx): Promise<boolean> => {
-      let 结果 = await trx.deleteFrom('记忆表').where('id', '=', 已校验id).executeTakeFirst()
-      let 抹除条数 = await 抹除记忆变更记录(trx, 已校验id)
-      return Number(结果.numDeletedRows) > 0 || 抹除条数 > 0
-    })
-    // 被删的行在磁盘页里还留着原文，回收一次空间让它们可以被覆盖
-    if (已抹除) await this.回收空间()
-    return 已抹除
-  }
-
   public async 更新记忆(
     id: string,
     选项: 更新记忆选项,
@@ -336,8 +294,6 @@ export class 带记忆的智能体 extends 智能体 {
 
   /** 将最近一次记忆变更反向应用为一个新提交；不会改写或删除已有提交历史。 */
   public async 回退最近记忆提交(): Promise<boolean> {
-    // 变更记录关闭时没有可回退的内容
-    if (this.配置.变更记录 === false) return false
     return await this.执行记忆变更任务('回退最近记忆提交', async (trx, 父提交id): Promise<boolean> => {
       if (父提交id === null) return false
       return await 外部回退记忆提交(trx, 父提交id)

@@ -52,7 +52,7 @@ export let 记忆变更表Schema = z.object({
   序号: z.number().optional(),
   提交id: z.string(),
   操作类型: z.enum(['add', 'update', 'delete', 'init']),
-  目标表: z.enum(['node', 'link']),
+  目标表: z.enum(['node', 'link', 'tool']),
   目标id: z.string(),
   旧值: z.string().nullable(),
   新值: z.string().nullable(),
@@ -128,12 +128,6 @@ export type 带记忆的智能体选项 = 智能体选项 & {
    */
   存储?: 存储配置
   /**
-   * 变更记录（供 回退最近记忆提交 使用）。默认无限保留。
-   * - `{ 保留提交数 }`：每次提交后裁掉超出数量的旧提交（连同它们的变更）；
-   * - `false`：不写变更记录，回退最近记忆提交 不可用（返回 false）。
-   */
-  变更记录?: 变更记录配置
-  /**
    * 是否不挂深度推演工具, 默认 false。
    * 工具定义是前缀的一部分, 所以只能在实例上设置, 不能按次传。
    */
@@ -169,8 +163,6 @@ export type 存储配置 =
   | { 模式: '内存'; schema?: string }
   | { 模式: '文件'; 路径: string; schema?: string }
   | { 模式: '外部'; pglite: PGlite; schema?: string }
-
-export type 变更记录配置 = { 保留提交数: number } | false
 
 export type 内部带记忆的智能体配置 = 智能体选项 &
   Required<Omit<带记忆的智能体选项, keyof 智能体选项 | '记忆工具筛选' | '记忆提示词' | '遗忘豁免' | '受保护标签'>> & {
@@ -243,7 +235,7 @@ export type 公开动态工具 = { id: string; 名称: string; 描述: string; �
 export type 公开记忆变更 = {
   id: string
   操作类型: 'add' | 'update' | 'delete' | 'init'
-  目标表: 'node' | 'link'
+  目标表: 'node' | 'link' | 'tool'
   目标id: string
   旧值: string | null
   新值: string | null

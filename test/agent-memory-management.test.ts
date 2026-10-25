@@ -128,4 +128,16 @@ describe('记忆应用管理接口', () => {
     expect(await 智能体实例.查找记忆(记忆.id)).toMatchObject({ 内容: '回退前内容' })
     expect((await 智能体实例.查询记忆提交())[0]).toMatchObject({ 消息: '回退最近记忆提交' })
   })
+
+  it('动态工具变更进入提交历史并且可以回退', async (): Promise<void> => {
+    智能体实例 = 夹具.新建智能体({ 向量模型: { 类型: '无' } })
+    expect((await 智能体实例.注册动态工具(动态工具代码, '{"value":3}')).结果).toBe('成功')
+
+    let 注册提交 = (await 智能体实例.查询记忆提交()).find((提交) => 提交.消息 === '编程接入: 注册动态工具')
+    expect(注册提交?.变更列表).toHaveLength(1)
+    expect(注册提交?.变更列表[0]).toMatchObject({ 操作类型: 'add', 目标表: 'tool' })
+
+    expect(await 智能体实例.回退最近记忆提交()).toBe(true)
+    expect(await 智能体实例.查询动态工具()).toEqual([])
+  })
 })
