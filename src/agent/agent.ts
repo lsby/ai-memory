@@ -15,7 +15,6 @@ import { 追加系统纠正消息 } from './system-correction'
 import { 从文本提取工具调用, 从文本提取结果 } from './text-fallback'
 import { 校验时区 } from './timezone'
 import { 处理工具调用 } from './tool-handler'
-import { 按需自动截断 } from './truncate'
 import type {
   REPL选项,
   内部解决问题选项,
@@ -42,10 +41,8 @@ export class 智能体 {
   private 最大循环轮次: number
   private 请求AI时间间隔ms: number
   private 工具返回文本最大长度?: number
-  private 自动截断?: 智能体选项['自动截断']
   private 额外请求参数: Record<string, unknown> | undefined
   protected 时区?: string
-  private 上次输入token数: number | undefined
   private 对话历史: 智能体消息类型[] = []
   private 会话任务队列: Promise<void> = Promise.resolve()
   private 审计器 = new 模型审计器()
@@ -58,7 +55,6 @@ export class 智能体 {
     this.最大循环轮次 = 选项.最大循环轮次 ?? 15
     this.请求AI时间间隔ms = 选项.请求AI时间间隔ms ?? 0
     this.工具返回文本最大长度 = 选项.工具返回文本最大长度 ?? 50000
-    if (选项.自动截断 !== undefined) this.自动截断 = 选项.自动截断
     this.额外请求参数 = 校验并复制额外请求参数(选项.额外请求参数)
     if (选项.时区 !== undefined) {
       校验时区(选项.时区)
@@ -89,14 +85,12 @@ export class 智能体 {
   public async 对话<T extends z.ZodType>(选项: 对话选项<T>): Promise<回合结果<T>> {
     return await this.执行会话任务(async () => {
       let 结果 = await this.执行解决问题(
-        { ...选项, 消息历史: this.对话历史, 上次输入token数: this.上次输入token数 },
+        { ...选项, 消息历史: this.对话历史 },
         '对话',
         this.审计器.当前会话是否已有请求() === false,
         true,
       )
       this.对话历史 = 复制消息列表(结果.消息列表)
-      this.上次输入token数 =
-        结果.用量.findLast((项) => 项.输入token数 !== undefined)?.输入token数 ?? this.上次输入token数
       return 结果
     })
   }
@@ -137,7 +131,6 @@ export class 智能体 {
   /** 仅清空本实例的会话历史，不影响记忆库或工具配置。 */
   public 重置对话(): void {
     this.对话历史 = []
-    this.上次输入token数 = undefined
     this.审计器.切换会话()
   }
 
@@ -147,7 +140,6 @@ export class 智能体 {
 
   public 载入对话历史(消息历史: 智能体消息类型[], 会话标识?: string): void {
     this.对话历史 = 复制消息列表(消息历史)
-    this.上次输入token数 = undefined
     this.审计器.切换会话(会话标识, this.对话历史.length > 0)
   }
 
@@ -235,22 +227,7 @@ export class 智能体 {
       return 构造前缀已变结果<T>(原历史)
     }
 
-    // 自动截断: 只在本轮请求前、整体替换历史时发生
-    let 基础历史 = 原历史
-    let 历史已截断 = false
-    if (执行模式 !== '推演' && this.自动截断 !== undefined) {
-      let 截断结果 = 按需自动截断(原历史, this.自动截断, 选项.上次输入token数)
-      if (截断结果 !== null) {
-        基础历史 = 截断结果
-        历史已截断 = true
-        await 回调({
-          类型: '流程信息',
-          内容: `历史过长, 已从头截断: ${String(原历史.length)} 条 -> ${String(截断结果.length)} 条`,
-        })
-      }
-    }
-
-    let 消息列表: 智能体消息类型[] = [...基础历史]
+    let 消息列表: 智能体消息类型[] = [...原历史]
     // 返回给调用方的新增上下文从这里开始。首轮插入的带指纹的 system 属于新增上下文; 推演临时补的 system 不是。
     let 新增起点 = 消息列表.length
     if (消息列表.length === 0) {
@@ -273,8 +250,6 @@ export class 智能体 {
       新增上下文: 提取新增上下文(),
       ...(结束原因 !== undefined ? { 结束原因 } : {}),
       用量: 用量列表,
-      历史已截断,
-      ...(历史已截断 === true ? { 截断后历史: 基础历史 } : {}),
     })
 
     // 本轮追加顺序: 记忆状态 -> 召回 -> 调用方注入(按传入顺序) -> 当前时间 -> 用户命令

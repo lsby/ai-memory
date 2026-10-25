@@ -27,7 +27,6 @@ export { 全部记忆工具名, 记忆工具名 } from './agent-memory/memory-to
 export type { 记忆工具名类型 } from './agent-memory/memory-tool-names'
 export { 智能体 } from './agent/agent'
 export { 统计字符数 } from './agent/audit'
-export { 从头截断 } from './agent/truncate'
 export {
   智能体函数消息Schema,
   智能体助手消息Schema,
