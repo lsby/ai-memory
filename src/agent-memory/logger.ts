@@ -299,13 +299,22 @@ export async function 查询交互日志(
     .object({
       事件组id: z.string().trim().min(1).optional(),
       类型: 交互日志事件类型Schema.optional(),
+      开始时间起: z.date().optional(),
+      开始时间止: z.date().optional(),
       偏移: z.number().int().min(0).optional(),
       数量: z.number().int().min(1).max(1000).optional(),
     })
+    .refine(
+      (值): boolean =>
+        值.开始时间起 === undefined || 值.开始时间止 === undefined || 值.开始时间起.getTime() < 值.开始时间止.getTime(),
+      { message: '开始时间起必须早于开始时间止', path: ['开始时间起'] },
+    )
     .parse(选项)
   let 查询 = 数据库查询器.selectFrom('交互日志表').selectAll()
   if (已校验选项.事件组id !== undefined) 查询 = 查询.where('事件组id', '=', 已校验选项.事件组id)
   if (已校验选项.类型 !== undefined) 查询 = 查询.where('类型', '=', 已校验选项.类型)
+  if (已校验选项.开始时间起 !== undefined) 查询 = 查询.where('开始时间', '>=', 已校验选项.开始时间起)
+  if (已校验选项.开始时间止 !== undefined) 查询 = 查询.where('开始时间', '<', 已校验选项.开始时间止)
   let 结果列表 = await 查询
     .orderBy('序号', 'asc')
     .offset(已校验选项.偏移 ?? 0)
