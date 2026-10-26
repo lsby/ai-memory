@@ -57,7 +57,7 @@ describe('P1 记忆工具筛选', () => {
   it('不传筛选时全部记忆工具都挂上', async (): Promise<void> => {
     let { 假 } = await 跑一轮(创建记忆实例())
     let 工具名 = 取工具名列表(假.请求列表[0])
-    expect([...工具名].sort()).toEqual([...全部记忆工具名, '__submit_result__'].sort())
+    expect([...工具名].sort()).toEqual([...全部记忆工具名, '__submit_result__', 'read_conversation_history'].sort())
   })
 
   it('常量导出了全部记忆工具名且没有重复', () => {
@@ -98,7 +98,7 @@ describe('P1 记忆工具筛选', () => {
   it('只保留回忆延伸时, 不写需要修改记忆的几段, 也不写动态工具', async (): Promise<void> => {
     let { 假 } = await 跑一轮(创建记忆实例({ 记忆工具筛选: (名称) => 名称 === 记忆工具名.回忆延伸 }))
     let 请求 = 假.请求列表[0]
-    expect(取工具名列表(请求).sort()).toEqual(['__submit_result__', 'extend_memory'])
+    expect(取工具名列表(请求).sort()).toEqual(['__submit_result__', 'extend_memory', 'read_conversation_history'])
     let 系统提示词 = 取系统提示词(请求)
     expect(系统提示词).not.toContain('认知进化范式')
     expect(系统提示词).not.toContain('经验沉淀')

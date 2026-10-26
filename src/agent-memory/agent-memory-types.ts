@@ -7,6 +7,7 @@ import {
   智能体消息Schema,
   type 内部注入消息,
   type 智能体事件,
+  type 智能体消息类型,
   type 智能体选项,
   type 解决问题选项,
 } from '../agent/types'
@@ -83,6 +84,8 @@ let 交互日志公共字段 = {
   开始时间: z.union([z.string(), z.date()]).transform((值) => new Date(值)),
   耗时ms: z.number().finite().nonnegative().optional(),
   内容: JSON值Schema,
+  上下文消息id: z.string().optional(),
+  消息id: z.string().optional(),
 }
 
 export let 交互日志事件类型Schema = z.enum([
@@ -137,6 +140,28 @@ export type 交互日志表 = {
   开始时间: Date
   耗时ms: number | null
   内容: ColumnType<JSON值, string, string>
+  上下文消息id: string | null
+  消息id: string | null
+}
+
+export type 会话表 = {
+  id: string
+  标题: string
+  当前消息id: string | null
+  前驱会话id: string | null
+  前驱消息id: string | null
+  创建时间: Date
+  更新时间: Date
+}
+
+export type 消息表 = {
+  id: string
+  序号: number | undefined
+  会话id: string
+  父消息id: string | null
+  角色: 智能体消息类型['role']
+  载荷: ColumnType<智能体消息类型, string, string>
+  创建时间: Date
 }
 
 export type 记忆数据库 = {
@@ -147,6 +172,8 @@ export type 记忆数据库 = {
   记忆元数据表: 记忆元数据表
   动态工具表: 动态工具表
   交互日志表: 交互日志表
+  会话表: 会话表
+  消息表: 消息表
 }
 
 export type 带记忆的智能体选项 = 智能体选项 & {
@@ -327,6 +354,36 @@ export type 公开交互日志 = {
   开始时间: Date
   耗时ms?: number
   内容: JSON值
+  上下文消息id?: string
+  消息id?: string
+}
+
+export type 公开会话 = {
+  id: string
+  标题: string
+  当前消息id: string | null
+  前驱会话id: string | null
+  前驱消息id: string | null
+  创建时间: Date
+  更新时间: Date
+}
+
+export type 公开消息 = {
+  id: string
+  序号: number
+  会话id: string
+  父消息id: string | null
+  消息: 智能体消息类型
+  创建时间: Date
+}
+
+export type 查询会话列表选项 = { 偏移?: number | undefined; 数量?: number | undefined }
+
+export type 创建派生会话选项 = {
+  前驱会话id: string
+  前驱消息id: string
+  摘要: string
+  标题?: string | undefined
 }
 
 export type 查询交互日志选项 = {
@@ -345,10 +402,30 @@ export let 快照数据Schema = z.object({
 export type 快照数据 = z.infer<typeof 快照数据Schema>
 
 export let 完整状态Schema = z.object({
-  格式版本: z.literal(2),
-  会话标识: z.string().optional(),
+  格式版本: z.literal(3),
   记忆快照: 快照数据Schema,
-  消息历史: z.array(智能体消息Schema),
+  当前会话id: z.string().nullable(),
+  会话列表: z.array(
+    z.object({
+      id: z.string(),
+      标题: z.string(),
+      当前消息id: z.string().nullable(),
+      前驱会话id: z.string().nullable(),
+      前驱消息id: z.string().nullable(),
+      创建时间: z.union([z.string(), z.date()]).transform((值) => new Date(值)),
+      更新时间: z.union([z.string(), z.date()]).transform((值) => new Date(值)),
+    }),
+  ),
+  消息列表: z.array(
+    z.object({
+      id: z.string(),
+      序号: z.number().int(),
+      会话id: z.string(),
+      父消息id: z.string().nullable(),
+      消息: 智能体消息Schema,
+      创建时间: z.union([z.string(), z.date()]).transform((值) => new Date(值)),
+    }),
+  ),
 })
 export type 完整状态 = z.infer<typeof 完整状态Schema>
 

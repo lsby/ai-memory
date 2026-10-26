@@ -1,17 +1,18 @@
 import { PGlite, type PGliteOptions } from '@electric-sql/pglite'
 import { vector } from '@electric-sql/pglite-pgvector'
 import { Kysely } from 'kysely'
-import path from 'node:path'
 import type OpenAI from 'openai'
 import { z } from 'zod'
-import { 智能体 } from '../agent/agent'
+import { 持久化会话智能体 } from '../agent/persistent-conversation-agent'
 import { type 回合结果, type 智能体事件, type 智能体执行模式, type 智能体消息类型 } from '../agent/types'
+import { 会话控制器 } from './agent-conversation-controller'
 import {
   切换记忆提交 as 外部切换记忆提交,
   回退到父记忆提交 as 外部回退到父记忆提交,
   获取当前提交ID,
 } from './agent-memory-commit'
-import { 带互斥的PGlite方言, 校验schema名, 默认schema } from './agent-memory-connection'
+import { 构建智能体配置 } from './agent-memory-config'
+import { 带互斥的PGlite方言, 默认schema } from './agent-memory-connection'
 import {
   创建向量缓存 as 外部创建向量缓存,
   构建操作上下文 as 外部构建操作上下文,
@@ -56,7 +57,6 @@ import {
   type 公开记忆提交,
   type 内部带记忆的智能体配置,
   type 内部带记忆的解决问题选项,
-  type 存储配置,
   type 带记忆的对话选项,
   type 带记忆的智能体选项,
   type 带记忆的解决问题选项,
@@ -67,12 +67,10 @@ import {
   type 记忆数据库,
 } from './agent-memory-types'
 import { 新向量缓存, type 向量缓存 } from './agent-memory-vector-cache'
-import { 生成默认记忆提示词 } from './memory-prompt'
-import { 全部记忆工具名, 记忆工具名 } from './memory-tool-names'
 import { 初始化数据库 } from './tools/db-schema'
 import { 全局排版 as 外部全局排版 } from './tools/layout'
 
-export class 带记忆的智能体 extends 智能体 {
+export class 带记忆的智能体 extends 持久化会话智能体 {
   private 配置: 内部带记忆的智能体配置
   private PGlite就绪: Promise<PGlite>
   private 数据库查询器: Kysely<记忆数据库>
@@ -85,44 +83,10 @@ export class 带记忆的智能体 extends 智能体 {
 
   public constructor(选项: 带记忆的智能体选项) {
     super(选项)
-    let 存储: 存储配置 = 选项.存储 ?? { 模式: '内存' }
-    if (存储.模式 === '文件') 存储 = { ...存储, 路径: path.resolve(存储.路径) }
-    if (存储.schema !== undefined) 校验schema名(存储.schema)
-    if (选项.向量模型?.类型 === '在线' && 选项.向量模型.维度 !== undefined) {
-      let 维度 = 选项.向量模型.维度
-      if (Number.isInteger(维度) === false || 维度 < 1) throw new Error('向量模型.维度 必须是正整数')
-    }
-    let 禁用深度推演 = 选项.禁用深度推演 ?? false
-    let 筛选 = 选项.记忆工具筛选
-    let 启用的记忆工具名 = 全部记忆工具名.filter(
-      (名称): boolean =>
-        (名称 !== 记忆工具名.深度推演 || 禁用深度推演 === false) && (筛选 === undefined || 筛选(名称) === true),
-    )
-    this.配置 = {
-      ...选项,
-      启用的记忆工具名,
-      遗忘豁免: 选项.遗忘豁免 ?? ((): boolean => false),
-      一级记忆容量: 选项.一级记忆容量 ?? 10,
-      二级记忆遗忘分数阈值: 选项.二级记忆遗忘分数阈值 ?? 10.0,
-      二级记忆数量上限: 选项.二级记忆数量上限 ?? 5000,
-      二级记忆衰减常数k: 选项.二级记忆衰减常数k ?? 0.05,
-      二级记忆访问次数上限: 选项.二级记忆访问次数上限 ?? 10000,
-      向量模型: 选项.向量模型 ?? { 类型: '无' },
-      自动检索二级记忆数量: 选项.自动检索二级记忆数量 ?? 2,
-      自动检索二级记忆起点数: 选项.自动检索二级记忆起点数 ?? 5,
-      自动检索动态工具数量: 选项.自动检索动态工具数量 ?? 3,
-      向量相似度关联阈值: 选项.向量相似度关联阈值 ?? 0.6,
-      存储,
-      禁用深度推演,
-    }
-    let 自定义提示词 = 选项.记忆提示词
-    // 记忆提示词是前缀的一部分: 构造时算一次固定下来, 调用方的函数不会被反复调用
-    this.记忆提示词文本 =
-      自定义提示词 === undefined
-        ? 生成默认记忆提示词(启用的记忆工具名)
-        : typeof 自定义提示词 === 'string'
-          ? 自定义提示词
-          : 自定义提示词([...启用的记忆工具名])
+    let { 配置, 记忆提示词文本 } = 构建智能体配置(选项)
+    this.配置 = 配置
+    this.记忆提示词文本 = 记忆提示词文本
+    let 存储 = 配置.存储
     this.schema名 = 存储.schema ?? 默认schema
     this.上下文依赖 = { 配置: this.配置, 执行记忆变更任务: this.执行记忆变更任务.bind(this) }
     let pglite选项: PGliteOptions = { extensions: { vector } }
@@ -142,6 +106,14 @@ export class 带记忆的智能体 extends 智能体 {
     this.数据库查询器 = new Kysely<记忆数据库>({
       dialect: new 带互斥的PGlite方言(async (): Promise<PGlite> => await this.PGlite就绪, this.schema名),
     })
+    this.初始化会话控制器(
+      new 会话控制器({
+        数据库查询器: this.数据库查询器,
+        确保已初始化: async (): Promise<void> => await this.确保已初始化(),
+        读取新会话标识: (): string => this.读取会话标识(),
+        载入内存历史: (消息列表, 会话id): void => super.载入对话历史(消息列表, 会话id),
+      }),
+    )
   }
 
   /** 记忆操作指南是前缀的一部分, 固定拼在系统提示词里 */
@@ -282,6 +254,10 @@ export class 带记忆的智能体 extends 智能体 {
     return await this.执行无向量记忆变更任务(
       '删除记忆',
       async (trx): Promise<boolean> => {
+        await trx
+          .deleteFrom('记忆关联表')
+          .where((eb) => eb.or([eb('起点id', '=', 已校验id), eb('终点id', '=', 已校验id)]))
+          .execute()
         let 结果 = await trx.deleteFrom('记忆表').where('id', '=', 已校验id).executeTakeFirst()
         return Number(结果.numDeletedRows) > 0
       },
@@ -436,6 +412,7 @@ export class 带记忆的智能体 extends 智能体 {
     await this.确保已初始化()
     let 简短命令 = 选项.命令.replace(/\n/g, ' ')
     let 标题 = 选项.标题 ?? `对话: ${简短命令.slice(0, 20)}`
+    if (更新当前会话审计状态 === true) this.会话控制器().设置待创建会话标题(标题)
     let 原回调 = 选项.回调
     return await 执行带日志的推理流程(
       this.数据库查询器,
@@ -453,6 +430,7 @@ export class 带记忆的智能体 extends 智能体 {
         )
       },
       选项.事件组id,
+      (): string | null => this.会话控制器().当前消息id(),
     )
   }
 
@@ -492,7 +470,8 @@ export class 带记忆的智能体 extends 智能体 {
 
   public override async 导出完整状态(当前消息历史?: 智能体消息类型[]): Promise<string> {
     await this.确保已初始化()
-    return await 外部导出完整状态(this.数据库查询器, 当前消息历史 ?? this.读取对话历史(), this.读取会话标识())
+    if (当前消息历史 !== undefined) throw new Error('持久化会话启用后，导出完整状态不再接受临时消息历史')
+    return await 外部导出完整状态(this.数据库查询器, this.会话控制器().当前会话id())
   }
 
   public override async 导入完整状态(状态数据: string, 事件组id?: string): Promise<智能体消息类型[]> {
@@ -501,7 +480,8 @@ export class 带记忆的智能体 extends 智能体 {
       async (trx) => await 外部导入完整状态(trx, 状态数据),
       事件组id,
     )
-    this.载入对话历史(状态.消息历史, 状态.会话标识)
+    if (状态.当前会话id === null) this.重置对话()
+    else await this.会话控制器().恢复导入会话(状态.当前会话id)
     return this.读取对话历史()
   }
 

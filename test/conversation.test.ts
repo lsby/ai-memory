@@ -216,6 +216,37 @@ describe('实例级对话历史', () => {
     expect(第二轮请求.slice(0, 第一轮请求.length)).toEqual(第一轮请求)
   })
 
+  it('持久化会话支持查询、检出分支和创建压缩派生会话', async (): Promise<void> => {
+    带记忆实例 = 夹具.新建智能体({ 向量模型: { 类型: '无' }, 系统提示词: '固定系统提示词' })
+    await 带记忆实例.对话({ ...创建选项('第一轮'), 是否自动召回: false })
+
+    let 会话 = await 带记忆实例.读取当前会话()
+    let 原消息列表 = await 带记忆实例.读取会话消息(会话.id)
+    let 用户消息 = 原消息列表.find((消息) => 消息.消息.role === 'user' && 消息.消息.content === '第一轮')
+    if (用户消息 === undefined) throw new Error('缺少用户消息')
+
+    await 带记忆实例.检出消息(会话.id, 用户消息.id)
+    let 分支回复 = await 带记忆实例.追加会话消息({
+      会话id: 会话.id,
+      预期父消息id: 用户消息.id,
+      消息: { role: 'assistant', content: '人工分支回复' },
+    })
+    let 子分支 = await 带记忆实例.查询消息分支(用户消息.id)
+    expect(子分支.map((消息) => 消息.id)).toContain(分支回复.id)
+    expect(子分支).toHaveLength(2)
+
+    let 派生会话 = await 带记忆实例.创建派生会话({
+      前驱会话id: 会话.id,
+      前驱消息id: 分支回复.id,
+      摘要: '此前会话的不可变摘要',
+      标题: '压缩后的会话',
+    })
+    expect(派生会话).toMatchObject({ 前驱会话id: 会话.id, 前驱消息id: 分支回复.id })
+    let 派生消息列表 = await 带记忆实例.读取会话消息(派生会话.id)
+    expect(派生消息列表.map((消息) => 消息.消息.role)).toEqual(['system', 'system'])
+    expect(派生消息列表[1]?.消息.content).toBe('此前会话的不可变摘要')
+  })
+
   it('记忆状态不变时不重复注入并可单独读取界面历史', async (): Promise<void> => {
     带记忆实例 = 夹具.新建智能体({ 向量模型: { 类型: '无' } })
     await 带记忆实例.添加记忆({

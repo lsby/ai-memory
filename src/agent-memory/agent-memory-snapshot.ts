@@ -1,5 +1,6 @@
 import type { Kysely } from 'kysely'
-import type { 智能体消息类型 } from '../agent/types'
+import { sql } from 'kysely'
+import { 查询全部会话, 查询全部消息 } from './agent-conversation-storage'
 import { 完整状态Schema, 快照数据Schema, type 完整状态, type 快照数据, type 记忆数据库 } from './agent-memory-types'
 
 async function 读取快照(数据库查询器: Kysely<记忆数据库>): Promise<快照数据> {
@@ -31,20 +32,60 @@ export async function 载入快照(数据库查询器: Kysely<记忆数据库>, 
   }
 }
 
-export async function 导出完整状态(
-  数据库查询器: Kysely<记忆数据库>,
-  当前消息历史: 智能体消息类型[],
-  会话标识: string,
-): Promise<string> {
-  let 完整状态: 完整状态 = { 格式版本: 2, 会话标识, 记忆快照: await 读取快照(数据库查询器), 消息历史: 当前消息历史 }
+export async function 导出完整状态(数据库查询器: Kysely<记忆数据库>, 当前会话id: string | null): Promise<string> {
+  let 完整状态: 完整状态 = {
+    格式版本: 3,
+    记忆快照: await 读取快照(数据库查询器),
+    当前会话id,
+    会话列表: await 查询全部会话(数据库查询器),
+    消息列表: await 查询全部消息(数据库查询器),
+  }
   return JSON.stringify(完整状态)
 }
 
 export async function 导入完整状态(
   数据库查询器: Kysely<记忆数据库>,
   状态数据: string,
-): Promise<{ 消息历史: 智能体消息类型[]; 会话标识?: string | undefined }> {
+): Promise<{ 当前会话id: string | null }> {
   let 数据 = 完整状态Schema.parse(JSON.parse(状态数据))
+  let 已有会话 = await 数据库查询器
+    .selectFrom('会话表')
+    .select((eb) => eb.fn.count<number>('id').as('数量'))
+    .executeTakeFirst()
+  if (Number(已有会话?.数量 ?? 0) > 0) throw new Error('导入完整状态要求目标存储中不存在会话')
   await 载入快照(数据库查询器, JSON.stringify(数据.记忆快照))
-  return { 消息历史: 数据.消息历史, 会话标识: 数据.会话标识 }
+  await sql`SELECT set_config('lsby_ai_memory.导入中', 'true', true)`.execute(数据库查询器)
+  for (let 会话 of 数据.会话列表) {
+    await 数据库查询器
+      .insertInto('会话表')
+      .values({ ...会话, 当前消息id: null, 前驱会话id: null, 前驱消息id: null })
+      .execute()
+  }
+  for (let 消息 of 数据.消息列表) {
+    await 数据库查询器
+      .insertInto('消息表')
+      .values({
+        id: 消息.id,
+        会话id: 消息.会话id,
+        父消息id: 消息.父消息id,
+        角色: 消息.消息.role,
+        载荷: JSON.stringify(消息.消息),
+        创建时间: 消息.创建时间,
+      })
+      .execute()
+  }
+  for (let 会话 of 数据.会话列表) {
+    await 数据库查询器
+      .updateTable('会话表')
+      .set({
+        当前消息id: 会话.当前消息id,
+        前驱会话id: 会话.前驱会话id,
+        前驱消息id: 会话.前驱消息id,
+        更新时间: 会话.更新时间,
+      })
+      .where('id', '=', 会话.id)
+      .execute()
+  }
+  await sql`SELECT set_config('lsby_ai_memory.导入中', 'false', true)`.execute(数据库查询器)
+  return { 当前会话id: 数据.当前会话id }
 }

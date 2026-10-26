@@ -164,7 +164,7 @@ export class 智能体 {
     this.审计器.清空记录()
   }
 
-  private async 执行会话任务<R>(操作: () => Promise<R>): Promise<R> {
+  protected async 执行会话任务<R>(操作: () => Promise<R>): Promise<R> {
     let 释放队列: () => void = () => {}
     let 当前任务 = new Promise<void>((resolve) => {
       释放队列 = resolve
@@ -178,6 +178,9 @@ export class 智能体 {
       释放队列()
     }
   }
+
+  /** 持久化实现可在每个稳定消息边界同步新增消息；普通智能体保持纯内存行为。 */
+  protected async 同步对话消息(_消息列表: 智能体消息类型[], _执行模式: 智能体执行模式): Promise<void> {}
 
   /** 按本轮参数算出工具列表、系统提示词和前缀指纹(没有任何副作用) */
   protected 计算前缀<T extends z.ZodType>(
@@ -266,6 +269,7 @@ export class 智能体 {
       }
       消息列表.push({ role: 'user', content: 选项.命令 })
     }
+    if (更新当前会话审计状态 === true) await this.同步对话消息(消息列表, 执行模式)
     let 校验失败次数 = 0
     let 总轮次 = 0
     let 是否中断 = (): boolean => {
@@ -343,6 +347,7 @@ export class 智能体 {
           校验失败次数,
           回调,
         )
+        if (更新当前会话审计状态 === true) await this.同步对话消息(消息列表, 执行模式)
         if (结果.类型 === '返回') return 结束(结果.数据)
         if (结果.类型 === '校验失败上限') {
           await 回调({ 类型: '流程信息', 内容: 结果.错误信息 })
@@ -368,6 +373,7 @@ export class 智能体 {
             校验失败次数,
             回调,
           )
+          if (更新当前会话审计状态 === true) await this.同步对话消息(消息列表, 执行模式)
           if (结果.类型 === '返回') return 结束(结果.数据)
           if (结果.类型 === '校验失败上限') {
             await 回调({ 类型: '流程信息', 内容: 结果.错误信息 })
@@ -390,6 +396,7 @@ export class 智能体 {
           消息列表.push({ role: 'assistant', content: 流式结果.完整文本 })
 
           let 验证失败 = await 运行结果验证器(文本提取结果, 选项, 消息列表, 校验失败次数, this.最大校验重试次数, 回调)
+          if (更新当前会话审计状态 === true) await this.同步对话消息(消息列表, 执行模式)
           if (验证失败 !== null) {
             校验失败次数 = 验证失败.新校验失败次数
             continue
@@ -438,6 +445,7 @@ export class 智能体 {
                   this.最大校验重试次数,
                   回调,
                 )
+                if (更新当前会话审计状态 === true) await this.同步对话消息(消息列表, 执行模式)
                 if (验证失败 !== null) {
                   校验失败次数 = 验证失败.新校验失败次数
                   continue
@@ -471,12 +479,14 @@ export class 智能体 {
           流式结果.完整文本,
           `你的回复中没有包含有效的结构化数据。请使用 ${提交结果函数名} 函数调用来提交你的最终结果, 或在回复中包含一个 JSON 代码块, 内容以 \`{"type": "function", "function": {"name":\` 开头, 格式需要符合预期结果的 Schema。`,
         )
+        if (更新当前会话审计状态 === true) await this.同步对话消息(消息列表, 执行模式)
         continue
       }
 
       // 空回复
       await 回调({ 类型: '流程信息', 内容: 'AI 返回了空内容, 继续重试' })
       追加系统纠正消息(消息列表, null, '你的回复是空的, 请重新回答。')
+      if (更新当前会话审计状态 === true) await this.同步对话消息(消息列表, 执行模式)
     }
 
     await 回调({ 类型: '流程信息', 内容: `超出最大循环轮次 (${String(this.最大循环轮次)})` })

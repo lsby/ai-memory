@@ -97,15 +97,33 @@ export async function 执行带日志的推理流程<T extends ZodType>(
   原回调: (事件: 智能体事件) => Promise<void>,
   操作: (日志回调: (事件: 智能体事件) => Promise<void>, 事件组id: string) => Promise<回合结果<T>>,
   事件组id?: string,
+  获取上下文消息id?: () => string | null,
 ): Promise<回合结果<T>> {
   let 已校验事件组id = 创建事件组id(事件组id)
   let 开始时间 = new Date()
   let 日志回调 = async (事件: 智能体事件): Promise<void> => {
-    let { 类型, ...事件内容 } = 事件
     let 耗时ms = '耗时ms' in 事件 && typeof 事件.耗时ms === 'number' ? 事件.耗时ms : undefined
+    let 持久化事件内容: object
+    if (事件.类型 === '原始请求配置') {
+      let 配置 = Object.fromEntries(Object.entries(事件.配置))
+      delete 配置['messages']
+      持久化事件内容 = { 配置 }
+    } else if (事件.类型 === '原始AI返回') {
+      持久化事件内容 = { 完整文本: 事件.完整文本, 工具调用列表: 事件.工具调用列表 }
+    } else {
+      let { 类型: _类型, ...事件内容 } = 事件
+      持久化事件内容 = 事件内容
+    }
+    let 上下文消息id = 获取上下文消息id?.() ?? undefined
     await 记录交互日志(
       数据库查询器,
-      { 类型, 开始时间: new Date(), ...(耗时ms !== undefined ? { 耗时ms } : {}), 内容: 转为JSON值(事件内容) },
+      {
+        类型: 事件.类型,
+        开始时间: new Date(),
+        ...(耗时ms !== undefined ? { 耗时ms } : {}),
+        内容: 转为JSON值(持久化事件内容),
+        ...(上下文消息id !== undefined ? { 上下文消息id } : {}),
+      },
       已校验事件组id,
     )
     await 原回调(事件)
@@ -158,6 +176,8 @@ export async function 记录交互日志(
       开始时间: 已校验事件.开始时间,
       耗时ms: 已校验事件.耗时ms ?? null,
       内容: JSON.stringify(已校验事件.内容),
+      上下文消息id: 已校验事件.上下文消息id ?? null,
+      消息id: 已校验事件.消息id ?? null,
     })
     .returningAll()
     .executeTakeFirstOrThrow()
@@ -169,6 +189,8 @@ export async function 记录交互日志(
     开始时间: 结果.开始时间,
     ...(结果.耗时ms !== null ? { 耗时ms: 结果.耗时ms } : {}),
     内容: 结果.内容,
+    ...(结果.上下文消息id !== null ? { 上下文消息id: 结果.上下文消息id } : {}),
+    ...(结果.消息id !== null ? { 消息id: 结果.消息id } : {}),
   }
 }
 
@@ -200,5 +222,7 @@ export async function 查询交互日志(
     开始时间: 结果.开始时间,
     ...(结果.耗时ms !== null ? { 耗时ms: 结果.耗时ms } : {}),
     内容: 结果.内容,
+    ...(结果.上下文消息id !== null ? { 上下文消息id: 结果.上下文消息id } : {}),
+    ...(结果.消息id !== null ? { 消息id: 结果.消息id } : {}),
   }))
 }

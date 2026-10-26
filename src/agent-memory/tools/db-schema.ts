@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto'
 import { 校验schema名, 转义标识符, 默认schema } from '../agent-memory-connection'
 import { 记忆数据库 } from '../agent-memory-types'
 import { 确保在事务中执行 } from './common'
+import { 初始化不可变约束 } from './db-immutable-schema'
 
 /**
  * 在指定 schema 里建表（默认 public，和旧版本的数据布局一致）。
@@ -109,6 +110,45 @@ async function 在事务中初始化数据库(数据库查询器: Kysely<记忆�
         `)
 
   await 执行(`
+          CREATE TABLE IF NOT EXISTS ${名('会话表')} (
+            id TEXT PRIMARY KEY,
+            标题 TEXT NOT NULL DEFAULT '',
+            当前消息id TEXT,
+            前驱会话id TEXT REFERENCES ${名('会话表')}(id) ON DELETE RESTRICT,
+            前驱消息id TEXT,
+            创建时间 TIMESTAMPTZ NOT NULL,
+            更新时间 TIMESTAMPTZ NOT NULL,
+            CHECK ((前驱会话id IS NULL) = (前驱消息id IS NULL)),
+            CHECK (前驱会话id IS NULL OR 前驱会话id <> id)
+          )
+        `)
+
+  await 执行(`
+          CREATE TABLE IF NOT EXISTS ${名('消息表')} (
+            id TEXT PRIMARY KEY,
+            序号 BIGSERIAL,
+            会话id TEXT NOT NULL REFERENCES ${名('会话表')}(id) ON DELETE RESTRICT,
+            父消息id TEXT REFERENCES ${名('消息表')}(id) ON DELETE RESTRICT,
+            角色 TEXT NOT NULL CHECK (角色 IN ('system', 'developer', 'user', 'assistant', 'tool', 'function')),
+            载荷 JSONB NOT NULL,
+            创建时间 TIMESTAMPTZ NOT NULL
+          )
+        `)
+
+  await 执行(`
+    DO $$ BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = '会话表_当前消息id_fkey' AND conrelid = '会话表'::regclass) THEN
+        ALTER TABLE ${名('会话表')} ADD CONSTRAINT 会话表_当前消息id_fkey
+          FOREIGN KEY (当前消息id) REFERENCES ${名('消息表')}(id) ON DELETE RESTRICT;
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = '会话表_前驱消息id_fkey' AND conrelid = '会话表'::regclass) THEN
+        ALTER TABLE ${名('会话表')} ADD CONSTRAINT 会话表_前驱消息id_fkey
+          FOREIGN KEY (前驱消息id) REFERENCES ${名('消息表')}(id) ON DELETE RESTRICT;
+      END IF;
+    END $$;
+  `)
+
+  await 执行(`
           CREATE TABLE IF NOT EXISTS ${名('交互日志表')} (
             id TEXT PRIMARY KEY,
             序号 BIGSERIAL,
@@ -116,9 +156,26 @@ async function 在事务中初始化数据库(数据库查询器: Kysely<记忆�
             类型 TEXT NOT NULL,
             开始时间 TIMESTAMPTZ NOT NULL,
             耗时ms DOUBLE PRECISION,
-            内容 JSON NOT NULL
+            内容 JSON NOT NULL,
+            上下文消息id TEXT REFERENCES ${名('消息表')}(id) ON DELETE RESTRICT,
+            消息id TEXT REFERENCES ${名('消息表')}(id) ON DELETE RESTRICT
           )
         `)
+
+  await 执行(`ALTER TABLE ${名('交互日志表')} ADD COLUMN IF NOT EXISTS 上下文消息id TEXT;`)
+  await 执行(`ALTER TABLE ${名('交互日志表')} ADD COLUMN IF NOT EXISTS 消息id TEXT;`)
+  await 执行(`
+    DO $$ BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = '交互日志表_上下文消息id_fkey' AND conrelid = '交互日志表'::regclass) THEN
+        ALTER TABLE ${名('交互日志表')} ADD CONSTRAINT 交互日志表_上下文消息id_fkey
+          FOREIGN KEY (上下文消息id) REFERENCES ${名('消息表')}(id) ON DELETE RESTRICT;
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = '交互日志表_消息id_fkey' AND conrelid = '交互日志表'::regclass) THEN
+        ALTER TABLE ${名('交互日志表')} ADD CONSTRAINT 交互日志表_消息id_fkey
+          FOREIGN KEY (消息id) REFERENCES ${名('消息表')}(id) ON DELETE RESTRICT;
+      END IF;
+    END $$;
+  `)
 
   await 执行(`
     CREATE TABLE IF NOT EXISTS ${名('_agent_session_commit')} (
@@ -147,6 +204,14 @@ async function 在事务中初始化数据库(数据库查询器: Kysely<记忆�
   await 执行(`CREATE INDEX IF NOT EXISTS 记忆提交表_父提交_idx ON ${名('记忆提交表')} (父提交id);`)
   await 执行(`CREATE INDEX IF NOT EXISTS 交互日志表_事件组_idx ON ${名('交互日志表')} (事件组id, 序号);`)
   await 执行(`CREATE INDEX IF NOT EXISTS 交互日志表_开始时间_idx ON ${名('交互日志表')} (开始时间 DESC);`)
+  await 执行(`CREATE INDEX IF NOT EXISTS 会话表_更新时间_idx ON ${名('会话表')} (更新时间 DESC, id);`)
+  await 执行(`CREATE INDEX IF NOT EXISTS 会话表_前驱会话_idx ON ${名('会话表')} (前驱会话id);`)
+  await 执行(`CREATE INDEX IF NOT EXISTS 消息表_会话序号_idx ON ${名('消息表')} (会话id, 序号);`)
+  await 执行(`CREATE INDEX IF NOT EXISTS 消息表_父消息_idx ON ${名('消息表')} (父消息id);`)
+  await 执行(`CREATE INDEX IF NOT EXISTS 交互日志表_上下文消息_idx ON ${名('交互日志表')} (上下文消息id);`)
+  await 执行(`CREATE INDEX IF NOT EXISTS 交互日志表_消息_idx ON ${名('交互日志表')} (消息id);`)
+
+  await 初始化不可变约束(数据库查询器, schema)
 
   let columnsCheck = await sql`
     SELECT column_name FROM information_schema.columns WHERE table_schema = ${schema} AND table_name = '记忆表'
@@ -394,7 +459,7 @@ async function 在事务中初始化数据库(数据库查询器: Kysely<记忆�
 
   await 数据库查询器
     .insertInto('记忆元数据表')
-    .values({ 键: 'KERNEL_SCHEMA_VERSION', 值: '5' })
-    .onConflict((冲突) => 冲突.column('键').doUpdateSet({ 值: '5' }))
+    .values({ 键: 'KERNEL_SCHEMA_VERSION', 值: '6' })
+    .onConflict((冲突) => 冲突.column('键').doUpdateSet({ 值: '6' }))
     .execute()
 }

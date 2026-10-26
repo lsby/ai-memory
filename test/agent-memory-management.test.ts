@@ -69,7 +69,7 @@ describe('记忆应用管理接口', () => {
     await expect(智能体实例.更新记忆('id', {})).rejects.toThrow('至少提供一个')
   })
 
-  it('v2 快照和完整状态往返恢复动态工具及完整会话', async (): Promise<void> => {
+  it('v2 记忆快照和 v3 完整状态往返恢复动态工具及完整会话', async (): Promise<void> => {
     智能体实例 = 夹具.新建智能体({ 向量模型: { 类型: '无' } })
     await 智能体实例.添加记忆({
       内容: '需要恢复的记忆',
@@ -80,10 +80,17 @@ describe('记忆应用管理接口', () => {
       创建时间: new Date('2026-01-01T00:00:00.000Z'),
     })
     expect((await 智能体实例.注册动态工具(动态工具代码, '{"value":3}')).结果).toBe('成功')
-    智能体实例.载入对话历史([
-      { role: 'system', content: '固定系统提示' },
-      { role: 'user', content: '完整内部状态', isSystemInjection: true, systemInjectionKind: 'memory-state' },
-    ])
+    let 会话 = await 智能体实例.创建会话({ 标题: '完整状态会话' })
+    let 系统消息 = await 智能体实例.追加会话消息({
+      会话id: 会话.id,
+      预期父消息id: null,
+      消息: { role: 'system', content: '固定系统提示' },
+    })
+    await 智能体实例.追加会话消息({
+      会话id: 会话.id,
+      预期父消息id: 系统消息.id,
+      消息: { role: 'user', content: '完整内部状态', isSystemInjection: true, systemInjectionKind: 'memory-state' },
+    })
 
     let 快照 = await 智能体实例.保存快照()
     expect(快照数据Schema.parse(JSON.parse(快照))).toMatchObject({
@@ -97,11 +104,16 @@ describe('记忆应用管理接口', () => {
 
     let 完整状态文本 = await 智能体实例.导出完整状态()
     let 完整状态 = 完整状态Schema.parse(JSON.parse(完整状态文本))
-    expect(完整状态).toMatchObject({ 格式版本: 2, 消息历史: [{ role: 'system' }, { content: '完整内部状态' }] })
-    智能体实例.重置对话()
-    await 智能体实例.删除动态工具('snapshot_tool')
+    expect(完整状态).toMatchObject({
+      格式版本: 3,
+      当前会话id: 会话.id,
+      会话列表: [{ id: 会话.id }],
+      消息列表: [{ 消息: { role: 'system' } }, { 消息: { content: '完整内部状态' } }],
+    })
+    await 智能体实例.销毁()
+    智能体实例 = 夹具.新建智能体({ 向量模型: { 类型: '无' } })
     await 智能体实例.导入完整状态(完整状态文本)
-    expect(智能体实例.读取对话历史()).toEqual(完整状态.消息历史)
+    expect(智能体实例.读取对话历史()).toEqual(完整状态.消息列表.map((消息) => 消息.消息))
     expect(await 智能体实例.查询动态工具()).toMatchObject([{ 名称: 'snapshot_tool' }])
     await expect(智能体实例.导入完整状态('{"消息历史":[]}')).rejects.toThrow()
   })
