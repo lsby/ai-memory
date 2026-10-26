@@ -3,26 +3,11 @@ import { vector } from '@electric-sql/pglite-pgvector'
 import { Kysely } from 'kysely'
 import type OpenAI from 'openai'
 import { z } from 'zod'
-import { 持久化会话智能体 } from '../agent/persistent-conversation-agent'
+import { 持久化会话智能体 } from '../agent/core/persistent-conversation-agent'
 import { type 回合结果, type 智能体事件, type 智能体执行模式, type 智能体消息类型 } from '../agent/types'
-import { 会话控制器 } from './agent-conversation-controller'
-import {
-  切换记忆提交 as 外部切换记忆提交,
-  回退到父记忆提交 as 外部回退到父记忆提交,
-  获取当前提交ID,
-} from './agent-memory-commit'
-import { 构建智能体配置 } from './agent-memory-config'
-import { 带互斥的PGlite方言, 默认schema } from './agent-memory-connection'
-import {
-  创建向量缓存 as 外部创建向量缓存,
-  构建操作上下文 as 外部构建操作上下文,
-  type 上下文依赖,
-} from './agent-memory-context'
-import * as 动态工具管理 from './agent-memory-dynamic-management'
-import {
-  批量注入记忆 as 外部批量注入记忆,
-  检查并清理二级记忆 as 外部检查并清理二级记忆,
-} from './agent-memory-lifecycle'
+import { 构建智能体配置 } from './config'
+import { 创建向量缓存 as 外部创建向量缓存, 构建操作上下文 as 外部构建操作上下文, type 上下文依赖 } from './context'
+import { 批量注入记忆 as 外部批量注入记忆, 检查并清理二级记忆 as 外部检查并清理二级记忆 } from './lifecycle'
 import {
   查询交互日志 as 外部查询交互日志,
   记录交互日志 as 外部记录交互日志,
@@ -30,23 +15,34 @@ import {
   执行带日志的推理流程,
   执行带日志的记忆变更,
   转为JSON值,
-} from './agent-memory-logger'
+} from './logger'
+import {
+  切换记忆提交 as 外部切换记忆提交,
+  回退到父记忆提交 as 外部回退到父记忆提交,
+  获取当前提交ID,
+} from './operations/commit'
+import { 会话控制器 } from './operations/conversation-controller'
+import * as 动态工具管理 from './operations/dynamic-management'
 import {
   更新记忆 as 外部更新记忆,
   查询动态工具 as 外部查询动态工具,
   查询记忆 as 外部查询记忆,
   查询记忆关联 as 外部查询记忆关联,
   查询记忆提交 as 外部查询记忆提交,
-} from './agent-memory-management'
-import { 定时任务入口 as 外部定时任务入口, 执行记忆重组 as 外部执行记忆重组 } from './agent-memory-reorganization'
+} from './operations/management'
+import { 定时任务入口 as 外部定时任务入口, 执行记忆重组 as 外部执行记忆重组 } from './operations/reorganization'
+import { 解决问题 as 外部解决问题 } from './operations/solve'
+import { 带互斥的PGlite方言, 默认schema } from './storage/connection'
+import { 清除共享初始化锁, 获取或创建PGlite, 获取或创建共享初始化锁, 销毁存储 } from './storage/memory-storage'
 import {
   保存快照 as 外部保存快照,
   导入完整状态 as 外部导入完整状态,
   导出完整状态 as 外部导出完整状态,
   载入快照 as 外部载入快照,
-} from './agent-memory-snapshot'
-import { 解决问题 as 外部解决问题 } from './agent-memory-solve'
-import { 清除共享初始化锁, 获取或创建PGlite, 获取或创建共享初始化锁, 销毁存储 } from './agent-memory-storage'
+} from './storage/snapshot'
+import { 新向量缓存, type 向量缓存 } from './storage/vector-cache'
+import { 初始化数据库 } from './tools/db-schema'
+import { 全局排版 as 外部全局排版 } from './tools/layout'
 import {
   批量注入记忆项Schema,
   type 交互日志事件,
@@ -65,10 +61,7 @@ import {
   type 查询交互日志选项,
   type 查询记忆选项,
   type 记忆数据库,
-} from './agent-memory-types'
-import { 新向量缓存, type 向量缓存 } from './agent-memory-vector-cache'
-import { 初始化数据库 } from './tools/db-schema'
-import { 全局排版 as 外部全局排版 } from './tools/layout'
+} from './types'
 
 export class 带记忆的智能体 extends 持久化会话智能体 {
   private 配置: 内部带记忆的智能体配置

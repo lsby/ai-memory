@@ -2,8 +2,8 @@ import { jsonrepair } from 'jsonrepair'
 import { Kysely } from 'kysely'
 import { randomUUID } from 'node:crypto'
 import { 智能体事件 } from '../../agent/types'
-import { 内部带记忆的智能体配置, 记忆数据库 } from '../agent-memory-types'
-import { 加载并校验动态工具, 在沙盒中执行工具 } from '../dynamic-tool-loader'
+import { 内部带记忆的智能体配置, 记忆数据库 } from '../types'
+import { 加载并校验动态工具, 在沙盒中执行工具 } from './dynamic-loader'
 
 export type 动态工具上下文 = {
   数据库查询器: Kysely<记忆数据库>

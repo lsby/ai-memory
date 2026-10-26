@@ -1,7 +1,7 @@
 import { Kysely, sql } from 'kysely'
 import { z } from 'zod'
 import { 智能体事件, 智能体工具 } from '../../agent/types'
-import { 内部带记忆的智能体配置, 格式化为本地时间字符串, 记忆数据库, 记忆表 } from '../agent-memory-types'
+import { 内部带记忆的智能体配置, 格式化为本地时间字符串, 记忆数据库, 记忆表 } from '../types'
 import { 获取混合关联排序 } from './common'
 
 type 图谱检索上下文 = {

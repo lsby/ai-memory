@@ -306,3 +306,26 @@ export type REPL选项<T extends z.ZodType> = 解决问题选项<T> & {
 
 /** 累积的 tool_call 信息 */
 export type 累积工具调用 = { id: string; 名称: string; 参数片段: string }
+
+// ============================================================
+// WebSocket 事件类型
+// ============================================================
+
+export let 通用智能体WebSocket事件Schema = z.object({
+  type: z.enum([
+    'text',
+    'toolCallStart',
+    'toolCallResult',
+    'toolCallError',
+    'validateFail',
+    'agentError',
+    'agentComplete',
+    'initState',
+  ]),
+  data: z.string(),
+})
+
+export type 通用智能体WebSocket事件 = z.infer<typeof 通用智能体WebSocket事件Schema>
+
+export let 通用智能体WebSocket中断Schema = z.object({ type: z.enum(['interrupt', 'attach']) })
+export type 通用智能体WebSocket中断 = z.infer<typeof 通用智能体WebSocket中断Schema>

@@ -2,7 +2,7 @@ import { Kysely } from 'kysely'
 import { randomUUID } from 'node:crypto'
 import { z } from 'zod'
 import { 智能体事件, 智能体工具 } from '../../agent/types'
-import { 内部带记忆的智能体配置, 记忆数据库, 记忆等级 } from '../agent-memory-types'
+import { 内部带记忆的智能体配置, 记忆数据库, 记忆等级 } from '../types'
 import { 刷新记忆关联网络, 应用受保护标签, 读取旧标签用于保护 } from './common'
 import { 增量排版 } from './layout'
 

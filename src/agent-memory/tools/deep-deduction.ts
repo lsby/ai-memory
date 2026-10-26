@@ -1,8 +1,8 @@
 import { z } from 'zod'
 import { type 智能体事件, 智能体工具 } from '../../agent/types'
 import { 带记忆的智能体 } from '../agent-memory'
-import type { 内部带记忆的智能体配置, 带记忆的解决问题选项, 批量注入记忆项 } from '../agent-memory-types'
-import { 记忆等级 } from '../agent-memory-types'
+import type { 内部带记忆的智能体配置, 带记忆的解决问题选项, 批量注入记忆项 } from '../types'
+import { 记忆等级 } from '../types'
 
 type 深度推演上下文 = {
   配置: 内部带记忆的智能体配置

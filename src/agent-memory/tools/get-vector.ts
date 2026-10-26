@@ -1,6 +1,6 @@
 import type OpenAI from 'openai'
 import { 智能体事件 } from '../../agent/types'
-import type { 获取向量结果 } from '../agent-memory-types'
+import type { 获取向量结果 } from '../types'
 
 type 本地向量提取器类型 = (
   文本: string,

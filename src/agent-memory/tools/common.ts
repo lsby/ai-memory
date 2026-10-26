@@ -1,6 +1,6 @@
 import { Kysely, sql } from 'kysely'
 import { 智能体事件 } from '../../agent/types'
-import { 内部带记忆的智能体配置, 记忆数据库 } from '../agent-memory-types'
+import { 内部带记忆的智能体配置, 记忆数据库 } from '../types'
 
 export async function 确保在事务中执行<DB, T>(
   数据库查询器: Kysely<DB>,

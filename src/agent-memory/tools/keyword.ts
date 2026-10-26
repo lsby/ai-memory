@@ -1,7 +1,7 @@
 import { Kysely } from 'kysely'
 import { z } from 'zod'
 import { 智能体事件, 智能体工具 } from '../../agent/types'
-import { 内部带记忆的智能体配置, 记忆数据库 } from '../agent-memory-types'
+import { 内部带记忆的智能体配置, 记忆数据库 } from '../types'
 import { 刷新记忆关联网络 } from './common'
 
 type 关键词管理上下文 = {

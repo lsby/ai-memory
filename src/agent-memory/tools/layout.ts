@@ -1,6 +1,6 @@
 import * as d3 from 'd3'
 import { Kysely } from 'kysely'
-import { 记忆数据库 } from '../agent-memory-types'
+import { 记忆数据库 } from '../types'
 import { 确保在事务中执行 } from './common'
 
 type 布局节点 = d3.SimulationNodeDatum & { id: string; x: number; y: number }

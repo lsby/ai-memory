@@ -1,7 +1,7 @@
 import { Kysely, sql } from 'kysely'
 import { randomUUID } from 'node:crypto'
-import { 校验schema名, 转义标识符, 默认schema } from '../agent-memory-connection'
-import { 记忆数据库 } from '../agent-memory-types'
+import { 校验schema名, 转义标识符, 默认schema } from '../storage/connection'
+import { 记忆数据库 } from '../types'
 import { 确保在事务中执行 } from './common'
 import { 初始化不可变约束 } from './db-immutable-schema'
 

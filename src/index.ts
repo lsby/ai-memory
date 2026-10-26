@@ -1,5 +1,8 @@
 export { 带记忆的智能体 } from './agent-memory/agent-memory'
-export { 删除记忆空间, 在互斥锁内执行 } from './agent-memory/agent-memory-connection'
+export { 生成默认记忆提示词 } from './agent-memory/prompt/memory-prompt'
+export { 全部记忆工具名, 记忆工具名 } from './agent-memory/prompt/memory-tool-names'
+export type { 记忆工具名类型 } from './agent-memory/prompt/memory-tool-names'
+export { 删除记忆空间, 在互斥锁内执行 } from './agent-memory/storage/connection'
 export {
   JSON值Schema,
   交互日志事件Schema,
@@ -9,7 +12,7 @@ export {
   批量注入记忆项Schema,
   更新记忆选项Schema,
   记忆等级,
-} from './agent-memory/agent-memory-types'
+} from './agent-memory/types'
 export type {
   JSON值,
   交互日志事件,
@@ -33,12 +36,8 @@ export type {
   查询交互日志选项,
   查询会话列表选项,
   查询记忆选项,
-} from './agent-memory/agent-memory-types'
-export { 生成默认记忆提示词 } from './agent-memory/memory-prompt'
-export { 全部记忆工具名, 记忆工具名 } from './agent-memory/memory-tool-names'
-export type { 记忆工具名类型 } from './agent-memory/memory-tool-names'
-export { 智能体 } from './agent/agent'
-export { 统计字符数 } from './agent/audit'
+} from './agent-memory/types'
+export { 智能体 } from './agent/core/agent'
 export {
   智能体函数消息Schema,
   智能体助手消息Schema,
@@ -74,3 +73,4 @@ export type {
   调试拦截钩子,
   追加注入消息,
 } from './agent/types'
+export { 统计字符数 } from './agent/utils/audit'

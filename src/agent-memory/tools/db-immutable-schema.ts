@@ -1,7 +1,7 @@
 import type { Kysely } from 'kysely'
 import { sql } from 'kysely'
-import { 转义标识符 } from '../agent-memory-connection'
-import type { 记忆数据库 } from '../agent-memory-types'
+import { 转义标识符 } from '../storage/connection'
+import type { 记忆数据库 } from '../types'
 
 /** 把所有历史关系改为显式删除，并在数据库层保护会话、消息和日志。 */
 export async function 初始化不可变约束(数据库查询器: Kysely<记忆数据库>, schema: string): Promise<void> {

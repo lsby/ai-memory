@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { 智能体 } from '../../../src/agent/agent'
+import { 智能体 } from '../../../src/agent/core/agent'
 import { 智能体事件, 智能体工具 } from '../../../src/agent/types'
 import { baseURL, model, 创建客户端, 检查环境变量 } from '../test-helper'
 
