@@ -82,6 +82,17 @@ describe('带记忆的智能体对话', () => {
     expect(await 智能体实例.查询前缀快照(前缀id)).toMatchObject({ id: 前缀id })
     let 模型工具事件 = 日志列表.filter((日志) => 日志.类型 === '工具调用开始' || 日志.类型 === '工具调用结果')
     expect(模型工具事件.every((日志) => 日志.模型请求id !== undefined && 日志.前缀id !== undefined)).toBe(true)
+    let 记忆工具事件 = 模型工具事件.filter(
+      (日志) =>
+        typeof 日志.内容 === 'object' &&
+        日志.内容 !== null &&
+        Array.isArray(日志.内容) === false &&
+        日志.内容['id'] === 'append_tag',
+    )
+    expect(记忆工具事件.every((日志) => 日志.消息id !== undefined)).toBe(true)
+    let 工具消息id = 记忆工具事件[0]?.消息id
+    if (工具消息id === undefined) throw new Error('工具日志缺少消息引用')
+    expect((await 智能体实例.读取消息历史(工具消息id)).at(-1)?.消息.role).toBe('tool')
     expect(日志列表.at(-1)?.内容).not.toHaveProperty('结果')
   })
 })

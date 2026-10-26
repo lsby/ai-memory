@@ -15,6 +15,13 @@ export function 构建智能体配置(选项: 带记忆的智能体选项): {
     let 维度 = 选项.向量模型.维度
     if (Number.isInteger(维度) === false || 维度 < 1) throw new Error('向量模型.维度 必须是正整数')
   }
+  if (选项.自动压缩 !== undefined) {
+    if (Number.isInteger(选项.自动压缩.触发字符数) === false || 选项.自动压缩.触发字符数 < 1)
+      throw new Error('自动压缩.触发字符数 必须是正整数')
+    if (Number.isInteger(选项.自动压缩.目标字符数) === false || 选项.自动压缩.目标字符数 < 1)
+      throw new Error('自动压缩.目标字符数 必须是正整数')
+    if (选项.自动压缩.目标字符数 >= 选项.自动压缩.触发字符数) throw new Error('自动压缩.目标字符数 必须小于触发字符数')
+  }
   let 禁用深度推演 = 选项.禁用深度推演 ?? false
   let 筛选 = 选项.记忆工具筛选
   let 启用的记忆工具名 = 全部记忆工具名.filter(
@@ -41,7 +48,7 @@ export function 构建智能体配置(选项: 带记忆的智能体选项): {
   let 自定义提示词 = 选项.记忆提示词
   let 记忆提示词文本 =
     自定义提示词 === undefined
-      ? 生成默认记忆提示词(启用的记忆工具名)
+      ? 生成默认记忆提示词(启用的记忆工具名, 选项.模型语言 ?? 'zh-CN')
       : typeof 自定义提示词 === 'string'
         ? 自定义提示词
         : 自定义提示词([...启用的记忆工具名])

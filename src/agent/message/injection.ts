@@ -39,3 +39,8 @@ export function 格式化当前时间(当前时间: Date, 时区?: string): stri
   let 偏移分 = (绝对值偏移 % 60).toString().padStart(2, '0')
   return `${iso部分}${符号}${偏移小时}:${偏移分}`
 }
+
+export function 构建当前时间注入(当前时间: Date, 时区: string | undefined, 模型语言: 'zh-CN' | 'en-US'): string {
+  let 标题 = 模型语言 === 'en-US' ? 'Current time' : '当前时间'
+  return `[${标题}: ${格式化当前时间(当前时间, 时区)}]`
+}

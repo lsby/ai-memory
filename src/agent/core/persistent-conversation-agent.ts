@@ -1,5 +1,6 @@
+import { 执行压缩当前会话 } from '../../agent-memory/operations/conversation-compression'
 import { 会话控制器 } from '../../agent-memory/operations/conversation-controller'
-import type { 公开会话, 公开消息, 创建派生会话选项, 查询会话列表选项 } from '../../agent-memory/types'
+import type { 公开会话, 公开消息, 创建派生会话选项, 压缩当前会话选项, 查询会话列表选项 } from '../../agent-memory/types'
 import type { 智能体执行模式, 智能体消息类型, 智能体选项 } from '../types'
 import { 智能体 } from './agent'
 
@@ -94,5 +95,9 @@ export abstract class 持久化会话智能体 extends 智能体 {
   /** 从前驱消息快照创建摘要会话，并立即切换到新会话。 */
   public async 创建派生会话(选项: 创建派生会话选项): Promise<公开会话> {
     return await this.执行会话任务(async (): Promise<公开会话> => await this.会话控制器().创建派生会话(选项))
+  }
+
+  public async 压缩当前会话(选项: 压缩当前会话选项): Promise<公开会话> {
+    return await this.执行会话任务(async () => await 执行压缩当前会话(this.会话控制器(), this.模型语言, 选项))
   }
 }

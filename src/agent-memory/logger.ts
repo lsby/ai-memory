@@ -119,9 +119,39 @@ export async function 执行带日志的推理流程<T extends ZodType>(
 ): Promise<回合结果<T>> {
   let 已校验事件组id = 创建事件组id(事件组id)
   let 开始时间 = new Date()
+  let 待关联工具事件: 智能体事件[] = []
   let 日志回调 = async (事件: 智能体事件): Promise<void> => {
     await 原回调(事件)
     if (事件.类型 === 'AI文本片段' || 事件.类型 === '原始AI返回' || 事件.类型 === '最终结果') return
+    if (
+      (事件.类型 === '工具调用开始' || 事件.类型 === '工具调用结果' || 事件.类型 === '工具调用失败') &&
+      事件.模型请求id !== undefined
+    ) {
+      待关联工具事件.push(事件)
+      return
+    }
+    if (事件.类型 === '模型响应完成') {
+      let 本次工具事件 = 待关联工具事件.filter(
+        (工具事件) => '模型请求id' in 工具事件 && 工具事件.模型请求id === 事件.模型请求id,
+      )
+      待关联工具事件 = 待关联工具事件.filter(
+        (工具事件) => '模型请求id' in 工具事件 && 工具事件.模型请求id !== 事件.模型请求id,
+      )
+      for (let 工具事件 of 本次工具事件) {
+        let 调用id = 'id' in 工具事件 ? 工具事件.id : undefined
+        let 消息id = 事件.工具消息映射.find((映射) => 映射.调用id === 调用id)?.消息id
+        await 写入推理事件(数据库查询器, 已校验事件组id, 工具事件, 获取上下文消息id, 消息id)
+      }
+    }
+    await 写入推理事件(数据库查询器, 已校验事件组id, 事件, 获取上下文消息id)
+  }
+  let 写入推理事件 = async (
+    目标数据库: Kysely<记忆数据库>,
+    目标事件组id: string,
+    事件: 智能体事件,
+    读取上下文消息id?: () => string | null,
+    关联消息id?: string,
+  ): Promise<void> => {
     let 耗时ms = '耗时ms' in 事件 && typeof 事件.耗时ms === 'number' ? 事件.耗时ms : undefined
     let 持久化事件内容: object
     if (事件.类型 === '原始请求配置') {
@@ -152,13 +182,13 @@ export async function 执行带日志的推理流程<T extends ZodType>(
       let { 类型: _类型, ...事件内容 } = 事件
       持久化事件内容 = 事件内容
     }
-    let 上下文消息id = 获取上下文消息id?.() ?? undefined
-    let 记忆提交id = (await 获取当前提交ID(数据库查询器)) ?? undefined
+    let 上下文消息id = 读取上下文消息id?.() ?? undefined
+    let 记忆提交id = (await 获取当前提交ID(目标数据库)) ?? undefined
     let 模型请求id = '模型请求id' in 事件 ? 事件.模型请求id : undefined
     let 前缀id = '前缀id' in 事件 ? 事件.前缀id : undefined
-    let 消息id = 事件.类型 === '模型响应完成' ? 事件.响应消息id : undefined
+    let 消息id = 关联消息id ?? (事件.类型 === '模型响应完成' ? 事件.响应消息id : undefined)
     await 记录交互日志(
-      数据库查询器,
+      目标数据库,
       {
         类型: 事件.类型,
         开始时间: new Date(),
@@ -170,7 +200,7 @@ export async function 执行带日志的推理流程<T extends ZodType>(
         ...(记忆提交id !== undefined ? { 记忆提交id } : {}),
         ...(前缀id !== undefined ? { 前缀id } : {}),
       },
-      已校验事件组id,
+      目标事件组id,
     )
   }
   let 开始记忆提交id = (await 获取当前提交ID(数据库查询器)) ?? undefined

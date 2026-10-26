@@ -84,7 +84,8 @@ let 动态工具名: readonly 记忆工具名类型[] = [
  * - 没有任何动态工具时, 不写动态工具系统; 动态工具的各条说明也按启用的工具取舍。
  * 全部启用时与 0.2.3 版的写死文本逐字一致。
  */
-export function 生成默认记忆提示词(启用的工具名: readonly string[]): string {
+export function 生成默认记忆提示词(启用的工具名: readonly string[], 模型语言: 'zh-CN' | 'en-US' = 'zh-CN'): string {
+  if (模型语言 === 'en-US') return 生成英文记忆提示词(启用的工具名)
   let 已启用 = (名称: string): boolean => 启用的工具名.includes(名称)
   let 有记忆管理工具 = 记忆管理工具名.some(已启用)
   let 有动态工具 = 动态工具名.some(已启用)
@@ -108,6 +109,24 @@ export function 生成默认记忆提示词(启用的工具名: readonly string[
     if (维护项列表.length > 0) 行列表.push(`${维护管理前缀}${维护项列表.join('、')}。`)
     if (已启用(记忆工具名.创建动态工具) || 已启用(记忆工具名.更新动态工具)) 行列表.push(沙盒项)
     段落列表.push(行列表.join('\n'))
+  }
+  return `${段落列表.join('\n\n')}\n`
+}
+
+function 生成英文记忆提示词(启用的工具名: readonly string[]): string {
+  let 已启用 = (名称: string): boolean => 启用的工具名.includes(名称)
+  let 段落列表 = [
+    `## Memory system\nYou have three memory levels:\n1. Level 0 contains core rules and persona information and is always attached. Change it only with great care.\n2. Level 1 is working memory and is always attached. Store key facts for the current work and assign an importance score.\n3. Level 2 is long-term memory. A small relevant subset is recalled automatically.${已启用(记忆工具名.回忆延伸) ? ' Use `extend_memory` when you need exact or broader historical context.' : ''}`,
+  ]
+  if (记忆管理工具名.some(已启用)) {
+    段落列表.push(
+      `**Memory practice**\nUse evidence to test uncertain hypotheses. Update memories when evidence changes. Preserve general rules and reusable lessons rather than unnecessary task-specific detail. Keywords build the relation graph; tags describe metadata and state; scores from 0 to 100 represent importance. Removing a memory means removing it from the current state, not erasing historical commits.`,
+    )
+  }
+  if (动态工具名.some(已启用)) {
+    段落列表.push(
+      '## Dynamic tools\nRelevant tools may be recalled automatically. Use `call_dynamic_tool` to run a recalled tool. Dynamic JavaScript tools execute in an isolated sandbox without network or file-system access. Creation and updates require a successful smoke test.',
+    )
   }
   return `${段落列表.join('\n\n')}\n`
 }

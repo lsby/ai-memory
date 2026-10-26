@@ -26,6 +26,13 @@ export function 创建模型响应记录器(选项: {
   return async (状态): Promise<void> => {
     if (是否已记录 === true) return
     let 响应消息 = 选项.消息列表.slice(选项.消息起点).find((消息) => 消息.role === 'assistant')
+    let 工具消息映射 = 选项.消息列表
+      .slice(选项.消息起点)
+      .filter(
+        (消息) =>
+          消息.role === 'tool' && typeof 消息.tool_call_id === 'string' && typeof 消息.持久化消息id === 'string',
+      )
+      .map((消息) => ({ 调用id: String(消息.tool_call_id), 消息id: String(消息.持久化消息id) }))
     await 选项.回调({
       类型: '模型响应完成',
       模型请求id: 选项.上下文.id,
@@ -33,6 +40,7 @@ export function 创建模型响应记录器(选项: {
       前缀id: 选项.上下文.前缀id,
       状态,
       ...(响应消息?.持久化消息id !== undefined ? { 响应消息id: 响应消息.持久化消息id } : {}),
+      工具消息映射,
       工具调用数量: 选项.读取工具调用数量(),
     })
     是否已记录 = true

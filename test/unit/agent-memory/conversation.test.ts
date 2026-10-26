@@ -1,6 +1,7 @@
 import OpenAI from 'openai'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
+import { 转换为模型消息 } from '../../../src/agent/message/message-serialization'
 import { 带记忆的智能体, 智能体, 记忆等级 } from '../../../src/index'
 import { 使用共享PGlite } from '../../helpers/shared-pglite-fixture'
 
@@ -245,6 +246,36 @@ describe('实例级对话历史', () => {
     let 派生消息列表 = await 带记忆实例.读取会话消息(派生会话.id)
     expect(派生消息列表.map((消息) => 消息.消息.role)).toEqual(['system', 'system'])
     expect(派生消息列表[1]?.消息.content).toBe('此前会话的不可变摘要')
+
+    await 带记忆实例.对话({ ...创建选项('压缩后继续'), 是否自动召回: false })
+    let 压缩后请求 = 请求消息快照.at(-1)
+    if (压缩后请求 === undefined) throw new Error('缺少压缩后请求快照')
+    expect(JSON.stringify(压缩后请求)).toContain('此前会话的不可变摘要')
+    let 发给模型的消息 = 带记忆实例.读取对话历史().map(转换为模型消息)
+    expect(JSON.stringify(发给模型的消息)).not.toContain('compressionSourceSessionId')
+    expect(JSON.stringify(发给模型的消息)).not.toContain('compressionSourceMessageId')
+  })
+
+  it('高层压缩生成摘要并原子切换到派生会话', async (): Promise<void> => {
+    带记忆实例 = 夹具.新建智能体({ 向量模型: { 类型: '无' }, 系统提示词: '固定系统提示词' })
+    await 带记忆实例.对话({ ...创建选项('需要压缩的原会话'), 是否自动召回: false })
+    let 原会话 = await 带记忆实例.读取当前会话()
+    let 摘要客户端 = {
+      chat: {
+        completions: { create: vi.fn().mockResolvedValue({ choices: [{ message: { content: '精确压缩摘要' } }] }) },
+      },
+    } as unknown as OpenAI
+
+    let 派生会话 = await 带记忆实例.压缩当前会话({
+      openai客户端: 摘要客户端,
+      模型名称: 'summary-model',
+      目标字符数: 100,
+    })
+
+    expect(派生会话.前驱会话id).toBe(原会话.id)
+    expect(派生会话.前驱消息id).toBe(原会话.当前消息id)
+    expect((await 带记忆实例.读取会话消息(派生会话.id))[1]?.消息.content).toBe('精确压缩摘要')
+    expect((await 带记忆实例.读取会话消息(原会话.id)).length).toBeGreaterThan(0)
   })
 
   it('记忆状态不变时不重复注入并可单独读取界面历史', async (): Promise<void> => {

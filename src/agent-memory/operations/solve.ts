@@ -7,6 +7,7 @@ import { 智能体工具 } from '../../agent/types'
 import { 校验时区 } from '../../agent/utils/timezone'
 import { 转为JSON值 } from '../logger'
 import { 记忆工具名 } from '../prompt/memory-tool-names'
+import { 本地化记忆工具 } from '../prompt/model-language'
 import { 深度推演工具 } from '../tools/deep-deduction'
 import { 加载并校验动态工具 } from '../tools/dynamic-loader'
 import { 提取动态工具向量文本 } from '../tools/dynamic-tool-api'
@@ -34,17 +35,17 @@ import {
   type 记忆表,
 } from '../types'
 
-export function 格式化相对时间(记忆时间: Date, 当前时间: Date): string {
+export function 格式化相对时间(记忆时间: Date, 当前时间: Date, 模型语言: 'zh-CN' | 'en-US' = 'zh-CN'): string {
   let 差值ms = 当前时间.getTime() - 记忆时间.getTime()
   let 差值分钟 = Math.floor(差值ms / 60000)
-  if (差值分钟 < 1) return '刚刚'
-  if (差值分钟 < 60) return `${String(差值分钟)}分钟前`
+  if (差值分钟 < 1) return 模型语言 === 'en-US' ? 'just now' : '刚刚'
+  if (差值分钟 < 60) return 模型语言 === 'en-US' ? `${String(差值分钟)} minutes ago` : `${String(差值分钟)}分钟前`
   let 差值小时 = Math.floor(差值分钟 / 60)
-  if (差值小时 < 24) return `${String(差值小时)}小时前`
+  if (差值小时 < 24) return 模型语言 === 'en-US' ? `${String(差值小时)} hours ago` : `${String(差值小时)}小时前`
   let 差值天 = Math.floor(差值小时 / 24)
-  if (差值天 < 30) return `${String(差值天)}天前`
+  if (差值天 < 30) return 模型语言 === 'en-US' ? `${String(差值天)} days ago` : `${String(差值天)}天前`
   let 差值月 = Math.floor(差值天 / 30)
-  return `${String(差值月)}个月前`
+  return 模型语言 === 'en-US' ? `${String(差值月)} months ago` : `${String(差值月)}个月前`
 }
 
 /** 将三态向量结果解包为工具层使用的 number[] | null */
@@ -126,6 +127,7 @@ export async function 解决问题<T extends z.ZodType>(
 ): Promise<回合结果<T>> {
   let 召回开始时间 = new Date()
   let { 配置, 数据库查询器, 保存快照 } = 上下文
+  let 模型语言 = 配置.模型语言 ?? 'zh-CN'
   let 当前时间 = 选项.当前时间 ?? new Date()
   let 时区 = 选项.时区 ?? 配置.时区
   if (时区 !== undefined) 校验时区(时区)
@@ -193,7 +195,7 @@ export async function 解决问题<T extends z.ZodType>(
           .map(([名称, 创建]): 智能体工具 => {
             let 工具 = 创建()
             if (工具.名称 !== 名称) throw new Error(`记忆工具名常量 ${名称} 与工具实际名称 ${工具.名称} 不一致`)
-            return 工具
+            return 本地化记忆工具(工具, 配置.模型语言 ?? 'zh-CN')
           })
 
   // 前缀已变时不能有任何副作用: 在自动召回(会更新访问计数、走事务)之前先检查, 变了就直接返回
@@ -202,29 +204,30 @@ export async function 解决问题<T extends z.ZodType>(
     return 构造前缀已变结果(选项.消息历史 ?? [])
   }
 
-  let 零级记忆文本 = '### 当前零级记忆 (核心法则)\n'
+  let 零级记忆文本 =
+    模型语言 === 'en-US' ? '### Current level 0 memories (core rules)\n' : '### 当前零级记忆 (核心法则)\n'
   if (零级记忆列表.length > 0) {
     for (let 记忆 of 零级记忆列表) {
       let 标签文本 = 记忆.标签.length > 0 ? `[${记忆.标签.join('][')}] ` : ''
-      零级记忆文本 += `- [${记忆.id}] ${标签文本}${记忆.内容} (关键词: ${记忆.关键词.join(', ')})\n`
+      零级记忆文本 += `- [${记忆.id}] ${标签文本}${记忆.内容} (${模型语言 === 'en-US' ? 'keywords' : '关键词'}: ${记忆.关键词.join(', ')})\n`
     }
   } else {
-    零级记忆文本 += '- 无\n'
+    零级记忆文本 += 模型语言 === 'en-US' ? '- None\n' : '- 无\n'
   }
 
   let 本轮召回内容片段: string[] = []
   let 自动召回记忆id列表: string[] = []
   let 自动召回动态工具id列表: string[] = []
   let 自动召回关键词数量 = 0
-  let 记忆状态文本 = `${零级记忆文本}\n### 当前一级记忆 (重点关注的工作上下文)\n`
+  let 记忆状态文本 = `${零级记忆文本}\n${模型语言 === 'en-US' ? '### Current level 1 memories (working context)' : '### 当前一级记忆 (重点关注的工作上下文)'}\n`
 
   if (一级记忆列表.length > 0) {
     for (let 记忆 of 一级记忆列表) {
       let 标签文本 = 记忆.标签.length > 0 ? `[${记忆.标签.join('][')}] ` : ''
-      记忆状态文本 += `- [${记忆.id}] (评分:${String(记忆.评分)}, 记录于${格式化为本地时间字符串(记忆.创建时间, 时区)}) ${标签文本}${记忆.内容} (关键词: ${记忆.关键词.join(', ')})\n`
+      记忆状态文本 += `- [${记忆.id}] (${模型语言 === 'en-US' ? 'score' : '评分'}:${String(记忆.评分)}, ${模型语言 === 'en-US' ? 'recorded at ' : '记录于'}${格式化为本地时间字符串(记忆.创建时间, 时区)}) ${标签文本}${记忆.内容} (${模型语言 === 'en-US' ? 'keywords' : '关键词'}: ${记忆.关键词.join(', ')})\n`
     }
   } else {
-    记忆状态文本 += '- 无\n'
+    记忆状态文本 += 模型语言 === 'en-US' ? '- None\n' : '- 无\n'
   }
 
   let 自动检索二级记忆数量 = 配置.自动检索二级记忆数量
@@ -279,17 +282,26 @@ export async function 解决问题<T extends z.ZodType>(
         自动召回关键词数量 += 关键词片段.length
 
         if (二级记忆片段.length > 0 || 关键词片段.length > 0) {
-          let 召回内容文本 = '### 自动唤起的潜意识片段 (二级记忆与发散概念)\n'
+          let 召回内容文本 =
+            模型语言 === 'en-US'
+              ? '### Automatically recalled long-term memories and related concepts\n'
+              : '### 自动唤起的潜意识片段 (二级记忆与发散概念)\n'
           if (二级记忆片段.length > 0) {
-            召回内容文本 += '随着当前的思考，你脑海中隐约浮现了以下相关历史记忆：\n'
+            召回内容文本 +=
+              模型语言 === 'en-US'
+                ? 'The following related memories were recalled:\n'
+                : '随着当前的思考，你脑海中隐约浮现了以下相关历史记忆：\n'
             for (let 记忆 of 二级记忆片段) {
-              let 相对时间 = 格式化相对时间(new Date(记忆.创建时间), 当前时间)
+              let 相对时间 = 格式化相对时间(new Date(记忆.创建时间), 当前时间, 模型语言)
               let 标签文本 = 记忆.标签.length > 0 ? `[${记忆.标签.join('][')}] ` : ''
-              召回内容文本 += `- [${记忆.id}] (评分:${String(记忆.评分)}, 记录于${相对时间}) ${标签文本}${记忆.内容} (关键词: ${记忆.关键词.join(', ')})\n`
+              召回内容文本 += `- [${记忆.id}] (${模型语言 === 'en-US' ? 'score' : '评分'}:${String(记忆.评分)}, ${相对时间}) ${标签文本}${记忆.内容} (${模型语言 === 'en-US' ? 'keywords' : '关键词'}: ${记忆.关键词.join(', ')})\n`
             }
           }
           if (关键词片段.length > 0) {
-            召回内容文本 += `你同时联想到了这些发散概念: [${关键词片段.join(', ')}]\n(注意: 这些仅仅是潜意识边缘闪过的零散词汇，可能属于其他人或事。在未查明具体记忆前，绝对不要把这些词汇强行张冠李戴给当前讨论的对象！如果想知道细节，请继续调用「回忆延伸」工具)\n`
+            召回内容文本 +=
+              模型语言 === 'en-US'
+                ? `Related concepts: [${关键词片段.join(', ')}]\nThese are weak associations and may concern other people or events. Do not attribute them to the current subject without reading the exact memory through extend_memory.\n`
+                : `你同时联想到了这些发散概念: [${关键词片段.join(', ')}]\n(注意: 这些仅仅是潜意识边缘闪过的零散词汇，可能属于其他人或事。在未查明具体记忆前，绝对不要把这些词汇强行张冠李戴给当前讨论的对象！如果想知道细节，请继续调用「回忆延伸」工具)\n`
           }
           本轮召回内容片段.push(召回内容文本)
         }
@@ -317,18 +329,21 @@ export async function 解决问题<T extends z.ZodType>(
 
       if (召回的工具.length > 0) {
         自动召回动态工具id列表.push(...召回的工具.map((工具) => 工具.id))
-        let 动态工具提示文本 = '### 自动召回的动态工具\n'
+        let 动态工具提示文本 =
+          模型语言 === 'en-US' ? '### Automatically recalled dynamic tools\n' : '### 自动召回的动态工具\n'
         动态工具提示文本 +=
-          '系统根据当前对话内容，从你的工具库中召回了以下可能用得到的动态工具。如需使用，请调用 `call_dynamic_tool` 工具。\n'
+          模型语言 === 'en-US'
+            ? 'The following potentially relevant tools were recalled. Use `call_dynamic_tool` to run one.\n'
+            : '系统根据当前对话内容，从你的工具库中召回了以下可能用得到的动态工具。如需使用，请调用 `call_dynamic_tool` 工具。\n'
         for (let 工具 of 召回的工具) {
           let 加载结果 = await 加载并校验动态工具(工具.代码)
-          let 参数Schema = '未提供'
-          let 返回值Schema = '未提供'
+          let 参数Schema = 模型语言 === 'en-US' ? 'not provided' : '未提供'
+          let 返回值Schema = 模型语言 === 'en-US' ? 'not provided' : '未提供'
           if (加载结果.成功) {
             参数Schema = JSON.stringify(加载结果.工具.参数Schema)
             返回值Schema = JSON.stringify(加载结果.工具.返回值Schema)
           }
-          动态工具提示文本 += `- **${工具.名称}**: ${工具.描述} (参数Schema: ${参数Schema}) (返回值Schema: ${返回值Schema}) (相似度: ${(工具.相似度 * 100).toFixed(1)}%)\n`
+          动态工具提示文本 += `- **${工具.名称}**: ${工具.描述} (${模型语言 === 'en-US' ? 'parameter schema' : '参数Schema'}: ${参数Schema}) (${模型语言 === 'en-US' ? 'return schema' : '返回值Schema'}: ${返回值Schema}) (${模型语言 === 'en-US' ? 'similarity' : '相似度'}: ${(工具.相似度 * 100).toFixed(1)}%)\n`
         }
         本轮召回内容片段.push(动态工具提示文本)
       }
@@ -356,7 +371,10 @@ export async function 解决问题<T extends z.ZodType>(
   let 本轮注入消息列表: 内部注入消息[] = [
     {
       类型: 'memory-state',
-      内容: `### 本轮最新记忆状态\n以下是当前完整状态，如果与历史中更早的记忆状态冲突，以本条为准。\n\n${记忆状态文本}`,
+      内容:
+        模型语言 === 'en-US'
+          ? `### Current memory state\nThis is the complete current state. If it conflicts with an older memory-state message, use this one.\n\n${记忆状态文本}`
+          : `### 本轮最新记忆状态\n以下是当前完整状态，如果与历史中更早的记忆状态冲突，以本条为准。\n\n${记忆状态文本}`,
       指纹: 记忆状态指纹,
     },
   ]

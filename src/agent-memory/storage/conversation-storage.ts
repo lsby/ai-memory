@@ -139,6 +139,69 @@ export async function 追加消息列表(
   })
 }
 
+export async function 原子创建压缩派生会话(
+  数据库查询器: Kysely<记忆数据库>,
+  选项: {
+    前驱会话id: string
+    前驱消息id: string
+    系统消息: 智能体消息类型
+    摘要: string
+    标题: string
+  },
+): Promise<公开会话> {
+  return await 数据库查询器.transaction().execute(async (trx): Promise<公开会话> => {
+    let 前驱会话 = await trx
+      .selectFrom('会话表')
+      .select(['id', '当前消息id'])
+      .where('id', '=', 选项.前驱会话id)
+      .executeTakeFirst()
+    if (前驱会话 === undefined) throw new Error(`会话不存在: ${选项.前驱会话id}`)
+    if (前驱会话.当前消息id !== 选项.前驱消息id) throw new Error('生成摘要期间会话 HEAD 已变化，已放弃压缩')
+    let id = randomUUID()
+    let 时间 = new Date()
+    let 会话 = await trx
+      .insertInto('会话表')
+      .values({
+        id,
+        标题: 选项.标题,
+        当前消息id: null,
+        前驱会话id: 选项.前驱会话id,
+        前驱消息id: 选项.前驱消息id,
+        创建时间: 时间,
+        更新时间: 时间,
+      })
+      .returningAll()
+      .executeTakeFirstOrThrow()
+    let 父消息id: string | null = null
+    for (let 消息 of [
+      选项.系统消息,
+      {
+        role: 'system' as const,
+        content: 选项.摘要,
+        compressionSourceSessionId: 选项.前驱会话id,
+        compressionSourceMessageId: 选项.前驱消息id,
+      },
+    ]) {
+      let 消息id = randomUUID()
+      消息.持久化消息id = 消息id
+      await trx
+        .insertInto('消息表')
+        .values({ id: 消息id, 会话id: id, 父消息id, 角色: 消息.role, 载荷: JSON.stringify(消息), 创建时间: new Date() })
+        .execute()
+      父消息id = 消息id
+    }
+    if (父消息id === null) throw new Error('压缩派生会话没有消息')
+    let 更新结果 = await trx
+      .updateTable('会话表')
+      .set({ 当前消息id: 父消息id, 更新时间: new Date() })
+      .where('id', '=', id)
+      .where('当前消息id', 'is', null)
+      .executeTakeFirst()
+    if (Number(更新结果.numUpdatedRows) !== 1) throw new Error('压缩派生会话 HEAD 初始化失败')
+    return 转为公开会话({ ...会话, 当前消息id: 父消息id, 更新时间: new Date() })
+  })
+}
+
 export async function 读取消息历史(
   数据库查询器: Kysely<记忆数据库>,
   消息id: string,

@@ -193,6 +193,8 @@ export type 记忆数据库 = {
 }
 
 export type 带记忆的智能体选项 = 智能体选项 & {
+  /** 仅在持久化对话超过阈值时自动创建摘要派生会话。失败时原会话保持可用。 */
+  自动压缩?: { 触发字符数: number; 目标字符数: number } | undefined
   一级记忆容量?: number
   /**
    * 二级记忆保留指数的自然遗忘阈值。
@@ -276,7 +278,10 @@ export type 存储配置 =
   | { 模式: '外部'; pglite: PGlite; schema?: string }
 
 export type 内部带记忆的智能体配置 = 智能体选项 &
-  Required<Omit<带记忆的智能体选项, keyof 智能体选项 | '记忆工具筛选' | '记忆提示词' | '遗忘豁免' | '受保护标签'>> & {
+  Required<
+    Omit<带记忆的智能体选项, keyof 智能体选项 | '自动压缩' | '记忆工具筛选' | '记忆提示词' | '遗忘豁免' | '受保护标签'>
+  > & {
+    自动压缩?: { 触发字符数: number; 目标字符数: number } | undefined
     记忆工具筛选?: (工具名: string) => boolean
     记忆提示词?: string | ((启用的工具名: string[]) => string)
     /** 已经按 记忆工具筛选 和 禁用深度推演 算好的启用工具名, 构造时固定 */
@@ -409,6 +414,13 @@ export type 创建派生会话选项 = {
   前驱会话id: string
   前驱消息id: string
   摘要: string
+  标题?: string | undefined
+}
+
+export type 压缩当前会话选项 = {
+  openai客户端: OpenAI
+  模型名称: string
+  目标字符数: number
   标题?: string | undefined
 }
 

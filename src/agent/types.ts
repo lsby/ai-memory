@@ -146,6 +146,7 @@ export type 智能体事件 =
       前缀id: string
       状态: '完成' | '中断' | '空响应'
       响应消息id?: string
+      工具消息映射: Array<{ 调用id: string; 消息id: string }>
       工具调用数量: number
     }
   | { 类型: '模型请求审计'; 记录: 模型请求审计记录; 模型请求id: string; 模型请求序号: number; 前缀id: string }
@@ -196,6 +197,31 @@ export type 智能体工具上下文 = { 中断信号?: AbortSignal | undefined 
 
 /** 智能体工具: 将工具的定义和实现封装在一起, 通过静态方法 创建() 获得完整的类型推断 */
 export class 智能体工具 {
+  public static 创建模型适配(
+    原工具: 智能体工具,
+    配置: {
+      描述: string
+      参数JSONSchema: Record<string, unknown>
+      解析参数: (参数: Record<string, unknown>) => Record<string, unknown>
+      转换返回值: (返回值: Record<string, unknown>) => unknown
+      返回值描述?: string | undefined
+    },
+  ): 智能体工具 {
+    return new 智能体工具({
+      名称: 原工具.名称,
+      描述: 原工具.描述,
+      参数Schema: 原工具.参数Schema,
+      返回值Schema: 原工具.返回值Schema,
+      返回值描述: 原工具.返回值描述,
+      实现: 原工具.实现,
+      模型描述: 配置.描述,
+      模型参数JSONSchema: 配置.参数JSONSchema,
+      解析模型参数: 配置.解析参数,
+      转换模型返回值: 配置.转换返回值,
+      模型返回值描述: 配置.返回值描述,
+    })
+  }
+
   /** 类型安全的工厂方法, 泛型 T 确保 实现 的参数类型与 参数Schema 一致 */
   public static 创建<
     T extends z.ZodRawShape,
@@ -224,6 +250,11 @@ export class 智能体工具 {
   public readonly 参数Schema: z.ZodObject<z.ZodRawShape>
   public readonly 返回值Schema: z.ZodType<{ 结果: '成功' | '失败' } & Record<string, unknown>>
   public readonly 返回值描述: string | undefined
+  public readonly 模型描述: string
+  public readonly 模型参数JSONSchema: Record<string, unknown> | undefined
+  public readonly 解析模型参数: (参数: Record<string, unknown>) => Record<string, unknown>
+  public readonly 转换模型返回值: (返回值: Record<string, unknown>) => unknown
+  public readonly 模型返回值描述: string | undefined
   public readonly 实现: (
     参数: Record<string, unknown>,
     上下文?: 智能体工具上下文,
@@ -239,6 +270,11 @@ export class 智能体工具 {
       参数: Record<string, unknown>,
       上下文?: 智能体工具上下文,
     ) => Promise<{ 结果: '成功' | '失败' } & Record<string, unknown>>
+    模型描述?: string | undefined
+    模型参数JSONSchema?: Record<string, unknown> | undefined
+    解析模型参数?: ((参数: Record<string, unknown>) => Record<string, unknown>) | undefined
+    转换模型返回值?: ((返回值: Record<string, unknown>) => unknown) | undefined
+    模型返回值描述?: string | undefined
   }) {
     this.名称 = 配置.名称
     this.描述 = 配置.描述
@@ -246,6 +282,11 @@ export class 智能体工具 {
     this.返回值Schema = 配置.返回值Schema
     this.返回值描述 = 配置.返回值描述
     this.实现 = 配置.实现
+    this.模型描述 = 配置.模型描述 ?? 配置.描述
+    this.模型参数JSONSchema = 配置.模型参数JSONSchema
+    this.解析模型参数 = 配置.解析模型参数 ?? ((参数): Record<string, unknown> => 参数)
+    this.转换模型返回值 = 配置.转换模型返回值 ?? ((返回值): unknown => 返回值)
+    this.模型返回值描述 = 配置.模型返回值描述 ?? 配置.返回值描述
   }
 }
 
@@ -271,6 +312,7 @@ export type 智能体选项 = {
    * 实例上设置默认值, 单次调用的 时区 优先。不传用服务器时区。
    */
   时区?: string
+  模型语言?: 'zh-CN' | 'en-US'
 }
 
 /** 追加注入消息: 每轮可传, 追加在本轮末尾。类型 相同且内容和历史中同类型最后一条相同时不重复追加 */

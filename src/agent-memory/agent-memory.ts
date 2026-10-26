@@ -4,7 +4,7 @@ import { Kysely } from 'kysely'
 import type OpenAI from 'openai'
 import { z } from 'zod'
 import { 持久化会话智能体 } from '../agent/core/persistent-conversation-agent'
-import { type 回合结果, type 智能体事件, type 智能体执行模式, type 智能体消息类型 } from '../agent/types'
+import { type 回合结果, type 对话选项, type 智能体事件, type 智能体执行模式, type 智能体消息类型 } from '../agent/types'
 import { 构建智能体配置 } from './config'
 import { 创建向量缓存 as 外部创建向量缓存, 构建操作上下文 as 外部构建操作上下文, type 上下文依赖 } from './context'
 import { 批量注入记忆 as 外部批量注入记忆, 检查并清理二级记忆 as 外部检查并清理二级记忆 } from './lifecycle'
@@ -21,6 +21,7 @@ import {
   回退到父记忆提交 as 外部回退到父记忆提交,
   获取当前提交ID,
 } from './operations/commit'
+import { 尝试自动压缩 } from './operations/conversation-compression'
 import { 会话控制器 } from './operations/conversation-controller'
 import * as 动态工具管理 from './operations/dynamic-management'
 import {
@@ -106,6 +107,7 @@ export class 带记忆的智能体 extends 持久化会话智能体 {
         确保已初始化: async (): Promise<void> => await this.确保已初始化(),
         读取新会话标识: (): string => this.读取会话标识(),
         载入内存历史: (消息列表, 会话id): void => super.载入对话历史(消息列表, 会话id),
+        模型语言: this.模型语言,
       }),
     )
   }
@@ -398,6 +400,10 @@ export class 带记忆的智能体 extends 持久化会话智能体 {
 
   public override async 对话<T extends z.ZodType>(选项: 带记忆的对话选项<T>): Promise<回合结果<T>> {
     return await super.对话(选项)
+  }
+
+  protected override async 准备对话<T extends z.ZodType>(选项: 对话选项<T>): Promise<void> {
+    await 尝试自动压缩(this.会话控制器(), this.模型语言, this.读取对话历史(), this.配置.自动压缩, 选项)
   }
 
   public override async 推演<T extends z.ZodType>(选项: 带记忆的对话选项<T>): Promise<回合结果<T>> {

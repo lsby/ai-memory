@@ -153,6 +153,24 @@ describe('P1 记忆工具筛选', () => {
   })
 })
 
+describe('模型语言', () => {
+  it('en-US 使用英文记忆提示词、工具描述和协议字段', async (): Promise<void> => {
+    let { 假 } = await 跑一轮(创建记忆实例({ 模型语言: 'en-US' }))
+    let 请求 = 假.请求列表[0]
+    let 系统提示词 = 取系统提示词(请求)
+    expect(系统提示词).toContain('Memory system')
+    expect(系统提示词).not.toContain('记忆系统操作指南')
+    let 工具列表 = (请求?.tools ?? []) as Array<{ function: { name: string } }>
+    let 添加记忆工具 = 工具列表.find((工具) => 工具.function.name === 'add_level_1_memory')
+    if (添加记忆工具 === undefined) throw new Error('缺少一级记忆工具')
+    let 工具定义 = JSON.stringify(添加记忆工具)
+    expect(工具定义).toContain('working memory')
+    expect(工具定义).toContain('content')
+    expect(工具定义).not.toMatch(/[\u3400-\u9fff]/u)
+    expect(取注入文本(请求, '### Current memory state')).toContain('Current level 0 memories')
+  })
+})
+
 describe('P2 记忆提示词', () => {
   it('传字符串时完整替换操作指南且不附加机制提示', async (): Promise<void> => {
     let 英文提示词 = '## Memory rules\nStore verified facts only.'
