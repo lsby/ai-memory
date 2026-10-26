@@ -9,6 +9,7 @@ import {
   更新会话标题 as 存储更新会话标题,
   查询会话 as 存储查询会话,
   查询会话列表 as 存储查询会话列表,
+  查询派生会话 as 存储查询派生会话,
   查询消息分支 as 存储查询消息分支,
   检出消息 as 存储检出消息,
   读取会话消息 as 存储读取会话消息,
@@ -90,6 +91,17 @@ export class 会话控制器 {
   public async 查询会话列表(选项: 查询会话列表选项 = {}): Promise<公开会话[]> {
     await this.依赖.确保已初始化()
     return await 存储查询会话列表(this.依赖.数据库查询器, 选项)
+  }
+
+  public async 查询派生会话(前驱会话id: string): Promise<公开会话[]> {
+    await this.依赖.确保已初始化()
+    return await 存储查询派生会话(this.依赖.数据库查询器, 前驱会话id)
+  }
+
+  /** 确保存储就绪后返回数据库查询器, 供压缩流程写交互日志和读取冷却依据。 */
+  public async 取数据库查询器(): Promise<Kysely<记忆数据库>> {
+    await this.依赖.确保已初始化()
+    return this.依赖.数据库查询器
   }
 
   public async 读取当前会话(): Promise<公开会话> {

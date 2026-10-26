@@ -7,6 +7,7 @@ import type { 模型语言包 } from '../agent/model-language'
 import {
   智能体消息Schema,
   type 内部注入消息,
+  type 对话选项,
   type 智能体事件,
   type 智能体消息类型,
   type 智能体选项,
@@ -193,9 +194,24 @@ export type 记忆数据库 = {
   消息表: 消息表
 }
 
+export type 自动压缩配置 = {
+  触发字符数: number
+  目标字符数: number
+  /**
+   * 压缩自己的时限(毫秒)。摘要请求在 调用方中断信号 和这个时限里先到的一个到点时被放弃。
+   * 压缩超时或失败时跳过压缩、保留原会话, 正式那一轮照常使用未压缩的历史。不配则只受调用方中断信号控制。
+   */
+  超时毫秒?: number | undefined
+  /**
+   * 同一会话上次自动压缩失败后, 历史字符数比失败时多出不到这个值就不再尝试。
+   * 依据从交互日志里该会话最近一次自动压缩的 流程异常 记录推出, 之后压缩成功过则不再冷却。不配则每轮都会重试。
+   */
+  失败后冷却字符数?: number | undefined
+}
+
 export type 带记忆的智能体选项 = 智能体选项 & {
   /** 仅在持久化对话超过阈值时自动创建摘要派生会话。失败时原会话保持可用。 */
-  自动压缩?: { 触发字符数: number; 目标字符数: number } | undefined
+  自动压缩?: 自动压缩配置 | undefined
   一级记忆容量?: number
   /**
    * 二级记忆保留指数的自然遗忘阈值。
@@ -283,7 +299,7 @@ export type 内部带记忆的智能体配置 = Omit<智能体选项, '模型语
     Omit<带记忆的智能体选项, keyof 智能体选项 | '自动压缩' | '记忆工具筛选' | '记忆提示词' | '遗忘豁免' | '受保护标签'>
   > & {
     模型语言包: 模型语言包
-    自动压缩?: { 触发字符数: number; 目标字符数: number } | undefined
+    自动压缩?: 自动压缩配置 | undefined
     记忆工具筛选?: (工具名: string) => boolean
     记忆提示词?: string | ((启用的工具名: string[]) => string)
     /** 已经按 记忆工具筛选 和 禁用深度推演 算好的启用工具名, 构造时固定 */
@@ -303,6 +319,9 @@ export type 带记忆的解决问题选项<T extends z.ZodType> = 解决问题�
 export type 内部带记忆的解决问题选项<T extends z.ZodType> = 带记忆的解决问题选项<T> & {
   内部注入消息?: 内部注入消息[] | undefined
 }
+
+/** 库内部使用: 对话选项 附带已经确定的事件组id。不对外导出 */
+export type 带事件组的对话选项<T extends z.ZodType> = 对话选项<T> & { 事件组id?: string | undefined }
 
 /** 实例管理对话历史时使用的请求参数。 */
 export type 带记忆的对话选项<T extends z.ZodType> = Omit<带记忆的解决问题选项<T>, '消息历史'>
@@ -424,6 +443,12 @@ export type 压缩当前会话选项 = {
   模型名称: string
   目标字符数: number
   标题?: string | undefined
+  /** 合并进摘要请求体的额外参数(如关闭深度思考); 不能含库管理的字段 */
+  额外请求参数?: Record<string, unknown> | undefined
+  /** 中断摘要请求; 中断时放弃压缩, 原会话保持不变 */
+  中断信号?: AbortSignal | undefined
+  /** 压缩过程的交互日志挂到这个事件组; 不传则自动生成 */
+  事件组id?: string | undefined
 }
 
 export type 查询交互日志选项 = {
