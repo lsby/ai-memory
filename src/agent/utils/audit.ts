@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import type OpenAI from 'openai'
 import { 工具调用引导前缀 } from '../constants'
 import { 转换为模型消息 } from '../message/message-serialization'
-import type { 智能体消息类型, 模型审计汇总, 模型请求审计记录, 累积工具调用 } from '../types'
+import type { 智能体消息类型, 模型审计汇总, 模型用量, 模型请求审计记录, 累积工具调用 } from '../types'
 
 /** 按 Unicode 码点计数，中英文和 emoji 都各算一个字符。 */
 export function 统计字符数(文本: string): number {
@@ -40,7 +40,7 @@ export function 统计模型输出字符数(完整文本: string, 工具调用�
 }
 
 function 复制审计记录(记录: 模型请求审计记录): 模型请求审计记录 {
-  return { ...记录, 时间: new Date(记录.时间) }
+  return { ...记录, 时间: new Date(记录.时间), ...(记录.用量 !== undefined ? { 用量: { ...记录.用量 } } : {}) }
 }
 
 export class 模型审计器 {
@@ -66,7 +66,7 @@ export class 模型审计器 {
     发出字符数: number,
     返回字符数: number,
     更新当前会话状态: boolean,
-    计量单位: 模型请求审计记录['计量单位'] = '字符',
+    用量?: 模型用量,
   ): 模型请求审计记录 {
     let 记录: 模型请求审计记录 = {
       id: randomUUID(),
@@ -76,7 +76,7 @@ export class 模型审计器 {
       缓存判定: 是否新建对话 ? '新建对话' : '复用已有对话',
       发出字符数,
       返回字符数,
-      计量单位,
+      ...(用量 !== undefined ? { 用量: { ...用量 } } : {}),
     }
     this.记录列表.push(记录)
     if (更新当前会话状态 === true) this.当前会话已有模型请求 = true
@@ -88,21 +88,19 @@ export class 模型审计器 {
   }
 
   public 读取汇总(): 模型审计汇总 {
-    let 分单位 = (单位: 模型请求审计记录['计量单位']): 模型审计汇总['分单位汇总']['token'] => {
-      let 列表 = this.记录列表.filter((记录) => 记录.计量单位 === 单位)
-      return {
-        请求次数: 列表.length,
-        发出数: 列表.reduce((总数, 记录) => 总数 + 记录.发出字符数, 0),
-        返回数: 列表.reduce((总数, 记录) => 总数 + 记录.返回字符数, 0),
-      }
-    }
+    let 带用量记录 = this.记录列表.flatMap((记录) => (记录.用量 !== undefined ? [记录.用量] : []))
     return {
       模型请求次数: this.记录列表.length,
       新建对话请求次数: this.记录列表.filter((记录) => 记录.缓存判定 === '新建对话').length,
       缓存复用请求次数: this.记录列表.filter((记录) => 记录.缓存判定 === '复用已有对话').length,
       发出字符数: this.记录列表.reduce((总数, 记录) => 总数 + 记录.发出字符数, 0),
       返回字符数: this.记录列表.reduce((总数, 记录) => 总数 + 记录.返回字符数, 0),
-      分单位汇总: { token: 分单位('token'), 字符: 分单位('字符') },
+      token用量: {
+        请求次数: 带用量记录.length,
+        输入token数: 带用量记录.reduce((总数, 用量) => 总数 + (用量.输入token数 ?? 0), 0),
+        缓存命中token数: 带用量记录.reduce((总数, 用量) => 总数 + (用量.缓存命中token数 ?? 0), 0),
+        输出token数: 带用量记录.reduce((总数, 用量) => 总数 + (用量.输出token数 ?? 0), 0),
+      },
     }
   }
 

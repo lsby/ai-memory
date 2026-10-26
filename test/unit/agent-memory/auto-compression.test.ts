@@ -102,11 +102,9 @@ describe('自动压缩遥测、超时与冷却', () => {
     expect(typeof 日志内容(开始)['历史字符数']).toBe('number')
     let 审计 = 日志列表.find((日志) => 日志.类型 === '模型请求审计' && 日志内容(日志)['用途'] === '会话压缩')
     expect(审计?.耗时ms).toBeGreaterThanOrEqual(0)
-    expect(日志内容(审计)['记录']).toMatchObject({
-      发出字符数: 120,
-      返回字符数: 7,
-      计量单位: 'token',
-    })
+    let 压缩记录 = 日志内容(审计)['记录']
+    expect(压缩记录).toMatchObject({ 返回字符数: 2, 用量: { 输入token数: 120, 输出token数: 7 } })
+    expect(压缩记录).not.toMatchObject({ 发出字符数: 120 })
     let 结束 = 日志列表.find((日志) => 日志.类型 === '流程结束' && 日志内容(日志)['结果'] === '已压缩')
     expect(日志内容(结束)).toMatchObject({
       前驱会话id: 压缩前会话.id,
@@ -117,7 +115,7 @@ describe('自动压缩遥测、超时与冷却', () => {
     expect(日志列表.some((日志) => 日志.类型 === '流程异常')).toBe(false)
   })
 
-  it('没传事件组id时压缩和正式那轮自动共用同一个事件组；没有 usage 时按字符计量', async (): Promise<void> => {
+  it('没传事件组id时压缩和正式那轮自动共用同一个事件组；没有 usage 时审计记录没有 用量', async (): Promise<void> => {
     let 智能体 = 新建()
     let { 客户端 } = 创建摘要客户端(摘要成功)
     await 智能体.对话(对话选项('第一轮', 客户端))
@@ -129,7 +127,9 @@ describe('自动压缩遥测、超时与冷却', () => {
     let 日志列表 = await 读取事件组(智能体, 压缩结束.事件组id)
     expect(日志列表.some((日志) => 日志.类型 === '流程开始' && 日志内容(日志)['执行模式'] === '对话')).toBe(true)
     let 审计 = 日志列表.find((日志) => 日志.类型 === '模型请求审计' && 日志内容(日志)['用途'] === '会话压缩')
-    expect(日志内容(审计)['记录']).toMatchObject({ 计量单位: '字符', 返回字符数: 2 })
+    let 记录 = 日志内容(审计)['记录']
+    expect(记录).toMatchObject({ 返回字符数: 2 })
+    expect(记录).not.toHaveProperty('用量')
   })
 
   it('压缩超时：记流程异常（原因超时），保留原会话，正式那轮照常成功', async (): Promise<void> => {
