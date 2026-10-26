@@ -756,12 +756,6 @@ for (let 项 of 本轮.用量) {
 
 ---
 
-## 从 0.2.x 升级
-
-0.3.0 包含不兼容的变更，请阅读 [MIGRATION.md](MIGRATION.md)，里面有逐项对照和旧历史的处理办法。完整的变更列表见 [CHANGELOG.md](CHANGELOG.md)。
-
----
-
 ## 许可证
 
 [MIT](LICENSE)
