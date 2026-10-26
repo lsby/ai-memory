@@ -2,7 +2,7 @@ import { sql } from 'kysely'
 import type OpenAI from 'openai'
 import { z } from 'zod'
 import type { 模型语言包 } from '../../agent/model-language'
-import type { 智能体消息类型 } from '../../agent/types'
+import type { 智能体消息类型, 模型用量 } from '../../agent/types'
 import { 统计字符数 } from '../../agent/utils/audit'
 import { 校验并复制额外请求参数 } from '../../agent/utils/extra-request-params'
 import { 创建事件组id, 记录交互日志 } from '../logger'
@@ -103,11 +103,13 @@ export async function 执行压缩当前会话(
     )
     let 摘要 = 响应.choices[0]?.message.content?.trim()
     let 输入token数 = 响应.usage?.prompt_tokens
+    let 缓存命中token数 = 响应.usage?.prompt_tokens_details?.cached_tokens
     let 输出token数 = 响应.usage?.completion_tokens
-    let 发出数 = 统计字符数(JSON.stringify(请求消息))
-    let 返回数 = 统计字符数(摘要 ?? '')
-    let 实际用量 =
-      typeof 输入token数 === 'number' && typeof 输出token数 === 'number' ? { 输入token数, 输出token数 } : null
+    let 用量: 模型用量 = {
+      ...(typeof 输入token数 === 'number' ? { 输入token数 } : {}),
+      ...(typeof 缓存命中token数 === 'number' ? { 缓存命中token数 } : {}),
+      ...(typeof 输出token数 === 'number' ? { 输出token数 } : {}),
+    }
     await 记录交互日志(
       数据库,
       {
@@ -118,9 +120,9 @@ export async function 执行压缩当前会话(
           用途: '会话压缩',
           记录: {
             时间: new Date(请求开始).toISOString(),
-            发出字符数: 实际用量 === null ? 发出数 : 实际用量.输入token数,
-            返回字符数: 实际用量 === null ? 返回数 : 实际用量.输出token数,
-            计量单位: 实际用量 === null ? '字符' : 'token',
+            发出字符数: 统计字符数(JSON.stringify(请求消息)),
+            返回字符数: 统计字符数(摘要 ?? ''),
+            ...(Object.keys(用量).length > 0 ? { 用量 } : {}),
           },
         },
         上下文消息id: 当前会话.当前消息id,

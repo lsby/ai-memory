@@ -222,7 +222,7 @@ let 外部实例 = new 带记忆的智能体({
 关于更高级的会话管理、底层并发控制与全量配置，请参阅：
 
 - [会话管理与消息分支设计规范](file:///d:/Code/ai-memory/doc/session-and-message-design.md) - 前缀指纹计算、会话派生与压缩机制
-- [高级存储、并发与配置指南](file:///d:/Code/ai-memory/doc/advanced-storage-and-config.md) - 多租户 Schema 隔离、PGlite 并发互斥与死锁防护、全量配置参数速查表、自动压缩遥测与计量单位
+- [高级存储、并发与配置指南](file:///d:/Code/ai-memory/doc/advanced-storage-and-config.md) - 多租户 Schema 隔离、PGlite 并发互斥与死锁防护、全量配置参数速查表、自动压缩遥测与模型请求审计字段（0.6.0 起 token 与字符分开存）
 
 ---
 

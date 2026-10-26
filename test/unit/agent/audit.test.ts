@@ -63,14 +63,7 @@ describe('模型字符与缓存审计', () => {
       缓存复用请求次数: 1,
       发出字符数: 记录列表.reduce((总数, 记录) => 总数 + 记录.发出字符数, 0),
       返回字符数: 记录列表.reduce((总数, 记录) => 总数 + 记录.返回字符数, 0),
-      分单位汇总: {
-        token: { 请求次数: 0, 发出数: 0, 返回数: 0 },
-        字符: {
-          请求次数: 2,
-          发出数: 记录列表.reduce((总数, 记录) => 总数 + 记录.发出字符数, 0),
-          返回数: 记录列表.reduce((总数, 记录) => 总数 + 记录.返回字符数, 0),
-        },
-      },
+      token用量: { 请求次数: 0, 输入token数: 0, 缓存命中token数: 0, 输出token数: 0 },
     })
 
     智能体实例.清空模型审计记录()
@@ -80,54 +73,61 @@ describe('模型字符与缓存审计', () => {
       缓存复用请求次数: 0,
       发出字符数: 0,
       返回字符数: 0,
-      分单位汇总: {
-        token: { 请求次数: 0, 发出数: 0, 返回数: 0 },
-        字符: { 请求次数: 0, 发出数: 0, 返回数: 0 },
-      },
+      token用量: { 请求次数: 0, 输入token数: 0, 缓存命中token数: 0, 输出token数: 0 },
     })
   })
 
-  it('提供商返回实际 token 用量时优先用于审计', async (): Promise<void> => {
+  it('提供商返回 token 用量时，字符数仍是真实字符数，token 记在 用量 里', async (): Promise<void> => {
     流式请求AI模拟.mockResolvedValue({
       完整文本: '{"回答":"中A"}',
       工具调用列表: [],
       已中断: false,
       输入token数: 23,
+      缓存命中token数: 10,
       输出token数: 5,
     })
     let 智能体实例 = new 智能体({})
 
     await 智能体实例.对话(创建选项('按 token 审计'))
 
-    expect(智能体实例.读取模型审计记录()).toMatchObject([{ 发出字符数: 23, 返回字符数: 5, 计量单位: 'token' }])
-    expect(智能体实例.读取模型审计汇总()).toMatchObject({ 发出字符数: 23, 返回字符数: 5 })
+    let 记录列表 = 智能体实例.读取模型审计记录()
+    expect(记录列表).toHaveLength(1)
+    expect(记录列表[0]?.发出字符数).toBeGreaterThan(统计字符数('按 token 审计'))
+    expect(记录列表[0]?.发出字符数).not.toBe(23)
+    expect(记录列表[0]?.返回字符数).toBe(统计字符数(JSON.stringify({ content: '{"回答":"中A"}' })))
+    expect(记录列表[0]?.用量).toEqual({ 输入token数: 23, 缓存命中token数: 10, 输出token数: 5 })
+    expect(智能体实例.读取模型审计汇总()).toMatchObject({
+      发出字符数: 记录列表[0]?.发出字符数,
+      返回字符数: 记录列表[0]?.返回字符数,
+      token用量: { 请求次数: 1, 输入token数: 23, 缓存命中token数: 10, 输出token数: 5 },
+    })
   })
 
-  it('审计记录用计量单位区分 token 与字符，汇总按单位分开累计', async (): Promise<void> => {
-    流式请求AI模拟
-      .mockResolvedValueOnce({
-        完整文本: '{"回答":"中A"}',
-        工具调用列表: [],
-        已中断: false,
-        输入token数: 23,
-        输出token数: 5,
-      })
-      .mockResolvedValueOnce({ 完整文本: '{"回答":"中A"}', 工具调用列表: [], 已中断: false })
+  it('模型没有返回 usage 时记录没有 用量 字段', async (): Promise<void> => {
     let 智能体实例 = new 智能体({})
 
-    await 智能体实例.对话(创建选项('有 usage'))
     await 智能体实例.对话(创建选项('没有 usage'))
 
     let 记录列表 = 智能体实例.读取模型审计记录()
-    expect(记录列表.map((记录) => 记录.计量单位)).toEqual(['token', '字符'])
+    expect(记录列表).toHaveLength(1)
+    expect('用量' in (记录列表[0] ?? {})).toBe(false)
+  })
+
+  it('只返回部分 usage 字段时，用量 只带返回了的字段，汇总只累加带用量的记录', async (): Promise<void> => {
+    流式请求AI模拟
+      .mockResolvedValueOnce({ 完整文本: '{"回答":"中A"}', 工具调用列表: [], 已中断: false, 输出token数: 5 })
+      .mockResolvedValueOnce({ 完整文本: '{"回答":"中A"}', 工具调用列表: [], 已中断: false })
+    let 智能体实例 = new 智能体({})
+
+    await 智能体实例.对话(创建选项('部分 usage'))
+    await 智能体实例.对话(创建选项('没有 usage'))
+
+    let 记录列表 = 智能体实例.读取模型审计记录()
+    expect(记录列表[0]?.用量).toEqual({ 输出token数: 5 })
+    expect('用量' in (记录列表[1] ?? {})).toBe(false)
     let 汇总 = 智能体实例.读取模型审计汇总()
-    expect(汇总.分单位汇总.token).toEqual({ 请求次数: 1, 发出数: 23, 返回数: 5 })
-    expect(汇总.分单位汇总.字符).toEqual({
-      请求次数: 1,
-      发出数: 记录列表[1]?.发出字符数,
-      返回数: 记录列表[1]?.返回字符数,
-    })
-    expect(汇总.发出字符数).toBe(23 + (记录列表[1]?.发出字符数 ?? 0))
+    expect(汇总.token用量).toEqual({ 请求次数: 1, 输入token数: 0, 缓存命中token数: 0, 输出token数: 5 })
+    expect(汇总.发出字符数).toBe(记录列表.reduce((总数, 记录) => 总数 + 记录.发出字符数, 0))
   })
 
   it('同一轮工具循环的后续模型请求判定为复用已有对话', async (): Promise<void> => {
