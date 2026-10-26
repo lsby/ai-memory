@@ -107,11 +107,15 @@ describe('文件模式', { timeout: 90000 }, () => {
     await 实例.初始化()
 
     expect((await 实例.查询记忆()).map((记忆) => 记忆.内容)).toEqual(['旧版本留下的记忆'])
+    let 基线提交id = await 实例.查询当前记忆提交id()
+    expect(基线提交id).not.toBe('旧提交')
+    expect(await 实例.切换记忆提交('旧提交')).toBe(false)
     await 实例.添加记忆(记忆项('新版本写入的记忆', ['新']))
     expect((await 实例.查询记忆()).map((记忆) => 记忆.内容).sort()).toEqual(
       ['新版本写入的记忆', '旧版本留下的记忆'].sort(),
     )
     expect(await 实例.回退最近记忆提交()).toBe(true)
+    expect(await 实例.查询当前记忆提交id()).toBe(基线提交id)
     expect((await 实例.查询记忆()).map((记忆) => 记忆.内容)).toEqual(['旧版本留下的记忆'])
 
     // 数据都在 public 里，没有凭空多出别的 schema 的表

@@ -54,7 +54,7 @@ describe('文件存储生命周期', () => {
     await expect(智能体实例.初始化()).rejects.toThrow('已销毁')
   })
 
-  it('初始化数据库会创建 v3 元数据和关键查询索引', async (): Promise<void> => {
+  it('初始化数据库会创建 v4 元数据和关键查询索引', async (): Promise<void> => {
     let pglite = new PGlite({ extensions: { vector } })
     let 数据库查询器 = new Kysely<记忆数据库>({ dialect: new PGliteDialect({ pglite }) })
     try {
@@ -69,7 +69,7 @@ describe('文件存储生命周期', () => {
       `.execute(数据库查询器)
       let 索引名称 = 索引结果.rows.map((行) => 行.indexname)
 
-      expect(版本?.值).toBe('3')
+      expect(版本?.值).toBe('4')
       expect(索引名称).toEqual(
         expect.arrayContaining([
           '记忆表_等级_创建序号_idx',
@@ -77,6 +77,7 @@ describe('文件存储生命周期', () => {
           '记忆表_标签_idx',
           '记忆关联表_终点_idx',
           '记忆变更表_提交_idx',
+          '记忆提交表_父提交_idx',
         ]),
       )
     } finally {

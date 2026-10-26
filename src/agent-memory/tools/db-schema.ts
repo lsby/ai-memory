@@ -1,4 +1,5 @@
 import { Kysely, sql } from 'kysely'
+import { randomUUID } from 'node:crypto'
 import { 校验schema名, 转义标识符, 默认schema } from '../agent-memory-connection'
 import { 记忆数据库 } from '../agent-memory-types'
 import { 确保在事务中执行 } from './common'
@@ -88,6 +89,13 @@ async function 在事务中初始化数据库(数据库查询器: Kysely<记忆�
           )
         `)
 
+  let 原内核版本结果 = await 数据库查询器
+    .selectFrom('记忆元数据表')
+    .select('值')
+    .where('键', '=', 'KERNEL_SCHEMA_VERSION')
+    .executeTakeFirst()
+  let 原内核版本 = 原内核版本结果?.值
+
   await 执行(`
           CREATE TABLE IF NOT EXISTS ${名('动态工具表')} (
             id TEXT PRIMARY KEY,
@@ -103,13 +111,19 @@ async function 在事务中初始化数据库(数据库查询器: Kysely<记忆�
   await 执行(`
     CREATE TABLE IF NOT EXISTS ${名('_agent_session_commit')} (
       id INTEGER PRIMARY KEY,
-      commit_id TEXT
+      commit_id TEXT,
+      恢复中 BOOLEAN NOT NULL DEFAULT FALSE
     );
   `)
+
+  await 执行(
+    `ALTER TABLE ${名('_agent_session_commit')} ADD COLUMN IF NOT EXISTS 恢复中 BOOLEAN NOT NULL DEFAULT FALSE;`,
+  )
 
   await 执行(`
     INSERT INTO ${名('_agent_session_commit')} (id, commit_id) VALUES (1, NULL) ON CONFLICT (id) DO NOTHING;
   `)
+  await 执行(`UPDATE ${名('_agent_session_commit')} SET commit_id = NULL, 恢复中 = FALSE WHERE id = 1;`)
 
   await 执行(`CREATE INDEX IF NOT EXISTS 记忆表_等级_创建序号_idx ON ${名('记忆表')} (等级, 创建序号);`)
   await 执行(`CREATE INDEX IF NOT EXISTS 记忆表_创建时间_idx ON ${名('记忆表')} (创建时间);`)
@@ -118,10 +132,7 @@ async function 在事务中初始化数据库(数据库查询器: Kysely<记忆�
   await 执行(`CREATE INDEX IF NOT EXISTS 记忆关联表_终点_idx ON ${名('记忆关联表')} (终点id);`)
   await 执行(`CREATE INDEX IF NOT EXISTS 记忆变更表_提交_idx ON ${名('记忆变更表')} (提交id);`)
   await 执行(`CREATE INDEX IF NOT EXISTS 记忆提交表_创建时间_idx ON ${名('记忆提交表')} (创建时间 DESC);`)
-  await 执行(`
-    INSERT INTO ${名('记忆元数据表')} (键, 值) VALUES ('KERNEL_SCHEMA_VERSION', '3')
-    ON CONFLICT (键) DO UPDATE SET 值 = EXCLUDED.值;
-  `)
+  await 执行(`CREATE INDEX IF NOT EXISTS 记忆提交表_父提交_idx ON ${名('记忆提交表')} (父提交id);`)
 
   let columnsCheck = await sql`
     SELECT column_name FROM information_schema.columns WHERE table_schema = ${schema} AND table_name = '记忆表'
@@ -152,18 +163,21 @@ async function 在事务中初始化数据库(数据库查询器: Kysely<记忆�
     RETURNS TRIGGER AS $$
     DECLARE
       v_commit_id TEXT;
+      v_restoring BOOLEAN := FALSE;
       v_op_type TEXT;
       v_target_id TEXT;
       v_old_val TEXT := NULL;
       v_new_val TEXT := NULL;
     BEGIN
       BEGIN
-        SELECT commit_id INTO v_commit_id FROM ${名('_agent_session_commit')} WHERE id = 1;
+        SELECT commit_id, 恢复中 INTO v_commit_id, v_restoring FROM ${名('_agent_session_commit')} WHERE id = 1;
       EXCEPTION WHEN OTHERS THEN
         v_commit_id := NULL;
       END;
       
-      IF v_commit_id IS NULL OR v_commit_id = '' THEN
+      IF v_restoring THEN
+        RETURN NULL;
+      ELSIF v_commit_id IS NULL OR v_commit_id = '' THEN
         RAISE EXCEPTION '记忆表只能在活动提交中修改';
       END IF;
 
@@ -218,18 +232,21 @@ async function 在事务中初始化数据库(数据库查询器: Kysely<记忆�
     RETURNS TRIGGER AS $$
     DECLARE
       v_commit_id TEXT;
+      v_restoring BOOLEAN := FALSE;
       v_op_type TEXT;
       v_target_id TEXT;
       v_old_val TEXT := NULL;
       v_new_val TEXT := NULL;
     BEGIN
       BEGIN
-        SELECT commit_id INTO v_commit_id FROM ${名('_agent_session_commit')} WHERE id = 1;
+        SELECT commit_id, 恢复中 INTO v_commit_id, v_restoring FROM ${名('_agent_session_commit')} WHERE id = 1;
       EXCEPTION WHEN OTHERS THEN
         v_commit_id := NULL;
       END;
 
-      IF v_commit_id IS NULL OR v_commit_id = '' THEN
+      IF v_restoring THEN
+        RETURN NULL;
+      ELSIF v_commit_id IS NULL OR v_commit_id = '' THEN
         RAISE EXCEPTION '记忆关联表只能在活动提交中修改';
       END IF;
 
@@ -272,18 +289,21 @@ async function 在事务中初始化数据库(数据库查询器: Kysely<记忆�
     RETURNS TRIGGER AS $$
     DECLARE
       v_commit_id TEXT;
+      v_restoring BOOLEAN := FALSE;
       v_op_type TEXT;
       v_target_id TEXT;
       v_old_val TEXT := NULL;
       v_new_val TEXT := NULL;
     BEGIN
       BEGIN
-        SELECT commit_id INTO v_commit_id FROM ${名('_agent_session_commit')} WHERE id = 1;
+        SELECT commit_id, 恢复中 INTO v_commit_id, v_restoring FROM ${名('_agent_session_commit')} WHERE id = 1;
       EXCEPTION WHEN OTHERS THEN
         v_commit_id := NULL;
       END;
 
-      IF v_commit_id IS NULL OR v_commit_id = '' THEN
+      IF v_restoring THEN
+        RETURN NULL;
+      ELSIF v_commit_id IS NULL OR v_commit_id = '' THEN
         RAISE EXCEPTION '动态工具表只能在活动提交中修改';
       END IF;
 
@@ -324,4 +344,43 @@ async function 在事务中初始化数据库(数据库查询器: Kysely<记忆�
     AFTER INSERT OR UPDATE OR DELETE ON ${名('动态工具表')}
     FOR EACH ROW EXECUTE FUNCTION ${名('记录动态工具表变更_触发器')}();
   `)
+
+  if (原内核版本 !== undefined && 原内核版本 !== '4') {
+    let 基线id = randomUUID()
+    await 数据库查询器
+      .insertInto('记忆提交表')
+      .values({ id: 基线id, 父提交id: null, 消息: '升级后完整状态基线', 创建时间: new Date() })
+      .execute()
+    await sql`
+      INSERT INTO ${sql.raw(名('记忆变更表'))} (id, 提交id, 操作类型, 目标表, 目标id, 旧值, 新值)
+      SELECT gen_random_uuid()::TEXT, ${基线id}, 'init', 'node', id, NULL, row_to_json(记录)::TEXT
+      FROM ${sql.raw(名('记忆表'))} AS 记录
+    `.execute(数据库查询器)
+    await sql`
+      INSERT INTO ${sql.raw(名('记忆变更表'))} (id, 提交id, 操作类型, 目标表, 目标id, 旧值, 新值)
+      SELECT gen_random_uuid()::TEXT, ${基线id}, 'init', 'link', 起点id || '_' || 终点id, NULL, row_to_json(记录)::TEXT
+      FROM ${sql.raw(名('记忆关联表'))} AS 记录
+    `.execute(数据库查询器)
+    await sql`
+      INSERT INTO ${sql.raw(名('记忆变更表'))} (id, 提交id, 操作类型, 目标表, 目标id, 旧值, 新值)
+      SELECT gen_random_uuid()::TEXT, ${基线id}, 'init', 'tool', id, NULL, row_to_json(记录)::TEXT
+      FROM ${sql.raw(名('动态工具表'))} AS 记录
+    `.execute(数据库查询器)
+    await 数据库查询器
+      .insertInto('记忆元数据表')
+      .values({ 键: 'HEAD_COMMIT', 值: 基线id })
+      .onConflict((冲突) => 冲突.column('键').doUpdateSet({ 值: 基线id }))
+      .execute()
+    await 数据库查询器
+      .insertInto('记忆元数据表')
+      .values({ 键: 'RELIABLE_ROOT_COMMIT', 值: 基线id })
+      .onConflict((冲突) => 冲突.column('键').doUpdateSet({ 值: 基线id }))
+      .execute()
+  }
+
+  await 数据库查询器
+    .insertInto('记忆元数据表')
+    .values({ 键: 'KERNEL_SCHEMA_VERSION', 值: '4' })
+    .onConflict((冲突) => 冲突.column('键').doUpdateSet({ 值: '4' }))
+    .execute()
 }

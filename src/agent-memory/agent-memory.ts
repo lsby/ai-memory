@@ -6,7 +6,12 @@ import type OpenAI from 'openai'
 import { z } from 'zod'
 import { 智能体 } from '../agent/agent'
 import { type 回合结果, type 智能体事件, type 智能体执行模式, type 智能体消息类型 } from '../agent/types'
-import { 在提交中执行, 回退记忆提交 as 外部回退记忆提交 } from './agent-memory-commit'
+import {
+  在提交中执行,
+  切换记忆提交 as 外部切换记忆提交,
+  回退到父记忆提交 as 外部回退到父记忆提交,
+  获取当前提交ID,
+} from './agent-memory-commit'
 import { 带互斥的PGlite方言, 校验schema名, 默认schema } from './agent-memory-connection'
 import {
   创建向量缓存 as 外部创建向量缓存,
@@ -292,12 +297,23 @@ export class 带记忆的智能体 extends 智能体 {
     return await 外部查询记忆提交(this.数据库查询器, 数量)
   }
 
-  /** 将最近一次记忆变更反向应用为一个新提交；不会改写或删除已有提交历史。 */
+  /** 返回当前记忆分支的 HEAD；尚无提交时返回 null。 */
+  public async 查询当前记忆提交id(): Promise<string | null> {
+    await this.确保已初始化()
+    return await 获取当前提交ID(this.数据库查询器)
+  }
+
+  /** 切换到指定提交的完整状态；已有提交不会被删除，之后的新提交将从该提交产生分支。 */
+  public async 切换记忆提交(提交id: string): Promise<boolean> {
+    let 已校验提交id = z.string().trim().min(1).parse(提交id)
+    await this.确保已初始化()
+    return await this.数据库查询器.transaction().execute(async (trx) => await 外部切换记忆提交(trx, 已校验提交id))
+  }
+
+  /** 将 HEAD 切换到当前提交的父提交；不会生成反向提交，也不会删除原分支。 */
   public async 回退最近记忆提交(): Promise<boolean> {
-    return await this.执行记忆变更任务('回退最近记忆提交', async (trx, 父提交id): Promise<boolean> => {
-      if (父提交id === null) return false
-      return await 外部回退记忆提交(trx, 父提交id)
-    })
+    await this.确保已初始化()
+    return await this.数据库查询器.transaction().execute(async (trx) => await 外部回退到父记忆提交(trx))
   }
 
   public async 检查并清理二级记忆(回调?: (事件: 智能体事件) => Promise<void>): Promise<void> {

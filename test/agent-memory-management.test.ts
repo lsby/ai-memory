@@ -106,7 +106,7 @@ describe('记忆应用管理接口', () => {
     await expect(智能体实例.导入完整状态('{"消息历史":[]}')).rejects.toThrow()
   })
 
-  it('记录精确 Diff 并通过新提交回退最近一次修改', async (): Promise<void> => {
+  it('记录精确 Diff 并把 HEAD 回退到父提交而不改写历史', async (): Promise<void> => {
     智能体实例 = 夹具.新建智能体({ 向量模型: { 类型: '无' }, 二级记忆遗忘分数阈值: 0 })
     let 记忆 = await 智能体实例.添加记忆({
       内容: '回退前内容',
@@ -123,14 +123,24 @@ describe('记忆应用管理接口', () => {
     expect(更新提交?.变更列表[0]).toMatchObject({ 操作类型: 'update', 目标表: 'node', 目标id: 记忆.id })
     expect(更新提交?.变更列表[0]?.旧值).toContain('回退前内容')
     expect(更新提交?.变更列表[0]?.新值).toContain('回退后内容')
+    let 回退前提交数 = (await 智能体实例.查询记忆提交()).length
 
     expect(await 智能体实例.回退最近记忆提交()).toBe(true)
     expect(await 智能体实例.查找记忆(记忆.id)).toMatchObject({ 内容: '回退前内容' })
-    expect((await 智能体实例.查询记忆提交())[0]).toMatchObject({ 消息: '回退最近记忆提交' })
+    expect(await 智能体实例.查询当前记忆提交id()).toBe(更新提交?.父提交id)
+    expect(await 智能体实例.查询记忆提交()).toHaveLength(回退前提交数)
   })
 
   it('动态工具变更进入提交历史并且可以回退', async (): Promise<void> => {
     智能体实例 = 夹具.新建智能体({ 向量模型: { 类型: '无' } })
+    await 智能体实例.添加记忆({
+      内容: '动态工具分支基线',
+      关键词: ['基线'],
+      标签: [],
+      评分: 50,
+      等级: 记忆等级.一级,
+      创建时间: new Date('2026-01-01T00:00:00.000Z'),
+    })
     expect((await 智能体实例.注册动态工具(动态工具代码, '{"value":3}')).结果).toBe('成功')
 
     let 注册提交 = (await 智能体实例.查询记忆提交()).find((提交) => 提交.消息 === '编程接入: 注册动态工具')
@@ -139,5 +149,38 @@ describe('记忆应用管理接口', () => {
 
     expect(await 智能体实例.回退最近记忆提交()).toBe(true)
     expect(await 智能体实例.查询动态工具()).toEqual([])
+    if (注册提交 === undefined) throw new Error('动态工具提交未生成')
+    expect(await 智能体实例.切换记忆提交(注册提交.id)).toBe(true)
+    expect(await 智能体实例.查询动态工具()).toMatchObject([{ 名称: 'snapshot_tool' }])
+  })
+
+  it('从旧提交继续写入会产生分支并且可以在分支间切换', async (): Promise<void> => {
+    智能体实例 = 夹具.新建智能体({ 向量模型: { 类型: '无' }, 二级记忆遗忘分数阈值: 0 })
+    let 记忆 = await 智能体实例.添加记忆({
+      内容: '共同祖先',
+      关键词: ['分支'],
+      标签: [],
+      评分: 50,
+      等级: 记忆等级.一级,
+      创建时间: new Date('2026-01-01T00:00:00.000Z'),
+    })
+    let 祖先提交id = await 智能体实例.查询当前记忆提交id()
+    await 智能体实例.更新记忆(记忆.id, { 内容: '原分支' })
+    let 原分支提交id = await 智能体实例.查询当前记忆提交id()
+
+    expect(await 智能体实例.回退最近记忆提交()).toBe(true)
+    await 智能体实例.更新记忆(记忆.id, { 内容: '新分支' })
+    let 新分支提交id = await 智能体实例.查询当前记忆提交id()
+    let 提交列表 = await 智能体实例.查询记忆提交()
+    expect(提交列表.find((提交) => 提交.id === 原分支提交id)?.父提交id).toBe(祖先提交id)
+    expect(提交列表.find((提交) => 提交.id === 新分支提交id)?.父提交id).toBe(祖先提交id)
+
+    if (原分支提交id === null || 新分支提交id === null) throw new Error('测试提交未生成')
+    expect(await 智能体实例.切换记忆提交(原分支提交id)).toBe(true)
+    expect(await 智能体实例.查找记忆(记忆.id)).toMatchObject({ 内容: '原分支' })
+    expect(await 智能体实例.切换记忆提交(新分支提交id)).toBe(true)
+    expect(await 智能体实例.查找记忆(记忆.id)).toMatchObject({ 内容: '新分支' })
+    expect(await 智能体实例.切换记忆提交('不存在的提交')).toBe(false)
+    expect(await 智能体实例.查询当前记忆提交id()).toBe(新分支提交id)
   })
 })
