@@ -6,7 +6,8 @@ export default defineConfig({
     // 单个用例超过 Vitest 默认的 5 秒超时。基础单测以稳定、可重复为优先。
     minWorkers: 1,
     maxWorkers: 1,
-    testTimeout: 0,
+    // PGlite、QuickJS 与本地模型初始化可能受机器性能影响；保留有限上限以避免 CI 永久挂起。
+    testTimeout: 300000,
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],
