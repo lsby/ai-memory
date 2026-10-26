@@ -148,27 +148,28 @@ describe('P1 记忆工具筛选', () => {
 })
 
 describe('P2 记忆提示词', () => {
-  it('默认提示词固定包含两条不可变原则且保留旧版操作指南', () => {
+  it('默认提示词只包含记忆操作指南, 不暴露历史不可变的实现机制', () => {
     let 提示词 = 生成默认记忆提示词(全部记忆工具名)
-    expect(提示词).toContain('记忆历史不可改写')
-    expect(提示词).toContain('对话上下文不可改写')
-    expect(提示词.endsWith(旧版记忆提示词)).toBe(true)
+    expect(提示词).not.toContain('记忆历史不可改写')
+    expect(提示词).not.toContain('对话上下文不可改写')
+    expect(提示词).toBe(旧版记忆提示词)
   })
 
-  it('默认实例发给模型的系统提示词里带着不可变原则和旧版操作指南', async (): Promise<void> => {
+  it('默认实例发给模型的系统提示词里只有旧版操作指南', async (): Promise<void> => {
     let { 假 } = await 跑一轮(创建记忆实例())
     let 系统提示词 = 取系统提示词(假.请求列表[0])
-    expect(系统提示词).toContain('记忆历史不可改写')
-    expect(系统提示词).toContain('对话上下文不可改写')
+    expect(系统提示词).not.toContain('记忆历史不可改写')
+    expect(系统提示词).not.toContain('对话上下文不可改写')
     expect(系统提示词.endsWith(旧版记忆提示词)).toBe(true)
   })
 
-  it('传字符串时只替换操作指南而不覆盖不可变原则', async (): Promise<void> => {
-    let { 假 } = await 跑一轮(创建记忆实例({ 记忆提示词: '## 我的记忆规则\n只写事实' }))
+  it('传字符串时完整替换操作指南且不附加机制提示', async (): Promise<void> => {
+    let 英文提示词 = '## Memory rules\nStore verified facts only.'
+    let { 假 } = await 跑一轮(创建记忆实例({ 记忆提示词: 英文提示词 }))
     let 系统提示词 = 取系统提示词(假.请求列表[0])
-    expect(系统提示词).toContain('记忆历史不可改写')
-    expect(系统提示词).toContain('对话上下文不可改写')
-    expect(系统提示词.endsWith('## 我的记忆规则\n只写事实')).toBe(true)
+    expect(系统提示词).not.toContain('记忆历史不可改写')
+    expect(系统提示词).not.toContain('对话上下文不可改写')
+    expect(系统提示词.endsWith(英文提示词)).toBe(true)
     expect(系统提示词).not.toContain('记忆系统操作指南')
   })
 
