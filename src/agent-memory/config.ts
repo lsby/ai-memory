@@ -1,4 +1,5 @@
 import path from 'node:path'
+import { 中文模型语言包 } from '../agent/model-language'
 import { 生成默认记忆提示词 } from './prompt/memory-prompt'
 import { 全部记忆工具名, 记忆工具名 } from './prompt/memory-tool-names'
 import { 校验schema名 } from './storage/connection'
@@ -30,6 +31,7 @@ export function 构建智能体配置(选项: 带记忆的智能体选项): {
   )
   let 配置: 内部带记忆的智能体配置 = {
     ...选项,
+    模型语言包: 选项.模型语言包 ?? 中文模型语言包,
     启用的记忆工具名,
     遗忘豁免: 选项.遗忘豁免 ?? ((): boolean => false),
     一级记忆容量: 选项.一级记忆容量 ?? 10,
@@ -48,7 +50,7 @@ export function 构建智能体配置(选项: 带记忆的智能体选项): {
   let 自定义提示词 = 选项.记忆提示词
   let 记忆提示词文本 =
     自定义提示词 === undefined
-      ? 生成默认记忆提示词(启用的记忆工具名, 选项.模型语言 ?? 'zh-CN')
+      ? 生成默认记忆提示词(启用的记忆工具名, 配置.模型语言包)
       : typeof 自定义提示词 === 'string'
         ? 自定义提示词
         : 自定义提示词([...启用的记忆工具名])

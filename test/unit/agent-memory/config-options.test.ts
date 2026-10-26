@@ -1,9 +1,12 @@
 import { afterEach, describe, expect, it } from 'vitest'
+import { z } from 'zod'
 import {
+  中文模型语言包,
   全部记忆工具名,
   带记忆的智能体,
   智能体,
   生成默认记忆提示词,
+  英文模型语言包,
   记忆工具名,
   记忆等级,
   type 回合结果,
@@ -153,9 +156,14 @@ describe('P1 记忆工具筛选', () => {
   })
 })
 
-describe('模型语言', () => {
-  it('en-US 使用英文记忆提示词、工具描述和协议字段', async (): Promise<void> => {
-    let { 假 } = await 跑一轮(创建记忆实例({ 模型语言: 'en-US' }))
+describe('模型语言包', () => {
+  it('内置语言包的所有条目都是函数', (): void => {
+    expect(Object.values(中文模型语言包).every((值) => typeof 值 === 'function')).toBe(true)
+    expect(Object.values(英文模型语言包).every((值) => typeof 值 === 'function')).toBe(true)
+  })
+
+  it('英文语言包使用英文记忆提示词、工具描述和协议字段', async (): Promise<void> => {
+    let { 假 } = await 跑一轮(创建记忆实例({ 模型语言包: 英文模型语言包 }))
     let 请求 = 假.请求列表[0]
     let 系统提示词 = 取系统提示词(请求)
     expect(系统提示词).toContain('Memory system')
@@ -168,6 +176,47 @@ describe('模型语言', () => {
     expect(工具定义).toContain('content')
     expect(工具定义).not.toMatch(/[\u3400-\u9fff]/u)
     expect(取注入文本(请求, '### Current memory state')).toContain('Current level 0 memories')
+  })
+
+  it('初始化时可以传入自定义语言包', async (): Promise<void> => {
+    let 自定义语言包 = { ...英文模型语言包, 当前时间: (时间: string): string => `[CUSTOM TIME: ${时间}]` }
+    let { 假 } = await 跑一轮(创建记忆实例({ 模型语言包: 自定义语言包 }), {
+      当前时间: new Date('2026-01-01T00:00:00.000Z'),
+    })
+    expect(取注入文本(假.请求列表[0], '[CUSTOM TIME: ')).toContain('2026-01-01')
+  })
+
+  it('英文语言包会本地化内置工具的实际返回内容', async (): Promise<void> => {
+    let 假 = 创建假客户端([
+      {
+        工具调用: [
+          {
+            id: 'call_memory',
+            名称: 'add_level_1_memory',
+            参数: {
+              content: 'production port is 5433',
+              keywords: ['production', 'port'],
+              tags: ['verified'],
+              score: 90,
+            },
+          },
+        ],
+      },
+      { 工具调用: [{ id: 'call_submit', 名称: '__submit_result__', 参数: { answer: 1 } }] },
+    ])
+    let 实例 = 创建记忆实例({ 模型语言包: 英文模型语言包 })
+    await 实例.对话({
+      命令: 'Remember this fact.',
+      预期结果Schema: z.object({ answer: z.number() }),
+      预期结果描述: 'A numeric answer.',
+      回调: async (): Promise<void> => {},
+      openai客户端: 假.客户端,
+      模型名称: 'mock-model',
+      是否自动召回: false,
+    })
+    let 工具消息 = 假.请求列表[1]?.messages.find((消息) => 消息['tool_call_id'] === 'call_memory')
+    expect(工具消息?.['content']).toContain('current_state')
+    expect(工具消息?.['content']).not.toMatch(/[\u3400-\u9fff]/u)
   })
 })
 

@@ -107,7 +107,7 @@ export class 带记忆的智能体 extends 持久化会话智能体 {
         确保已初始化: async (): Promise<void> => await this.确保已初始化(),
         读取新会话标识: (): string => this.读取会话标识(),
         载入内存历史: (消息列表, 会话id): void => super.载入对话历史(消息列表, 会话id),
-        模型语言: this.模型语言,
+        模型语言包: this.模型语言包,
       }),
     )
   }
@@ -372,7 +372,7 @@ export class 带记忆的智能体 extends 持久化会话智能体 {
       this.数据库查询器,
       async <T extends z.ZodType>(s: 带记忆的解决问题选项<T>) =>
         await this.执行回合({ ...s, 消息历史: s.消息历史 ?? [], 事件组id: 选项.事件组id ?? s.事件组id }),
-      选项,
+      { ...选项, 模型语言包: this.模型语言包 },
     )
   }
 
@@ -403,7 +403,7 @@ export class 带记忆的智能体 extends 持久化会话智能体 {
   }
 
   protected override async 准备对话<T extends z.ZodType>(选项: 对话选项<T>): Promise<void> {
-    await 尝试自动压缩(this.会话控制器(), this.模型语言, this.读取对话历史(), this.配置.自动压缩, 选项)
+    await 尝试自动压缩(this.会话控制器(), this.模型语言包, this.读取对话历史(), this.配置.自动压缩, 选项)
   }
 
   public override async 推演<T extends z.ZodType>(选项: 带记忆的对话选项<T>): Promise<回合结果<T>> {
@@ -458,7 +458,7 @@ export class 带记忆的智能体 extends 持久化会话智能体 {
     let 新选项 = {
       ...选项,
       标题: '私有反思',
-      命令: `[系统事件:私有反思] 你刚才经历了以下事件或产生了以下思绪：\n${选项.命令}\n请根据此情况，自主决定是否需要使用工具（如更新记忆等），并在反思结束后返回期望的结果。本轮反思不会写入对话历史。`,
+      命令: this.模型语言包.私有反思(选项.命令),
     }
     return await this.执行不追加历史的对话(新选项)
   }
@@ -468,7 +468,7 @@ export class 带记忆的智能体 extends 持久化会话智能体 {
     let 新选项 = {
       ...选项,
       标题: '会话反思',
-      命令: `[系统事件:会话反思] 你刚才经历了以下事件或产生了以下思绪：\n${选项.命令}\n请根据此情况，自主决定是否需要使用工具（如更新记忆等），并在反思结束后返回期望的结果。本轮反思会写入对话历史。`,
+      命令: this.模型语言包.会话反思(选项.命令),
     }
     return await this.对话(新选项)
   }

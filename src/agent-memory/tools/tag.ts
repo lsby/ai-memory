@@ -15,7 +15,7 @@ export function 追加记忆标签工具(上下文: 标签管理上下文): 智�
 
   return 智能体工具.创建({
     名称: 'append_memory_tags',
-    描述: '向指定记忆中追加新的标签。标签用于分类和描述元数据，不参与图谱关联。',
+    描述: '',
     参数Schema: z.object({
       id: z.string().describe('需要修改标签的记忆 ID'),
       标签列表: z.array(z.string()).describe('需要追加的标签列表'),
@@ -32,7 +32,7 @@ export function 追加记忆标签工具(上下文: 标签管理上下文): 智�
       try {
         let 记忆 = await 数据库查询器.selectFrom('记忆表').select(['标签']).where('id', '=', 参数.id).executeTakeFirst()
         if (记忆 === undefined) {
-          return { 结果: '失败', 错误信息: `找不到指定 ID (${参数.id}) 的记忆。` }
+          return { 结果: '失败', 错误信息: 配置.模型语言包.找不到记忆(参数.id) }
         }
         let 旧标签 = 记忆.标签
         let 新标签 = Array.from(new Set(应用受保护标签(旧标签, [...旧标签, ...参数.标签列表], 配置.受保护标签)))
@@ -45,7 +45,7 @@ export function 追加记忆标签工具(上下文: 标签管理上下文): 智�
             内容: `[数据库更新] 追加记忆标签成功 (ID: ${参数.id}, 新标签: ${新标签.join(', ')})`,
           })
         }
-        return { 结果: '成功', 最新状态: `[记忆 ID: ${参数.id}] 最新标签列表: ${新标签.join(', ')}` }
+        return { 结果: '成功', 最新状态: 配置.模型语言包.记忆标签状态(参数.id, 新标签) }
       } catch (error: unknown) {
         return { 结果: '失败', 错误信息: String(error instanceof Error ? error.message : error) }
       }
@@ -58,7 +58,7 @@ export function 移除记忆标签工具(上下文: 标签管理上下文): 智�
 
   return 智能体工具.创建({
     名称: 'remove_memory_tags',
-    描述: '从指定记忆中移除指定的标签。',
+    描述: '',
     参数Schema: z.object({
       id: z.string().describe('需要修改标签的记忆 ID'),
       标签列表: z.array(z.string()).describe('需要移除的标签列表'),
@@ -75,7 +75,7 @@ export function 移除记忆标签工具(上下文: 标签管理上下文): 智�
       try {
         let 记忆 = await 数据库查询器.selectFrom('记忆表').select(['标签']).where('id', '=', 参数.id).executeTakeFirst()
         if (记忆 === undefined) {
-          return { 结果: '失败', 错误信息: `找不到指定 ID (${参数.id}) 的记忆。` }
+          return { 结果: '失败', 错误信息: 配置.模型语言包.找不到记忆(参数.id) }
         }
         let 旧标签 = 记忆.标签
         let 新标签 = 旧标签.filter((k: string): boolean => {
@@ -91,7 +91,7 @@ export function 移除记忆标签工具(上下文: 标签管理上下文): 智�
             内容: `[数据库更新] 移除记忆标签成功 (ID: ${参数.id}, 新标签: ${新标签.join(', ')})`,
           })
         }
-        return { 结果: '成功', 最新状态: `[记忆 ID: ${参数.id}] 最新标签列表: ${新标签.join(', ')}` }
+        return { 结果: '成功', 最新状态: 配置.模型语言包.记忆标签状态(参数.id, 新标签) }
       } catch (error: unknown) {
         return { 结果: '失败', 错误信息: String(error instanceof Error ? error.message : error) }
       }
@@ -104,7 +104,7 @@ export function 覆盖记忆标签工具(上下文: 标签管理上下文): 智�
 
   return 智能体工具.创建({
     名称: 'overwrite_memory_tags',
-    描述: '用新的标签列表覆盖指定记忆的原有标签列表。',
+    描述: '',
     参数Schema: z.object({
       id: z.string().describe('需要修改标签的记忆 ID'),
       标签列表: z.array(z.string()).describe('覆盖后的新标签列表'),
@@ -121,7 +121,7 @@ export function 覆盖记忆标签工具(上下文: 标签管理上下文): 智�
       try {
         let 记忆 = await 数据库查询器.selectFrom('记忆表').select(['标签']).where('id', '=', 参数.id).executeTakeFirst()
         if (记忆 === undefined) {
-          return { 结果: '失败', 错误信息: `找不到指定 ID (${参数.id}) 的记忆。` }
+          return { 结果: '失败', 错误信息: 配置.模型语言包.找不到记忆(参数.id) }
         }
         let 新标签 = 应用受保护标签(记忆.标签, 参数.标签列表, 配置.受保护标签)
 
@@ -133,7 +133,7 @@ export function 覆盖记忆标签工具(上下文: 标签管理上下文): 智�
             内容: `[数据库更新] 覆盖记忆标签成功 (ID: ${参数.id}, 新标签: ${新标签.join(', ')})`,
           })
         }
-        return { 结果: '成功', 最新状态: `[记忆 ID: ${参数.id}] 最新标签列表: ${新标签.join(', ')}` }
+        return { 结果: '成功', 最新状态: 配置.模型语言包.记忆标签状态(参数.id, 新标签) }
       } catch (error: unknown) {
         return { 结果: '失败', 错误信息: String(error instanceof Error ? error.message : error) }
       }

@@ -1,10 +1,11 @@
+import type { 模型语言包 } from '../../agent/model-language'
 import type { 对话选项, 智能体消息类型 } from '../../agent/types'
 import type { 公开会话, 压缩当前会话选项 } from '../types'
 import type { 会话控制器 } from './conversation-controller'
 
 export async function 执行压缩当前会话(
   控制器: 会话控制器,
-  模型语言: 'zh-CN' | 'en-US',
+  模型语言包: 模型语言包,
   选项: 压缩当前会话选项,
 ): Promise<公开会话> {
   if (Number.isInteger(选项.目标字符数) === false || 选项.目标字符数 < 1) throw new Error('目标字符数必须是正整数')
@@ -17,10 +18,7 @@ export async function 执行压缩当前会话(
       let 内容 = 'content' in 消息.消息 ? 消息.消息.content : null
       return { role: 消息.消息.role, content: 内容, message_id: 消息.id }
     })
-  let 要求 =
-    模型语言 === 'en-US'
-      ? `Summarize the conversation below in at most ${String(选项.目标字符数)} characters. Preserve decisions, constraints, unresolved work, exact identifiers, and important facts. Return only the summary.`
-      : `将下面的对话压缩为不超过 ${String(选项.目标字符数)} 个字符的摘要。保留决定、约束、未完成事项、精确标识符和重要事实。只返回摘要。`
+  let 要求 = 模型语言包.压缩要求(选项.目标字符数)
   let 响应 = await 选项.openai客户端.chat.completions.create({
     model: 选项.模型名称,
     messages: [
@@ -37,7 +35,7 @@ export async function 执行压缩当前会话(
 
 export async function 尝试自动压缩<T extends import('zod').z.ZodType>(
   控制器: 会话控制器,
-  模型语言: 'zh-CN' | 'en-US',
+  模型语言包: 模型语言包,
   历史: 智能体消息类型[],
   自动压缩: { 触发字符数: number; 目标字符数: number } | undefined,
   选项: 对话选项<T>,
@@ -46,7 +44,7 @@ export async function 尝试自动压缩<T extends import('zod').z.ZodType>(
   let 历史字符数 = 历史.reduce((总数, 消息) => 总数 + JSON.stringify(消息).length, 0)
   if (历史字符数 < 自动压缩.触发字符数) return
   try {
-    await 执行压缩当前会话(控制器, 模型语言, {
+    await 执行压缩当前会话(控制器, 模型语言包, {
       openai客户端: 选项.openai客户端,
       模型名称: 选项.模型名称,
       目标字符数: 自动压缩.目标字符数,

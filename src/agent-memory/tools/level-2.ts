@@ -15,11 +15,11 @@ type 二级记忆上下文 = {
 }
 
 export function 降级记忆为二级工具(上下文: 二级记忆上下文): 智能体工具 {
-  let { 数据库查询器, 回调 } = 上下文
+  let { 数据库查询器, 回调, 配置 } = 上下文
 
   return 智能体工具.创建({
     名称: 'demote_memory',
-    描述: '主动将一条一级记忆转移到二级长期记忆，腾出工作区空间。要求重新评估并给与一个新的评分。',
+    描述: '',
     参数Schema: z.object({ id: z.string(), 新评分: z.number().describe('作为长期记忆保存的潜力评分 (0.0 - 100.0)') }),
     返回值Schema: z.object({
       结果: z.enum(['成功', '失败']),
@@ -45,7 +45,7 @@ export function 降级记忆为二级工具(上下文: 二级记忆上下文): �
         }
         return {
           结果: '成功',
-          最新状态: `[记忆 ID: ${参数.id}] 已成功降级为二级长期记忆 (新评分: ${String(参数.新评分)})`,
+          最新状态: 配置.模型语言包.记忆已降级(参数.id, 参数.新评分),
         }
       } catch (error: unknown) {
         return { 结果: '失败', 错误信息: String(error instanceof Error ? error.message : error) }
@@ -55,11 +55,11 @@ export function 降级记忆为二级工具(上下文: 二级记忆上下文): �
 }
 
 export function 捞起记忆到一级工具(上下文: 二级记忆上下文): 智能体工具 {
-  let { 数据库查询器, 检查并降级一级记忆, 回调 } = 上下文
+  let { 数据库查询器, 检查并降级一级记忆, 回调, 配置 } = 上下文
 
   return 智能体工具.创建({
     名称: 'promote_memory',
-    描述: '主动将一条二级记忆捞回到一级工作区，需要重新为其评估重要度打分。',
+    描述: '',
     参数Schema: z.object({ id: z.string(), 新评分: z.number().describe('重新评估这在当前任务的重要度 (0.0 - 100.0)') }),
     返回值Schema: z.object({
       结果: z.enum(['成功', '失败']),
@@ -91,7 +91,7 @@ export function 捞起记忆到一级工具(上下文: 二级记忆上下文): �
         await 检查并降级一级记忆()
         return {
           结果: '成功',
-          最新状态: `[记忆 ID: ${参数.id}] 已成功捞回至一级工作记忆区 (新评分: ${String(参数.新评分)})`,
+          最新状态: 配置.模型语言包.记忆已捞起(参数.id, 参数.新评分),
         }
       } catch (error: unknown) {
         return { 结果: '失败', 错误信息: String(error instanceof Error ? error.message : error) }
@@ -105,7 +105,7 @@ export function 添加二级记忆工具(上下文: 二级记忆上下文): 智�
 
   return 智能体工具.创建({
     名称: 'add_level_2_memory',
-    描述: '直接将总结出的规律、经验或长期理论等知识存入二级长期记忆区。这些记忆不会占用宝贵的一级工作区槽位，在未来的相关场景下会被系统自动唤醒。',
+    描述: '',
     参数Schema: z.object({
       内容: z.string().describe('记忆的内容'),
       关键词: z.array(z.string()).describe('相关关键词提取，将依据这些关键词自动构建记忆关联图谱'),
@@ -168,7 +168,14 @@ export function 添加二级记忆工具(上下文: 二级记忆上下文): 智�
         return {
           结果: '成功',
           id,
-          最新状态: `[二级记忆 ID: ${id}] (评分: ${String(参数.评分)}) 内容: ${参数.内容} (关键词: ${参数.关键词.join(', ')}, 标签: ${最终标签.join(', ')})`,
+          最新状态: 配置.模型语言包.记忆完整状态({
+            等级: '二级',
+            id,
+            内容: 参数.内容,
+            关键词: 参数.关键词,
+            标签: 最终标签,
+            评分: 参数.评分,
+          }),
         }
       } catch (error: unknown) {
         return { 结果: '失败', 错误信息: String(error instanceof Error ? error.message : error) }

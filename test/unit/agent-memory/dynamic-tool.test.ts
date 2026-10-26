@@ -14,12 +14,12 @@ describe('动态工具运行期校验', () => {
   it('拒绝不符合返回值 Schema 的动态工具结果', async (): Promise<void> => {
     智能体实例 = new 带记忆的智能体({ 向量模型: { 类型: '无' } })
     let 代码 = `
-工具 = {
-  名称: 'conditional_result',
-  描述: '根据模式返回结果',
-  参数Schema: { type: 'object', properties: { mode: { type: 'string' } }, required: ['mode'] },
-  返回值Schema: { type: 'object', properties: { 结果: { type: 'number' } }, required: ['结果'] },
-  实现: async function(参数) { return { 结果: 参数.mode === 'valid' ? 1 : '错误类型' }; }
+tool = {
+  name: 'conditional_result',
+  description: '根据模式返回结果',
+  parametersSchema: { type: 'object', properties: { mode: { type: 'string' } }, required: ['mode'] },
+  returnSchema: { type: 'object', properties: { 结果: { type: 'number' } }, required: ['结果'] },
+  execute: async function(args) { return { 结果: args.mode === 'valid' ? 1 : '错误类型' }; }
 }
     `
 
@@ -34,10 +34,10 @@ describe('动态工具运行期校验', () => {
   it('完整校验嵌套字段、枚举和额外字段', async (): Promise<void> => {
     智能体实例 = new 带记忆的智能体({ 向量模型: { 类型: '无' } })
     let 代码 = `
-工具 = {
-  名称: 'strict_schema',
-  描述: '校验嵌套输入',
-  参数Schema: {
+tool = {
+  name: 'strict_schema',
+  description: '校验嵌套输入',
+  parametersSchema: {
     type: 'object',
     additionalProperties: false,
     properties: {
@@ -50,8 +50,8 @@ describe('动态工具运行期校验', () => {
     },
     required: ['配置']
   },
-  返回值Schema: { type: 'object', properties: { 完成: { type: 'boolean' } }, required: ['完成'] },
-  实现: async function() { return { 完成: true }; }
+  returnSchema: { type: 'object', properties: { 完成: { type: 'boolean' } }, required: ['完成'] },
+  execute: async function() { return { 完成: true }; }
 }
     `
 
@@ -66,12 +66,12 @@ describe('动态工具运行期校验', () => {
   it('在动态工具的异步实现永不结束时返回超时错误', async (): Promise<void> => {
     智能体实例 = new 带记忆的智能体({ 向量模型: { 类型: '无' } })
     let 代码 = `
-工具 = {
-  名称: 'never_settles',
-  描述: '永不结束的异步工具',
-  参数Schema: { type: 'object', properties: {}, required: [] },
-  返回值Schema: { type: 'object', properties: {}, required: [] },
-  实现: async function() { await new Promise(() => {}); return {}; }
+tool = {
+  name: 'never_settles',
+  description: '永不结束的异步工具',
+  parametersSchema: { type: 'object', properties: {}, required: [] },
+  returnSchema: { type: 'object', properties: {}, required: [] },
+  execute: async function() { await new Promise(() => {}); return {}; }
 }
     `
 

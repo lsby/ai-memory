@@ -98,6 +98,6 @@ export abstract class 持久化会话智能体 extends 智能体 {
   }
 
   public async 压缩当前会话(选项: 压缩当前会话选项): Promise<公开会话> {
-    return await this.执行会话任务(async () => await 执行压缩当前会话(this.会话控制器(), this.模型语言, 选项))
+    return await this.执行会话任务(async () => await 执行压缩当前会话(this.会话控制器(), this.模型语言包, 选项))
   }
 }

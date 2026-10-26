@@ -7,6 +7,7 @@ import { 构建当前时间注入, 追加注入消息到列表 } from '../messag
 import { 前缀是否一致, 构造前缀已变结果, 计算前缀指纹 } from '../message/prefix'
 import { 追加系统纠正消息 } from '../message/system-correction'
 import { 从文本提取工具调用, 从文本提取结果 } from '../message/text-fallback'
+import { 中文模型语言包, type 模型语言包 } from '../model-language'
 import type {
   REPL选项,
   内部解决问题选项,
@@ -44,7 +45,7 @@ export class 智能体 {
   private 工具返回文本最大长度?: number
   private 额外请求参数: Record<string, unknown> | undefined
   protected 时区?: string
-  protected readonly 模型语言: 'zh-CN' | 'en-US'
+  protected readonly 模型语言包: 模型语言包
   private 对话历史: 智能体消息类型[] = []
   private 会话任务队列: Promise<void> = Promise.resolve()
   private 审计器 = new 模型审计器()
@@ -58,7 +59,7 @@ export class 智能体 {
     this.请求AI时间间隔ms = 选项.请求AI时间间隔ms ?? 0
     this.工具返回文本最大长度 = 选项.工具返回文本最大长度 ?? 50000
     this.额外请求参数 = 校验并复制额外请求参数(选项.额外请求参数)
-    this.模型语言 = 选项.模型语言 ?? 'zh-CN'
+    this.模型语言包 = 选项.模型语言包 ?? 中文模型语言包
     if (选项.时区 !== undefined) {
       校验时区(选项.时区)
       this.时区 = 选项.时区
@@ -75,7 +76,7 @@ export class 智能体 {
 
   public 组装系统提示词<T extends z.ZodType>(选项: 解决问题选项<T>, 执行模式: 智能体执行模式 = '普通'): string {
     let 合并工具列表 = 执行模式 === '推演' ? [] : [...this.工具列表, ...(选项.临时追加工具列表 ?? [])]
-    let 工具与格式说明 = 构建系统工具与格式说明(合并工具列表, 选项, this.模型语言)
+    let 工具与格式说明 = 构建系统工具与格式说明(合并工具列表, 选项, this.模型语言包)
 
     let parts = [this.系统提示词, 工具与格式说明, this.提供附加系统提示词()].filter((p) => p !== undefined && p !== '')
     return parts.join('\n\n')
@@ -210,7 +211,7 @@ export class 智能体 {
     let 合并工具列表 = 执行模式 === '推演' ? [] : [...this.工具列表, ...(选项.临时追加工具列表 ?? [])]
     校验工具列表(合并工具列表)
     校验结果Schema(选项.预期结果Schema)
-    let openai工具列表 = 构建openai工具列表(合并工具列表, 选项.预期结果Schema, 选项.预期结果描述, this.模型语言)
+    let openai工具列表 = 构建openai工具列表(合并工具列表, 选项.预期结果Schema, 选项.预期结果描述, this.模型语言包)
     let 完整系统提示词 = this.组装系统提示词(选项, 执行模式)
     let 前缀指纹 = 计算前缀指纹(完整系统提示词, 选项.是否支持函数调用 === false ? [] : openai工具列表)
     return { 合并工具列表, openai工具列表, 完整系统提示词, 前缀指纹 }
@@ -278,7 +279,7 @@ export class 智能体 {
       if (选项.当前时间 !== undefined) {
         消息列表.push({
           role: 'user',
-          content: 构建当前时间注入(选项.当前时间, 时区, this.模型语言),
+          content: 构建当前时间注入(选项.当前时间, 时区, this.模型语言包),
           isSystemInjection: true,
           systemInjectionKind: 'current-time',
         })
@@ -385,7 +386,7 @@ export class 智能体 {
           本次模型回调,
           this.工具返回文本最大长度,
           this.最大校验重试次数,
-          this.模型语言,
+          this.模型语言包,
         )
         if (更新当前会话审计状态 === true) await this.同步对话消息(消息列表, 执行模式)
         await 记录模型响应('完成')
@@ -415,7 +416,7 @@ export class 智能体 {
             本次模型回调,
             this.工具返回文本最大长度,
             this.最大校验重试次数,
-            this.模型语言,
+            this.模型语言包,
           )
           if (更新当前会话审计状态 === true) await this.同步对话消息(消息列表, 执行模式)
           await 记录模型响应('完成')
@@ -435,7 +436,7 @@ export class 智能体 {
         if (文本提取结果 !== null) {
           let 伪造id = 'call_fallback_json_' + Date.now().toString()
           await 本次模型回调({ 类型: '工具调用开始', 工具名称: 提交结果函数名, id: 伪造id, 参数: 文本提取结果 })
-          let 工具执行结果 = { 结果: '成功' as const, 信息: '结果提交成功' }
+          let 工具执行结果 = { 结果: '成功' as const, 信息: this.模型语言包.提交结果成功() }
           await 本次模型回调({
             类型: '工具调用结果',
             工具名称: 提交结果函数名,
@@ -453,7 +454,7 @@ export class 智能体 {
             校验失败次数,
             this.最大校验重试次数,
             回调,
-            this.模型语言,
+            this.模型语言包,
           )
           if (更新当前会话审计状态 === true) await this.同步对话消息(消息列表, 执行模式)
           await 记录模型响应('完成')
@@ -486,7 +487,7 @@ export class 智能体 {
                 let 伪造id = 'call_fallback_text_' + Date.now().toString()
                 let 伪造参数 = 校验结果.data as Record<string, unknown>
                 await 本次模型回调({ 类型: '工具调用开始', 工具名称: 提交结果函数名, id: 伪造id, 参数: 伪造参数 })
-                let 工具执行结果 = { 结果: '成功' as const, 信息: '结果提交成功' }
+                let 工具执行结果 = { 结果: '成功' as const, 信息: this.模型语言包.提交结果成功() }
                 await 本次模型回调({
                   类型: '工具调用结果',
                   工具名称: 提交结果函数名,
@@ -504,7 +505,7 @@ export class 智能体 {
                   校验失败次数,
                   this.最大校验重试次数,
                   回调,
-                  this.模型语言,
+                  this.模型语言包,
                 )
                 if (更新当前会话审计状态 === true) await this.同步对话消息(消息列表, 执行模式)
                 await 记录模型响应('完成')
@@ -539,13 +540,7 @@ export class 智能体 {
           当前次数: 校验失败次数,
           最大次数: this.最大校验重试次数,
         })
-        追加系统纠正消息(
-          消息列表,
-          流式结果.完整文本,
-          this.模型语言 === 'en-US'
-            ? `Your response did not contain valid structured data. Submit the final result by calling ${提交结果函数名}, or include a JSON code block beginning with \`{"type": "function", "function": {"name":\` that matches the expected schema.`
-            : `你的回复中没有包含有效的结构化数据。请使用 ${提交结果函数名} 函数调用来提交你的最终结果, 或在回复中包含一个 JSON 代码块, 内容以 \`{"type": "function", "function": {"name":\` 开头, 格式需要符合预期结果的 Schema。`,
-        )
+        追加系统纠正消息(消息列表, 流式结果.完整文本, this.模型语言包.无结构化数据(提交结果函数名))
         if (更新当前会话审计状态 === true) await this.同步对话消息(消息列表, 执行模式)
         await 记录模型响应('完成')
         continue
@@ -553,11 +548,7 @@ export class 智能体 {
 
       // 空回复
       await 回调({ 类型: '流程信息', 内容: 'AI 返回了空内容, 继续重试' })
-      追加系统纠正消息(
-        消息列表,
-        null,
-        this.模型语言 === 'en-US' ? 'Your response was empty. Try again.' : '你的回复是空的, 请重新回答。',
-      )
+      追加系统纠正消息(消息列表, null, this.模型语言包.空回复())
       if (更新当前会话审计状态 === true) await this.同步对话消息(消息列表, 执行模式)
       await 记录模型响应('空响应')
     }

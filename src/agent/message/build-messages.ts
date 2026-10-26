@@ -2,73 +2,45 @@ import type OpenAI from 'openai'
 import type { z } from 'zod'
 import { zodToJsonSchema } from 'zod-to-json-schema'
 import { 提交结果函数名 } from '../constants'
+import { 中文模型语言包, type 模型语言包 } from '../model-language'
 import type { 智能体工具, 解决问题选项 } from '../types'
 
 export function 构建系统工具与格式说明<T extends z.ZodType>(
   工具列表: 智能体工具[],
   选项: 解决问题选项<T>,
-  模型语言: 'zh-CN' | 'en-US' = 'zh-CN',
+  模型语言包: 模型语言包 = 中文模型语言包,
 ): string {
   let 片段: string[] = []
 
   // 工具调用格式说明（当不支持函数调用时）
   if (选项.是否支持函数调用 === false) {
-    片段.push(模型语言 === 'en-US' ? '## Tool call format' : '## 工具调用格式说明')
-    片段.push(
-      (模型语言 === 'en-US'
-        ? [
-            'Use the following JSON format to call a tool.',
-            'Output only one JSON code block in this exact shape, with no surrounding explanation:',
-            '```json',
-            '{"type": "function", "function": { "name": "tool_name", "arguments": {"parameter": "value"}}}',
-            '```',
-          ]
-        : [
-            '你需要使用以下特定的 JSON 格式来发起工具调用。',
-            '每次调用工具时, 请**仅**输出一个符合以下格式的 JSON 代码块 (不要有任何前后解释文本):',
-            '```json',
-            '{"type": "function", "function": { "name": "工具名称", "arguments": {"参数名": "参数值"}}}',
-            '```',
-          ]
-      ).join('\n'),
-    )
+    片段.push(模型语言包.工具调用格式标题(), 模型语言包.工具调用格式说明())
   }
 
   // 工具使用说明
   if (工具列表.length > 0) {
-    片段.push(模型语言 === 'en-US' ? '## Available tools' : '## 可用工具')
-    片段.push(
-      模型语言 === 'en-US'
-        ? 'Use these tools whenever needed. Gather enough information before submitting the final result. Multiple calls in one response execute in order, so later calls may depend on earlier side effects.'
-        : '你可以随时调用以下工具来获取信息或执行操作, 在获取足够信息后再提交最终结果。如果单次回复发起多个工具调用，系统会按返回顺序依次执行，后一个工具可以依赖前一个工具产生的外部状态。',
-    )
+    片段.push(模型语言包.可用工具标题(), 模型语言包.可用工具说明())
     for (let 工具 of 工具列表) {
       let 描述行 = [`### ${工具.名称}`, 工具.模型描述]
       if (选项.是否支持函数调用 === false) {
         let jsonSchema = 工具.模型参数JSONSchema ?? zodToJsonSchema(工具.参数Schema, { target: 'openAi' })
         描述行.push(
-          `${模型语言 === 'en-US' ? 'Parameters' : '参数形状'} (JSON Schema):\n\`\`\`json\n${JSON.stringify(jsonSchema, null, 2)}\n\`\`\``,
+          `${模型语言包.参数形状标题()} (JSON Schema):\n\`\`\`json\n${JSON.stringify(jsonSchema, null, 2)}\n\`\`\``,
         )
       }
       if (工具.模型返回值描述 !== undefined) {
-        描述行.push(`${模型语言 === 'en-US' ? 'Returns' : '返回值'}: ${工具.模型返回值描述}`)
+        描述行.push(`${模型语言包.返回值标题()}: ${工具.模型返回值描述}`)
       }
       片段.push(描述行.join('\n'))
     }
   }
 
   // 最终结果说明
-  片段.push(模型语言 === 'en-US' ? '## Final result' : '## 最终结果')
-  let 提交结果描述 =
-    模型语言 === 'en-US'
-      ? `When the task is complete, do not answer with plain text. Call ${提交结果函数名} to submit the final result.`
-      : `注意: 完成任务后, **请不要直接输出文本结果**, 而是调用 ${提交结果函数名} 工具提交最终结果。`
+  片段.push(模型语言包.最终结果标题())
+  let 提交结果描述 = 模型语言包.最终结果说明(提交结果函数名)
   if (选项.是否支持函数调用 === false) {
     let 结果Schema = zodToJsonSchema(选项.预期结果Schema, { target: 'openAi' })
-    提交结果描述 +=
-      模型语言 === 'en-US'
-        ? `\nExpected result: ${选项.预期结果描述}\nFinal result parameters (JSON Schema):\n\`\`\`json\n${JSON.stringify(结果Schema, null, 2)}\n\`\`\``
-        : `\n预期结果描述: ${选项.预期结果描述}\n最终结果参数形状 (JSON Schema):\n\`\`\`json\n${JSON.stringify(结果Schema, null, 2)}\n\`\`\``
+    提交结果描述 += 模型语言包.最终结果格式(选项.预期结果描述, JSON.stringify(结果Schema, null, 2))
   }
   片段.push(提交结果描述)
 
@@ -79,7 +51,7 @@ export function 构建openai工具列表(
   工具列表: 智能体工具[],
   预期结果Schema: z.ZodType,
   预期结果描述: string,
-  模型语言: 'zh-CN' | 'en-US' = 'zh-CN',
+  模型语言包: 模型语言包 = 中文模型语言包,
 ): OpenAI.Chat.Completions.ChatCompletionTool[] {
   let openai工具列表: OpenAI.Chat.Completions.ChatCompletionTool[] = []
 
@@ -99,7 +71,7 @@ export function 构建openai工具列表(
     type: 'function',
     function: {
       name: 提交结果函数名,
-      description: 模型语言 === 'en-US' ? `Submit the final result. ${结果描述}` : `提交最终结果。${结果描述}`,
+      description: 模型语言包.提交结果工具描述(结果描述),
       parameters: 结果Schema,
     },
   })

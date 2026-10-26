@@ -15,7 +15,7 @@ export function 追加记忆关键词工具(上下文: 关键词管理上下文)
 
   return 智能体工具.创建({
     名称: 'append_memory_keywords',
-    描述: '向指定记忆（零级、一级或二级）中追加新的关键词。系统会根据合并后的关键词列表重新自动构建该记忆与其他记忆的图谱关联。',
+    描述: '',
     参数Schema: z.object({
       id: z.string().describe('需要修改关键词的记忆 ID'),
       关键词列表: z.array(z.string()).describe('需要追加的关键词列表'),
@@ -36,7 +36,7 @@ export function 追加记忆关键词工具(上下文: 关键词管理上下文)
           .where('id', '=', 参数.id)
           .executeTakeFirst()
         if (记忆 === undefined) {
-          return { 结果: '失败', 错误信息: `找不到指定 ID (${参数.id}) 的记忆。` }
+          return { 结果: '失败', 错误信息: 配置.模型语言包.找不到记忆(参数.id) }
         }
         let 旧关键词 = 记忆.关键词
         let 新关键词 = Array.from(new Set([...旧关键词, ...参数.关键词列表]))
@@ -51,7 +51,7 @@ export function 追加记忆关键词工具(上下文: 关键词管理上下文)
             内容: `[数据库更新] 追加记忆关键词成功 (ID: ${参数.id}, 新关键词: ${新关键词.join(', ')})`,
           })
         }
-        return { 结果: '成功', 最新状态: `[记忆 ID: ${参数.id}] 最新关键词列表: ${新关键词.join(', ')}` }
+        return { 结果: '成功', 最新状态: 配置.模型语言包.记忆关键词状态(参数.id, 新关键词) }
       } catch (error: unknown) {
         return { 结果: '失败', 错误信息: String(error instanceof Error ? error.message : error) }
       }
@@ -64,7 +64,7 @@ export function 移除记忆关键词工具(上下文: 关键词管理上下文)
 
   return 智能体工具.创建({
     名称: 'remove_memory_keywords',
-    描述: '从指定记忆（零级、一级或二级）中移除指定的关键词。系统会根据剩余的关键词列表重新自动构建该记忆与其他记忆的图谱关联。',
+    描述: '',
     参数Schema: z.object({
       id: z.string().describe('需要修改关键词的记忆 ID'),
       关键词列表: z.array(z.string()).describe('需要移除的关键词列表'),
@@ -85,7 +85,7 @@ export function 移除记忆关键词工具(上下文: 关键词管理上下文)
           .where('id', '=', 参数.id)
           .executeTakeFirst()
         if (记忆 === undefined) {
-          return { 结果: '失败', 错误信息: `找不到指定 ID (${参数.id}) 的记忆。` }
+          return { 结果: '失败', 错误信息: 配置.模型语言包.找不到记忆(参数.id) }
         }
         let 旧关键词 = 记忆.关键词
         let 新关键词 = 旧关键词.filter((k: string): boolean => {
@@ -103,7 +103,7 @@ export function 移除记忆关键词工具(上下文: 关键词管理上下文)
             内容: `[数据库更新] 移除记忆关键词成功 (ID: ${参数.id}, 新关键词: ${新关键词.join(', ')})`,
           })
         }
-        return { 结果: '成功', 最新状态: `[记忆 ID: ${参数.id}] 最新关键词列表: ${新关键词.join(', ')}` }
+        return { 结果: '成功', 最新状态: 配置.模型语言包.记忆关键词状态(参数.id, 新关键词) }
       } catch (error: unknown) {
         return { 结果: '失败', 错误信息: String(error instanceof Error ? error.message : error) }
       }
@@ -116,7 +116,7 @@ export function 覆盖记忆关键词工具(上下文: 关键词管理上下文)
 
   return 智能体工具.创建({
     名称: 'overwrite_memory_keywords',
-    描述: '用新的关键词列表覆盖指定记忆（零级、一级或二级）的原有关键词列表。系统会重新自动构建该记忆与其他记忆的图谱关联。',
+    描述: '',
     参数Schema: z.object({
       id: z.string().describe('需要修改关键词的记忆 ID'),
       关键词列表: z.array(z.string()).describe('覆盖后的新关键词列表'),
@@ -133,7 +133,7 @@ export function 覆盖记忆关键词工具(上下文: 关键词管理上下文)
       try {
         let 记忆 = await 数据库查询器.selectFrom('记忆表').select(['id']).where('id', '=', 参数.id).executeTakeFirst()
         if (记忆 === undefined) {
-          return { 结果: '失败', 错误信息: `找不到指定 ID (${参数.id}) 的记忆。` }
+          return { 结果: '失败', 错误信息: 配置.模型语言包.找不到记忆(参数.id) }
         }
         let 新关键词 = 参数.关键词列表
 
@@ -147,7 +147,7 @@ export function 覆盖记忆关键词工具(上下文: 关键词管理上下文)
             内容: `[数据库更新] 覆盖记忆关键词成功 (ID: ${参数.id}, 新关键词: ${新关键词.join(', ')})`,
           })
         }
-        return { 结果: '成功', 最新状态: `[记忆 ID: ${参数.id}] 最新关键词列表: ${新关键词.join(', ')}` }
+        return { 结果: '成功', 最新状态: 配置.模型语言包.记忆关键词状态(参数.id, 新关键词) }
       } catch (error: unknown) {
         return { 结果: '失败', 错误信息: String(error instanceof Error ? error.message : error) }
       }

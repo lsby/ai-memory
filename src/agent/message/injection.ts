@@ -1,3 +1,4 @@
+import type { 模型语言包 } from '../model-language'
 import type { 内部注入消息, 智能体消息类型 } from '../types'
 import { 格式化为指定时区时间 } from '../utils/timezone'
 import { 计算内容指纹 } from './prefix'
@@ -40,7 +41,6 @@ export function 格式化当前时间(当前时间: Date, 时区?: string): stri
   return `${iso部分}${符号}${偏移小时}:${偏移分}`
 }
 
-export function 构建当前时间注入(当前时间: Date, 时区: string | undefined, 模型语言: 'zh-CN' | 'en-US'): string {
-  let 标题 = 模型语言 === 'en-US' ? 'Current time' : '当前时间'
-  return `[${标题}: ${格式化当前时间(当前时间, 时区)}]`
+export function 构建当前时间注入(当前时间: Date, 时区: string | undefined, 模型语言包: 模型语言包): string {
+  return 模型语言包.当前时间(格式化当前时间(当前时间, 时区))
 }

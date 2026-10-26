@@ -100,12 +100,12 @@ describe('交互事件日志', () => {
   it('编程调用动态工具时记录同组的开始和结果事件', async (): Promise<void> => {
     智能体实例 = 夹具.新建智能体()
     let 注册结果 = await 智能体实例.注册动态工具(
-      `工具 = {
-  名称: 'telemetry_echo',
-  描述: '返回输入值',
-  参数Schema: { type: 'object', properties: { value: { type: 'number' } }, required: ['value'] },
-  返回值Schema: { type: 'object', properties: { value: { type: 'number' } }, required: ['value'] },
-  实现: async function(参数) { return { value: 参数.value }; }
+      `tool = {
+  name: 'telemetry_echo',
+  description: '返回输入值',
+  parametersSchema: { type: 'object', properties: { value: { type: 'number' } }, required: ['value'] },
+  returnSchema: { type: 'object', properties: { value: { type: 'number' } }, required: ['value'] },
+  execute: async function(args) { return { value: args.value }; }
 }`,
       '{"value":7}',
     )

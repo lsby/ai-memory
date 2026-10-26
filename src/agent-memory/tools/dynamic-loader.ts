@@ -1,6 +1,7 @@
 import Ajv from 'ajv'
 import { getQuickJS } from 'quickjs-emscripten'
 import { z } from 'zod'
+import { 中文模型语言包, type 模型语言包 } from '../../agent/model-language'
 
 let 沙盒执行超时毫秒 = 5000
 
@@ -15,20 +16,21 @@ export type 加载后的动态工具 = {
 /**
  * 在 QuickJS 沙盒中加载并校验动态工具代码。
  *
- * 工具代码约定格式（纯 JavaScript）:
+ * 工具代码约定格式（纯 JavaScript，协议字段固定为英文）:
  * ```js
- * 工具 = {
- *   名称: "tool_name",
- *   描述: "这个工具做什么",
- *   参数Schema描述: '{"city": "string, 城市名称"}',
- *   返回值Schema描述: '{"temperature": "number, 温度"}',
- *   实现: async function(参数) { return { temperature: 25 }; }
+ * tool = {
+ *   name: "tool_name",
+ *   description: "这个工具做什么",
+ *   parametersSchema: { type: "object", properties: {} },
+ *   returnSchema: { type: "object", properties: {} },
+ *   execute: async function(args) { return { temperature: 25 }; }
  * };
  * ```
  * 沙盒中没有 require/import、无文件系统、无网络访问。
  */
 export async function 加载并校验动态工具(
   代码字符串: string,
+  模型语言包: 模型语言包 = 中文模型语言包,
 ): Promise<{ 成功: true; 工具: 加载后的动态工具 } | { 成功: false; 错误信息: string }> {
   let QuickJS = await getQuickJS()
   let runtime = QuickJS.newRuntime()
@@ -40,37 +42,42 @@ export async function 加载并校验动态工具(
     // 包装代码：执行用户代码后提取工具元信息
     let 包装代码 = `
       (function() {
-        let 工具;
+        let tool;
         ${代码字符串}
-        if (typeof 工具 === 'undefined' || 工具 === null) {
-          return JSON.stringify({ 错误: '代码中必须声明一个名为「工具」的变量' });
+        if (typeof tool === 'undefined' || tool === null) {
+          return JSON.stringify({ 错误: ${JSON.stringify(模型语言包.动态工具定义错误('缺少变量'))} });
         }
-        if (typeof 工具.名称 !== 'string' || 工具.名称 === '') {
-          return JSON.stringify({ 错误: '工具必须包含非空的「名称」字段 (string)' });
+        let 名称 = tool.name;
+        let 描述 = tool.description;
+        let 参数Schema = tool.parametersSchema;
+        let 返回值Schema = tool.returnSchema;
+        let 实现 = tool.execute;
+        if (typeof 名称 !== 'string' || 名称 === '') {
+          return JSON.stringify({ 错误: ${JSON.stringify(模型语言包.动态工具定义错误('名称'))} });
         }
-        if (typeof 工具.描述 !== 'string' || 工具.描述 === '') {
-          return JSON.stringify({ 错误: '工具必须包含非空的「描述」字段 (string)' });
+        if (typeof 描述 !== 'string' || 描述 === '') {
+          return JSON.stringify({ 错误: ${JSON.stringify(模型语言包.动态工具定义错误('描述'))} });
         }
-        if (typeof 工具.参数Schema !== 'object' || 工具.参数Schema === null) {
-          return JSON.stringify({ 错误: '工具必须包含「参数Schema」字段 (object)' });
+        if (typeof 参数Schema !== 'object' || 参数Schema === null) {
+          return JSON.stringify({ 错误: ${JSON.stringify(模型语言包.动态工具定义错误('参数Schema'))} });
         }
-        if (工具.参数Schema.type !== 'object' || typeof 工具.参数Schema.properties !== 'object') {
-          return JSON.stringify({ 错误: '「参数Schema」必须是标准的 JSON Schema，且 type 必须为 object，必须包含 properties' });
+        if (参数Schema.type !== 'object' || typeof 参数Schema.properties !== 'object') {
+          return JSON.stringify({ 错误: ${JSON.stringify(模型语言包.动态工具定义错误('参数Schema形状'))} });
         }
-        if (typeof 工具.返回值Schema !== 'object' || 工具.返回值Schema === null) {
-          return JSON.stringify({ 错误: '工具必须包含「返回值Schema」字段 (object)' });
+        if (typeof 返回值Schema !== 'object' || 返回值Schema === null) {
+          return JSON.stringify({ 错误: ${JSON.stringify(模型语言包.动态工具定义错误('返回值Schema'))} });
         }
-        if (工具.返回值Schema.type !== 'object' || typeof 工具.返回值Schema.properties !== 'object') {
-          return JSON.stringify({ 错误: '「返回值Schema」必须是标准的 JSON Schema，且 type 必须为 object，必须包含 properties' });
+        if (返回值Schema.type !== 'object' || typeof 返回值Schema.properties !== 'object') {
+          return JSON.stringify({ 错误: ${JSON.stringify(模型语言包.动态工具定义错误('返回值Schema形状'))} });
         }
-        if (typeof 工具.实现 !== 'function') {
-          return JSON.stringify({ 错误: '工具必须包含「实现」字段 (function)' });
+        if (typeof 实现 !== 'function') {
+          return JSON.stringify({ 错误: ${JSON.stringify(模型语言包.动态工具定义错误('实现'))} });
         }
         return JSON.stringify({
-          名称: 工具.名称,
-          描述: 工具.描述,
-          参数Schema: 工具.参数Schema,
-          返回值Schema: 工具.返回值Schema,
+          名称,
+          描述,
+          参数Schema,
+          返回值Schema,
         });
       })()
     `
@@ -79,7 +86,7 @@ export async function 加载并校验动态工具(
     if (元信息结果.error !== undefined) {
       let 错误信息: unknown = context.dump(元信息结果.error)
       元信息结果.error.dispose()
-      return { 成功: false, 错误信息: `代码编译/执行出错: ${String(错误信息)}` }
+      return { 成功: false, 错误信息: 模型语言包.动态工具编译执行出错(String(错误信息)) }
     }
 
     let 元信息JSON = context.getString(元信息结果.value)
@@ -105,7 +112,7 @@ export async function 加载并校验动态工具(
       返回值Schema: 元信息.返回值Schema ?? {},
       实现: async (参数json: string): Promise<string> => {
         // 每次调用都创建新的沙盒上下文，确保隔离
-        return await 在沙盒中执行工具(代码字符串, 参数json, 元信息.参数Schema, 元信息.返回值Schema)
+        return await 在沙盒中执行工具(代码字符串, 参数json, 元信息.参数Schema, 元信息.返回值Schema, 模型语言包)
       },
     }
 
@@ -118,13 +125,13 @@ export async function 加载并校验动态工具(
   }
 }
 
-function validateJsonSchema(schema: unknown, data: unknown, prefix: string): void {
+function validateJsonSchema(schema: unknown, data: unknown, 位置: '输入参数' | '返回值', 模型语言包: 模型语言包): void {
   let JSON模式 = z.record(z.unknown()).parse(schema)
   let 校验器 = new Ajv({ allErrors: true, strict: false })
   let 校验函数 = 校验器.compile(JSON模式)
   if (校验函数(data) === false) {
     let 错误信息 = 校验器.errorsText(校验函数.errors, { separator: '; ' })
-    throw new Error(`${prefix} 不符合 JSON Schema: ${错误信息}`)
+    throw new Error(模型语言包.动态工具Schema校验失败(位置, 错误信息))
   }
 }
 
@@ -136,9 +143,10 @@ export async function 在沙盒中执行工具(
   参数json: string,
   参数Schema?: unknown,
   返回值Schema?: unknown,
+  模型语言包: 模型语言包 = 中文模型语言包,
 ): Promise<string> {
   if (参数Schema !== undefined) {
-    validateJsonSchema(参数Schema, JSON.parse(参数json), '输入参数')
+    validateJsonSchema(参数Schema, JSON.parse(参数json), '输入参数', 模型语言包)
   }
 
   let QuickJS = await getQuickJS()
@@ -150,10 +158,10 @@ export async function 在沙盒中执行工具(
   try {
     let 执行代码 = `
       (async function() {
-        let 工具;
+        let tool;
         ${代码字符串}
         let 参数 = JSON.parse(${JSON.stringify(参数json)});
-        let 结果 = await 工具.实现(参数);
+        let 结果 = await tool.execute(参数);
         return JSON.stringify(结果);
       })()
     `
@@ -183,7 +191,7 @@ export async function 在沙盒中执行工具(
     初始执行结果.value.dispose()
 
     if (解决后的结果 === undefined) {
-      throw new Error(`动态工具执行超时（${String(沙盒执行超时毫秒)}ms）`)
+      throw new Error(模型语言包.动态工具执行超时(沙盒执行超时毫秒))
     }
 
     if (解决后的结果.error !== undefined) {
@@ -196,7 +204,7 @@ export async function 在沙盒中执行工具(
     解决后的结果.value.dispose()
 
     if (返回值Schema !== undefined) {
-      validateJsonSchema(返回值Schema, JSON.parse(结果字符串), '返回值')
+      validateJsonSchema(返回值Schema, JSON.parse(结果字符串), '返回值', 模型语言包)
     }
 
     return 结果字符串

@@ -19,7 +19,7 @@ export function 添加一级记忆工具(上下文: 一级记忆上下文): 智�
 
   return 智能体工具.创建({
     名称: 'add_level_1_memory',
-    描述: '把当前任务的重点放入工作记忆中。容量满载时会自动降级评分最低的记忆。',
+    描述: '',
     参数Schema: z.object({
       内容: z.string().describe('记忆的内容'),
       关键词: z.array(z.string()).describe('相关关键词提取，将依据这些关键词自动构建记忆关联图谱'),
@@ -83,7 +83,14 @@ export function 添加一级记忆工具(上下文: 一级记忆上下文): 智�
         return {
           结果: '成功',
           id,
-          最新状态: `[一级记忆 ID: ${id}] (评分: ${String(参数.评分)}) 内容: ${参数.内容} (关键词: ${参数.关键词.join(', ')}, 标签: ${最终标签.join(', ')})`,
+          最新状态: 配置.模型语言包.记忆完整状态({
+            等级: '一级',
+            id,
+            内容: 参数.内容,
+            关键词: 参数.关键词,
+            标签: 最终标签,
+            评分: 参数.评分,
+          }),
         }
       } catch (error: unknown) {
         return { 结果: '失败', 错误信息: String(error instanceof Error ? error.message : error) }
@@ -97,7 +104,7 @@ export function 修改一级记忆工具(上下文: 一级记忆上下文): 智�
 
   return 智能体工具.创建({
     名称: 'edit_level_1_memory',
-    描述: '修改某条已有的一级记忆的内容、关键词和评分。',
+    描述: '',
     参数Schema: z.object({
       id: z.string(),
       新内容: z.string().describe('修改后的内容'),
@@ -157,7 +164,14 @@ export function 修改一级记忆工具(上下文: 一级记忆上下文): 智�
         await 检查并降级一级记忆()
         return {
           结果: '成功',
-          最新状态: `[一级记忆 ID: ${参数.id}] (评分: ${String(参数.新评分)}) 内容: ${参数.新内容} (关键词: ${参数.新关键词.join(', ')}, 标签: ${最终标签.join(', ')})`,
+          最新状态: 配置.模型语言包.记忆完整状态({
+            等级: '一级',
+            id: 参数.id,
+            内容: 参数.新内容,
+            关键词: 参数.新关键词,
+            标签: 最终标签,
+            评分: 参数.新评分,
+          }),
         }
       } catch (error: unknown) {
         return { 结果: '失败', 错误信息: String(error instanceof Error ? error.message : error) }
@@ -167,11 +181,11 @@ export function 修改一级记忆工具(上下文: 一级记忆上下文): 智�
 }
 
 export function 移除一级记忆工具(上下文: 一级记忆上下文): 智能体工具 {
-  let { 数据库查询器, 回调 } = 上下文
+  let { 数据库查询器, 回调, 配置 } = 上下文
 
   return 智能体工具.创建({
     名称: 'remove_level_1_memory',
-    描述: '从当前记忆状态移除某条一级记忆（而不是降级）。',
+    描述: '',
     参数Schema: z.object({ id: z.string() }),
     返回值Schema: z.object({
       结果: z.enum(['成功', '失败']),
@@ -189,7 +203,7 @@ export function 移除一级记忆工具(上下文: 一级记忆上下文): 智�
         if (回调 !== undefined) {
           await 回调({ 类型: '流程信息', 内容: `[数据库更新] 已从当前状态移除一级记忆 (ID: ${参数.id})` })
         }
-        return { 结果: '成功', 最新状态: `[一级记忆 ID: ${参数.id}] 已从当前状态移除` }
+        return { 结果: '成功', 最新状态: 配置.模型语言包.记忆已移除('一级', 参数.id) }
       } catch (error: unknown) {
         return { 结果: '失败', 错误信息: String(error instanceof Error ? error.message : error) }
       }

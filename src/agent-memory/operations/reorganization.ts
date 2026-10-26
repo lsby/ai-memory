@@ -2,6 +2,7 @@ import type { Kysely } from 'kysely'
 import { sql } from 'kysely'
 import type OpenAI from 'openai'
 import { z } from 'zod'
+import type { 模型语言包 } from '../../agent/model-language'
 import type { 智能体事件 } from '../../agent/types'
 import { 格式化为本地时间字符串, type 带记忆的解决问题选项, type 记忆操作上下文, type 记忆数据库 } from '../types'
 
@@ -14,6 +15,7 @@ export async function 执行记忆重组(
     当前时间?: Date
     种子关键词?: string[]
     回调?: (事件: 智能体事件) => Promise<void>
+    模型语言包: 模型语言包
   },
 ): Promise<void> {
   let 随机词: string[] = []
@@ -42,18 +44,15 @@ export async function 执行记忆重组(
     await 选项.回调({ 类型: '流程信息', 内容: `[开始记忆重组] 潜意识浮现了这些概念: ${随机词.join(', ')}` })
   }
 
-  let 命令 = `记忆重组任务: 你的脑海中浮现了这几个概念: [${随机词.join(', ')}]。
-请你主动调用「回忆延伸」工具，或者使用其他可用工具来检索相关的知识。
-仔细审视你的这些历史记忆，寻找它们之间的潜在逻辑联系，发现矛盾并修正，或者提取出更高的规律。
-如果你发现这几个概念之间确实没有实质性或有价值的逻辑联系，请不要强行进行关联和修改，不要为了处理而处理，直接结束即可。
-若有真正有价值的发现，再将你反思合并后得出的新洞见，通过「添加一级记忆」工具保存下来，将标签设为 \`底层规律\` 或 \`灵光一闪\` 等。`
+  let 命令 = 选项.模型语言包.记忆重组命令(随机词)
 
-  let 重组结果Schema = z.object({ 重组完成: z.boolean().describe('已完成知识关联和合并') })
+  let 重组完成字段 = 选项.模型语言包.模型字段名('重组完成')
+  let 重组结果Schema = z.object({ [重组完成字段]: z.boolean() })
   let 重组选项: 带记忆的解决问题选项<typeof 重组结果Schema> = {
     标题: '记忆重组',
     命令,
     预期结果Schema: 重组结果Schema,
-    预期结果描述: '包含 重组完成 字段的 JSON',
+    预期结果描述: 选项.模型语言包.记忆重组结果描述(),
     openai客户端: 选项.openai客户端,
     模型名称: 选项.模型名称,
     回调: async (事件: 智能体事件): Promise<void> => {
@@ -110,6 +109,7 @@ export async function 定时任务入口(
     await 执行记忆重组(上下文.数据库查询器, 解决问题, {
       openai客户端: 选项.openai客户端,
       模型名称: 选项.模型名称,
+      模型语言包: 上下文.配置.模型语言包,
       当前时间: 当前时间,
       ...(选项.回调 !== undefined ? { 回调: 选项.回调 } : {}),
     })

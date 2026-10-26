@@ -40,6 +40,8 @@ export type {
   查询记忆选项,
 } from './agent-memory/types'
 export { 智能体 } from './agent/core/agent'
+export { 中文模型语言包, 英文模型语言包 } from './agent/model-language'
+export type { 模型语言包 } from './agent/model-language'
 export {
   智能体函数消息Schema,
   智能体助手消息Schema,

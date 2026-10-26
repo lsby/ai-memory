@@ -18,7 +18,7 @@ export function 添加零级记忆工具(上下文: 零级记忆上下文): 智�
 
   return 智能体工具.创建({
     名称: 'add_level_0_memory',
-    描述: '添加一条核心法则或人设。零级记忆永远生效，且没有容量限制。请极度谨慎添加！',
+    描述: '',
     参数Schema: z.object({
       内容: z.string().describe('核心法则的内容'),
       关键词: z.array(z.string()).describe('相关关键词提取，用于构建知识图谱'),
@@ -75,7 +75,13 @@ export function 添加零级记忆工具(上下文: 零级记忆上下文): 智�
         return {
           结果: '成功',
           id,
-          最新状态: `[零级记忆 ID: ${id}] 内容: ${参数.内容} (关键词: ${参数.关键词.join(', ')}, 标签: ${最终标签.join(', ')})`,
+          最新状态: 配置.模型语言包.记忆完整状态({
+            等级: '零级',
+            id,
+            内容: 参数.内容,
+            关键词: 参数.关键词,
+            标签: 最终标签,
+          }),
         }
       } catch (error: unknown) {
         return { 结果: '失败', 错误信息: String(error instanceof Error ? error.message : error) }
@@ -89,7 +95,7 @@ export function 修改零级记忆工具(上下文: 零级记忆上下文): 智�
 
   return 智能体工具.创建({
     名称: 'edit_level_0_memory',
-    描述: '修改某条已有的核心法则的内容与关键词。',
+    描述: '',
     参数Schema: z.object({
       id: z.string(),
       新内容: z.string().describe('修改后的内容'),
@@ -140,7 +146,13 @@ export function 修改零级记忆工具(上下文: 零级记忆上下文): 智�
         }
         return {
           结果: '成功',
-          最新状态: `[零级记忆 ID: ${参数.id}] 内容: ${参数.新内容} (关键词: ${参数.新关键词.join(', ')}, 标签: ${最终标签.join(', ')})`,
+          最新状态: 配置.模型语言包.记忆完整状态({
+            等级: '零级',
+            id: 参数.id,
+            内容: 参数.新内容,
+            关键词: 参数.新关键词,
+            标签: 最终标签,
+          }),
         }
       } catch (error: unknown) {
         return { 结果: '失败', 错误信息: String(error instanceof Error ? error.message : error) }
@@ -150,11 +162,11 @@ export function 修改零级记忆工具(上下文: 零级记忆上下文): 智�
 }
 
 export function 移除零级记忆工具(上下文: 零级记忆上下文): 智能体工具 {
-  let { 数据库查询器, 回调 } = 上下文
+  let { 数据库查询器, 回调, 配置 } = 上下文
 
   return 智能体工具.创建({
     名称: 'remove_level_0_memory',
-    描述: '从当前记忆状态移除某条不再需要的核心法则。',
+    描述: '',
     参数Schema: z.object({ id: z.string() }),
     返回值Schema: z.object({
       结果: z.enum(['成功', '失败']),
@@ -173,7 +185,7 @@ export function 移除零级记忆工具(上下文: 零级记忆上下文): 智�
         if (回调 !== undefined) {
           await 回调({ 类型: '流程信息', 内容: `[数据库更新] 已从当前状态移除零级记忆 (ID: ${参数.id})` })
         }
-        return { 结果: '成功', 最新状态: `[零级记忆 ID: ${参数.id}] 已从当前状态移除` }
+        return { 结果: '成功', 最新状态: 配置.模型语言包.记忆已移除('零级', 参数.id) }
       } catch (error: unknown) {
         return { 结果: '失败', 错误信息: String(error instanceof Error ? error.message : error) }
       }

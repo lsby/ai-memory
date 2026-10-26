@@ -1,6 +1,7 @@
 import type { Kysely } from 'kysely'
 import { randomUUID } from 'node:crypto'
 import { z } from 'zod'
+import type { 模型语言包 } from '../../agent/model-language'
 import { 智能体工具, type 智能体执行模式, type 智能体消息类型 } from '../../agent/types'
 import {
   创建会话 as 存储创建会话,
@@ -21,7 +22,7 @@ type 会话控制器依赖 = {
   确保已初始化: () => Promise<void>
   读取新会话标识: () => string
   载入内存历史: (消息列表: 智能体消息类型[], 会话id: string) => void
-  模型语言: 'zh-CN' | 'en-US'
+  模型语言包: 模型语言包
 }
 
 export class 会话控制器 {
@@ -203,7 +204,7 @@ export class 会话控制器 {
       前驱消息id: 消息id,
       系统消息: 派生系统消息,
       摘要,
-      标题: 标题 ?? (this.依赖.模型语言 === 'en-US' ? 'Compressed conversation' : '压缩会话'),
+      标题: 标题 ?? this.依赖.模型语言包.压缩会话标题(),
     })
     await this.激活会话(派生会话)
     return 派生会话
@@ -222,10 +223,7 @@ export class 会话控制器 {
   public 创建历史阅读工具(): 智能体工具 {
     let 工具 = 智能体工具.创建({
       名称: 'read_conversation_history',
-      描述:
-        this.依赖.模型语言 === 'en-US'
-          ? 'Read exact original messages from the current conversation lineage. Use previous_conversation after a summary has replaced earlier context.'
-          : '读取当前会话谱系中的原始消息。摘要代替早期上下文后，使用 previous_conversation 查看准确原文。',
+      描述: this.依赖.模型语言包.历史工具描述(),
       参数Schema: z.object({
         source: z.enum(['previous_conversation', 'current_conversation']).default('previous_conversation'),
         history_ref: z.string().min(1).optional(),
@@ -338,7 +336,7 @@ export class 会话控制器 {
     if (会话id === null)
       return {
         结果: '失败',
-        错误信息: this.依赖.模型语言 === 'en-US' ? 'There is no current persisted conversation.' : '当前没有持久化会话',
+        错误信息: this.依赖.模型语言包.无当前会话(),
       }
     let 当前会话 = await 存储查询会话(this.依赖.数据库查询器, 会话id)
     let 实际目标消息id =
@@ -346,10 +344,7 @@ export class 会话控制器 {
     if (实际目标消息id === null || 实际目标消息id === undefined)
       return {
         结果: '失败',
-        错误信息:
-          this.依赖.模型语言 === 'en-US'
-            ? 'The current conversation has no readable history for this source.'
-            : '当前会话没有可读取的历史消息',
+        错误信息: this.依赖.模型语言包.无可读历史(),
       }
     let 锚点消息id = 当前会话?.当前消息id ?? null
     while (当前会话 !== null) {
@@ -380,10 +375,7 @@ export class 会话控制器 {
     }
     return {
       结果: '失败',
-      错误信息:
-        this.依赖.模型语言 === 'en-US'
-          ? 'The requested message is outside the current conversation lineage.'
-          : '目标消息不在当前会话谱系中',
+      错误信息: this.依赖.模型语言包.历史不在谱系(),
     }
   }
 }

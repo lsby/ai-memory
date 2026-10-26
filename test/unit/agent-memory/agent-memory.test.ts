@@ -97,12 +97,12 @@ describe('带记忆的智能体的本地记忆', () => {
 
     let 注册结果 = await 智能体实例.注册动态工具(
       `
-工具 = {
-  名称: 'multiply',
-  描述: '计算两个数字的乘积',
-  参数Schema: { type: 'object', properties: { a: { type: 'number' }, b: { type: 'number' } }, required: ['a', 'b'] },
-  返回值Schema: { type: 'object', properties: { 结果: { type: 'number' } }, required: ['结果'] },
-  实现: async function(参数) { return { 结果: 参数.a * 参数.b }; }
+tool = {
+  name: 'multiply',
+  description: '计算两个数字的乘积',
+  parametersSchema: { type: 'object', properties: { a: { type: 'number' }, b: { type: 'number' } }, required: ['a', 'b'] },
+  returnSchema: { type: 'object', properties: { 结果: { type: 'number' } }, required: ['结果'] },
+  execute: async function(args) { return { 结果: args.a * args.b }; }
 }
       `,
       '{"a": 6, "b": 7}',
@@ -124,12 +124,12 @@ describe('带记忆的智能体的本地记忆', () => {
     let 更新结果 = await 智能体实例.更新动态工具(
       'multiply',
       `
-工具 = {
-  名称: 'multiply',
-  描述: '计算两个数字的和',
-  参数Schema: { type: 'object', properties: { a: { type: 'number' }, b: { type: 'number' } }, required: ['a', 'b'] },
-  返回值Schema: { type: 'object', properties: { 结果: { type: 'number' } }, required: ['结果'] },
-  实现: async function(参数) { return { 结果: 参数.a + 参数.b }; }
+tool = {
+  name: 'multiply',
+  description: '计算两个数字的和',
+  parametersSchema: { type: 'object', properties: { a: { type: 'number' }, b: { type: 'number' } }, required: ['a', 'b'] },
+  returnSchema: { type: 'object', properties: { 结果: { type: 'number' } }, required: ['结果'] },
+  execute: async function(args) { return { 结果: args.a + args.b }; }
 }
       `,
       '{"a": 6, "b": 7}',

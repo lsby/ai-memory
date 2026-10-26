@@ -3,12 +3,12 @@ import { 完整状态Schema, 带记忆的智能体, 快照数据Schema, 记忆�
 import { 使用共享PGlite } from '../../helpers/shared-pglite-fixture'
 
 let 动态工具代码 = `
-工具 = {
-  名称: 'snapshot_tool',
-  描述: '用于验证快照恢复',
-  参数Schema: { type: 'object', properties: { value: { type: 'number' } }, required: ['value'] },
-  返回值Schema: { type: 'object', properties: { doubled: { type: 'number' } }, required: ['doubled'] },
-  实现: async function(参数) { return { doubled: 参数.value * 2 }; }
+tool = {
+  name: 'snapshot_tool',
+  description: '用于验证快照恢复',
+  parametersSchema: { type: 'object', properties: { value: { type: 'number' } }, required: ['value'] },
+  returnSchema: { type: 'object', properties: { doubled: { type: 'number' } }, required: ['doubled'] },
+  execute: async function(args) { return { doubled: args.value * 2 }; }
 }
 `
 

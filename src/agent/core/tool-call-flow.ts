@@ -1,4 +1,5 @@
 import type { z } from 'zod'
+import { 中文模型语言包, type 模型语言包 } from '../model-language'
 import type { 智能体回调, 智能体消息类型, 解决问题选项 } from '../types'
 import { 智能体工具 } from '../types'
 import { 运行结果验证器 } from '../utils/validator'
@@ -20,7 +21,7 @@ export async function 处理工具调用并验证<T extends z.ZodType>(
   回调: 智能体回调,
   工具返回文本最大长度: number | undefined,
   最大校验重试次数: number,
-  模型语言: 'zh-CN' | 'en-US' = 'zh-CN',
+  模型语言包: 模型语言包 = 中文模型语言包,
 ): Promise<工具调用流程结果> {
   let 处理结果 = await 处理工具调用(
     工具调用列表,
@@ -33,10 +34,10 @@ export async function 处理工具调用并验证<T extends z.ZodType>(
     选项.调试Hook,
     工具返回文本最大长度,
     选项.中断信号,
-    模型语言,
+    模型语言包,
   )
   if (处理结果.类型 === '最终结果') {
-    let 验证失败 = await 运行结果验证器(处理结果.数据, 选项, 消息列表, 校验失败次数, 最大校验重试次数, 回调, 模型语言)
+    let 验证失败 = await 运行结果验证器(处理结果.数据, 选项, 消息列表, 校验失败次数, 最大校验重试次数, 回调, 模型语言包)
     if (验证失败 !== null) return { 类型: '更新次数', 新次数: 验证失败.新校验失败次数 }
     await 回调({ 类型: '最终结果', 结果: 处理结果.数据 })
     return { 类型: '返回', 数据: 处理结果.数据 }

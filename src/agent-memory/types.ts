@@ -3,6 +3,7 @@ import type { ColumnType, Kysely } from 'kysely'
 import type OpenAI from 'openai'
 import { z } from 'zod'
 import { 格式化当前时间 } from '../agent/message/injection'
+import type { 模型语言包 } from '../agent/model-language'
 import {
   智能体消息Schema,
   type 内部注入消息,
@@ -277,10 +278,11 @@ export type 存储配置 =
   | { 模式: '文件'; 路径: string; schema?: string }
   | { 模式: '外部'; pglite: PGlite; schema?: string }
 
-export type 内部带记忆的智能体配置 = 智能体选项 &
+export type 内部带记忆的智能体配置 = Omit<智能体选项, '模型语言包'> &
   Required<
     Omit<带记忆的智能体选项, keyof 智能体选项 | '自动压缩' | '记忆工具筛选' | '记忆提示词' | '遗忘豁免' | '受保护标签'>
   > & {
+    模型语言包: 模型语言包
     自动压缩?: { 触发字符数: number; 目标字符数: number } | undefined
     记忆工具筛选?: (工具名: string) => boolean
     记忆提示词?: string | ((启用的工具名: string[]) => string)

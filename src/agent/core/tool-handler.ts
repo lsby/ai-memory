@@ -2,11 +2,21 @@ import { jsonrepair } from 'jsonrepair'
 import type { z } from 'zod'
 import { zodToJsonSchema } from 'zod-to-json-schema'
 import { 提交结果函数名 } from '../constants'
+import { 中文模型语言包, type 模型语言包 } from '../model-language'
 import type { 智能体回调, 智能体工具, 智能体消息类型, 累积工具调用, 调试拦截钩子 } from '../types'
 import { 格式化zod错误 } from '../utils/validator'
 
 export type 工具调用处理结果 =
   { 类型: '最终结果'; 数据: Record<string, unknown> } | { 类型: '校验失败'; 错误信息: string } | { 类型: '继续循环' }
+
+function 转换通用协议结果(值: Record<string, unknown>, 模型语言包: 模型语言包): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(值).map(([键, 项]) => [
+      模型语言包.模型字段名(键),
+      typeof 项 === 'string' ? 模型语言包.模型枚举值(项) : 项,
+    ]),
+  )
+}
 
 async function 处理工具错误(
   调用: 累积工具调用,
@@ -15,6 +25,7 @@ async function 处理工具错误(
   回调: 智能体回调,
   调试Hook?: 调试拦截钩子 | undefined,
   耗时?: number,
+  模型语言包: 模型语言包 = 中文模型语言包,
 ): Promise<{ handled: boolean; message?: 智能体消息类型 }> {
   if (调试Hook?.出错时 !== undefined) {
     let 拦截返回 = await 调试Hook.出错时(调用.名称, 参数, 错误消息)
@@ -23,7 +34,11 @@ async function 处理工具错误(
       await 回调({ 类型: '工具调用结果', 工具名称: 调用.名称, id: 调用.id, 结果: 伪造结果, 耗时ms: 耗时 ?? 0 })
       return {
         handled: true,
-        message: { role: 'tool', tool_call_id: 调用.id, content: JSON.stringify(伪造结果, null, 2) },
+        message: {
+          role: 'tool',
+          tool_call_id: 调用.id,
+          content: JSON.stringify(转换通用协议结果(伪造结果, 模型语言包), null, 2),
+        },
       }
     }
     if (拦截返回.动作 === '打回') {
@@ -32,7 +47,11 @@ async function 处理工具错误(
       await 回调({ 类型: '工具调用结果', 工具名称: 调用.名称, id: 调用.id, 结果: 失败结果, 耗时ms: 耗时 ?? 0 })
       return {
         handled: true,
-        message: { role: 'tool', tool_call_id: 调用.id, content: JSON.stringify(失败结果, null, 2) },
+        message: {
+          role: 'tool',
+          tool_call_id: 调用.id,
+          content: JSON.stringify(转换通用协议结果(失败结果, 模型语言包), null, 2),
+        },
       }
     }
   }
@@ -46,15 +65,15 @@ async function 执行单个普通工具调用(
   调试Hook?: 调试拦截钩子 | undefined,
   工具返回文本最大长度?: number,
   中断信号?: AbortSignal,
-  模型语言: 'zh-CN' | 'en-US' = 'zh-CN',
+  模型语言包: 模型语言包 = 中文模型语言包,
 ): Promise<智能体消息类型> {
   if (中断信号?.aborted === true) {
     let 失败结果 = {
       结果: '失败' as const,
-      错误信息: 模型语言 === 'en-US' ? 'Operation aborted; tool not executed.' : '操作已中断，工具未执行',
+      错误信息: 模型语言包.工具已中断(),
     }
     await 回调({ 类型: '工具调用失败', 工具名称: 调用.名称, id: 调用.id, 错误信息: 失败结果.错误信息 })
-    return { role: 'tool', tool_call_id: 调用.id, content: JSON.stringify(失败结果) }
+    return { role: 'tool', tool_call_id: 调用.id, content: JSON.stringify(转换通用协议结果(失败结果, 模型语言包)) }
   }
   let 参数: Record<string, unknown> | null = null
   try {
@@ -62,16 +81,17 @@ async function 执行单个普通工具调用(
     参数 = JSON.parse(修复后) as Record<string, unknown>
   } catch {
     let 错误消息 = `解析函数 ${调用.名称} 的参数失败: ${调用.参数片段}`
-    let 错误处理结果 = await 处理工具错误(调用, 调用.参数片段, 错误消息, 回调, 调试Hook)
+    let 错误处理结果 = await 处理工具错误(调用, 调用.参数片段, 错误消息, 回调, 调试Hook, undefined, 模型语言包)
     if (错误处理结果.handled === true && 错误处理结果.message !== undefined) return 错误处理结果.message
     await 回调({ 类型: '工具调用失败', 工具名称: 调用.名称, id: 调用.id, 错误信息: 错误消息 })
     return {
       role: 'tool',
       tool_call_id: 调用.id,
       content: JSON.stringify(
-        模型语言 === 'en-US'
-          ? { status: 'failure', error: `Could not parse arguments: ${调用.参数片段}` }
-          : { 结果: '失败', 错误信息: `参数解析失败: ${调用.参数片段}` },
+        {
+          [模型语言包.模型字段名('结果')]: 模型语言包.模型枚举值('失败'),
+          [模型语言包.模型字段名('错误信息')]: 模型语言包.工具参数无法解析(调用.参数片段),
+        },
         null,
         2,
       ),
@@ -81,16 +101,17 @@ async function 执行单个普通工具调用(
   let 工具定义 = 工具定义列表.find((t) => t.名称 === 调用.名称) ?? null
   if (工具定义 === null) {
     let 错误消息 = `未知工具: ${调用.名称}`
-    let 错误处理结果 = await 处理工具错误(调用, 调用.参数片段, 错误消息, 回调, 调试Hook)
+    let 错误处理结果 = await 处理工具错误(调用, 调用.参数片段, 错误消息, 回调, 调试Hook, undefined, 模型语言包)
     if (错误处理结果.handled === true && 错误处理结果.message !== undefined) return 错误处理结果.message
     await 回调({ 类型: '工具调用失败', 工具名称: 调用.名称, id: 调用.id, 错误信息: 错误消息 })
     return {
       role: 'tool',
       tool_call_id: 调用.id,
       content: JSON.stringify(
-        模型语言 === 'en-US'
-          ? { status: 'failure', error: `Unknown tool: ${调用.名称}` }
-          : { 结果: '失败', 错误信息: `未知工具: ${调用.名称}` },
+        {
+          [模型语言包.模型字段名('结果')]: 模型语言包.模型枚举值('失败'),
+          [模型语言包.模型字段名('错误信息')]: 模型语言包.未知工具(调用.名称),
+        },
         null,
         2,
       ),
@@ -99,9 +120,9 @@ async function 执行单个普通工具调用(
 
   let 参数校验结果 = 工具定义.参数Schema.safeParse(工具定义.解析模型参数(参数))
   if (参数校验结果.success === false) {
-    let 错误描述 = 格式化zod错误(参数校验结果.error, 模型语言)
+    let 错误描述 = 格式化zod错误(参数校验结果.error, 模型语言包)
     let 错误消息 = `参数校验失败: ${错误描述}`
-    let 错误处理结果 = await 处理工具错误(调用, 参数, 错误消息, 回调, 调试Hook)
+    let 错误处理结果 = await 处理工具错误(调用, 参数, 错误消息, 回调, 调试Hook, undefined, 模型语言包)
     if (错误处理结果.handled === true && 错误处理结果.message !== undefined) return 错误处理结果.message
     await 回调({ 类型: '工具调用失败', 工具名称: 调用.名称, id: 调用.id, 错误信息: 错误消息 })
     return {
@@ -110,7 +131,7 @@ async function 执行单个普通工具调用(
       content: JSON.stringify(
         工具定义.转换模型返回值({
           结果: '失败',
-          错误信息: 模型语言 === 'en-US' ? `Invalid tool arguments: ${错误描述}` : `工具参数不正确: ${错误描述}`,
+          错误信息: 模型语言包.工具参数不正确(错误描述),
         }),
         null,
         2,
@@ -123,13 +144,21 @@ async function 执行单个普通工具调用(
     if (拦截返回.动作 === '拦截') {
       let 伪造结果 = { 结果: '成功' as const, 拦截提示: 拦截返回.返回给AI的文本 }
       await 回调({ 类型: '工具调用结果', 工具名称: 调用.名称, id: 调用.id, 结果: 伪造结果, 耗时ms: 0 })
-      return { role: 'tool', tool_call_id: 调用.id, content: JSON.stringify(伪造结果, null, 2) }
+      return {
+        role: 'tool',
+        tool_call_id: 调用.id,
+        content: JSON.stringify(转换通用协议结果(伪造结果, 模型语言包), null, 2),
+      }
     }
     if (拦截返回.动作 === '打回') {
       let 失败结果 = { 结果: '失败' as const, 错误信息: 拦截返回.返回给AI的错误信息 }
       await 回调({ 类型: '工具调用失败', 工具名称: 调用.名称, id: 调用.id, 错误信息: 拦截返回.返回给AI的错误信息 })
       await 回调({ 类型: '工具调用结果', 工具名称: 调用.名称, id: 调用.id, 结果: 失败结果, 耗时ms: 0 })
-      return { role: 'tool', tool_call_id: 调用.id, content: JSON.stringify(失败结果, null, 2) }
+      return {
+        role: 'tool',
+        tool_call_id: 调用.id,
+        content: JSON.stringify(转换通用协议结果(失败结果, 模型语言包), null, 2),
+      }
     }
   }
 
@@ -175,24 +204,20 @@ async function 执行单个普通工具调用(
     await 回调({ 类型: '工具调用结果', 工具名称: 调用.名称, id: 调用.id, 结果, 耗时ms: 耗时 })
     let 结果文本 = JSON.stringify(工具定义.转换模型返回值(结果), null, 2)
     if (工具返回文本最大长度 !== undefined && 结果文本.length > 工具返回文本最大长度) {
-      结果文本 =
-        结果文本.substring(0, 工具返回文本最大长度) +
-        (模型语言 === 'en-US' ? '\n... (truncated by length limit)' : '\n... (因长度限制被截断)')
+      结果文本 = 结果文本.substring(0, 工具返回文本最大长度) + 模型语言包.工具返回截断()
     }
     return { role: 'tool', tool_call_id: 调用.id, content: 结果文本 }
   } catch (error) {
     let 耗时 = Date.now() - 开始时间
     let 错误消息 = error instanceof Error ? error.message : String(error)
-    let 错误处理结果 = await 处理工具错误(调用, 参数校验结果.data, 错误消息, 回调, 调试Hook, 耗时)
+    let 错误处理结果 = await 处理工具错误(调用, 参数校验结果.data, 错误消息, 回调, 调试Hook, 耗时, 模型语言包)
     if (错误处理结果.handled === true && 错误处理结果.message !== undefined) return 错误处理结果.message
     await 回调({ 类型: '工具调用失败', 工具名称: 调用.名称, id: 调用.id, 错误信息: 错误消息 })
     let 失败结果 = { 结果: '失败' as const, 错误信息: 错误消息 }
     await 回调({ 类型: '工具调用结果', 工具名称: 调用.名称, id: 调用.id, 结果: 失败结果, 耗时ms: 耗时 })
     let 结果文本 = JSON.stringify(工具定义.转换模型返回值(失败结果), null, 2)
     if (工具返回文本最大长度 !== undefined && 结果文本.length > 工具返回文本最大长度) {
-      结果文本 =
-        结果文本.substring(0, 工具返回文本最大长度) +
-        (模型语言 === 'en-US' ? '\n... (truncated by length limit)' : '\n... (因长度限制被截断)')
+      结果文本 = 结果文本.substring(0, 工具返回文本最大长度) + 模型语言包.工具返回截断()
     }
     return { role: 'tool', tool_call_id: 调用.id, content: 结果文本 }
   }
@@ -209,7 +234,7 @@ export async function 处理工具调用(
   调试Hook?: 调试拦截钩子 | undefined,
   工具返回文本最大长度?: number,
   中断信号?: AbortSignal,
-  模型语言: 'zh-CN' | 'en-US' = 'zh-CN',
+  模型语言包: 模型语言包 = 中文模型语言包,
 ): Promise<工具调用处理结果> {
   // 构建 assistant 消息 (包含 tool_calls)
   let assistant消息: 智能体消息类型 = {
@@ -244,20 +269,23 @@ export async function 处理工具调用(
         调试Hook,
         工具返回文本最大长度,
         中断信号,
-        模型语言,
+        模型语言包,
       )
       消息列表.push(消息)
     }
   }
 
   if (提交结果调用列表.length > 1) {
-    let 错误消息 = `单次回复只能调用一次 ${提交结果函数名}。请根据已执行的工具结果重新提交一份唯一的最终结果。`
+    let 错误消息 = 模型语言包.多次提交结果(提交结果函数名)
     for (let 调用 of 提交结果调用列表) {
       await 回调({ 类型: '工具调用失败', 工具名称: 调用.名称, id: 调用.id, 错误信息: 错误消息 })
       消息列表.push({
         role: 'tool',
         tool_call_id: 调用.id,
-        content: JSON.stringify({ 结果: '失败', 错误信息: 错误消息 }),
+        content: JSON.stringify({
+          [模型语言包.模型字段名('结果')]: 模型语言包.模型枚举值('失败'),
+          [模型语言包.模型字段名('错误信息')]: 错误消息,
+        }),
       })
     }
     return { 类型: '继续循环' }
@@ -269,23 +297,29 @@ export async function 处理工具调用(
     let 调用 = 提交结果调用
 
     if (中断信号?.aborted === true) {
-      let 错误消息 = '操作已中断，最终结果未提交'
+      let 错误消息 = 模型语言包.提交结果已中断()
       await 回调({ 类型: '工具调用失败', 工具名称: 调用.名称, id: 调用.id, 错误信息: 错误消息 })
       消息列表.push({
         role: 'tool',
         tool_call_id: 调用.id,
-        content: JSON.stringify({ 结果: '失败', 错误信息: 错误消息 }),
+        content: JSON.stringify({
+          [模型语言包.模型字段名('结果')]: 模型语言包.模型枚举值('失败'),
+          [模型语言包.模型字段名('错误信息')]: 错误消息,
+        }),
       })
       return { 类型: '继续循环' }
     }
 
     if (!允许混用 && 普通工具调用列表.length > 0) {
-      let 错误消息 = `请不要将 ${提交结果函数名} 与其他普通工具混合调用。已为您执行了其他工具调用，请先查看它们的结果，然后再单独调用 ${提交结果函数名} 提交最终结果。`
+      let 错误消息 = 模型语言包.提交结果不可混用(提交结果函数名)
       await 回调({ 类型: '工具调用失败', 工具名称: 调用.名称, id: 调用.id, 错误信息: 错误消息 })
       消息列表.push({
         role: 'tool',
         tool_call_id: 调用.id,
-        content: JSON.stringify({ 结果: '失败', 错误信息: 错误消息 }),
+        content: JSON.stringify({
+          [模型语言包.模型字段名('结果')]: 模型语言包.模型枚举值('失败'),
+          [模型语言包.模型字段名('错误信息')]: 错误消息,
+        }),
       })
       return { 类型: '继续循环' }
     }
@@ -295,8 +329,8 @@ export async function 处理工具调用(
       let 修复后 = jsonrepair(调用.参数片段)
       参数 = JSON.parse(修复后) as Record<string, unknown>
     } catch {
-      let 错误消息 = `解析函数 ${调用.名称} 的参数失败: ${调用.参数片段}`
-      let 错误处理结果 = await 处理工具错误(调用, 调用.参数片段, 错误消息, 回调, 调试Hook)
+      let 错误消息 = 模型语言包.提交结果参数无法解析(调用.名称, 调用.参数片段)
+      let 错误处理结果 = await 处理工具错误(调用, 调用.参数片段, 错误消息, 回调, 调试Hook, undefined, 模型语言包)
       if (错误处理结果.handled === true && 错误处理结果.message !== undefined) {
         消息列表.push(错误处理结果.message)
       } else {
@@ -304,7 +338,10 @@ export async function 处理工具调用(
         消息列表.push({
           role: 'tool',
           tool_call_id: 调用.id,
-          content: JSON.stringify({ 结果: '失败', 错误信息: 错误消息 }),
+          content: JSON.stringify({
+            [模型语言包.模型字段名('结果')]: 模型语言包.模型枚举值('失败'),
+            [模型语言包.模型字段名('错误信息')]: 错误消息,
+          }),
         })
       }
       return { 类型: '继续循环' }
@@ -317,41 +354,53 @@ export async function 处理工具调用(
         if (拦截返回.动作 === '拦截') {
           let 伪造结果 = { 结果: '失败' as const, 拦截提示: 拦截返回.返回给AI的文本 }
           await 回调({ 类型: '工具调用结果', 工具名称: 调用.名称, id: 调用.id, 结果: 伪造结果, 耗时ms: 0 })
-          消息列表.push({ role: 'tool', tool_call_id: 调用.id, content: JSON.stringify(伪造结果, null, 2) })
+          消息列表.push({
+            role: 'tool',
+            tool_call_id: 调用.id,
+            content: JSON.stringify(转换通用协议结果(伪造结果, 模型语言包), null, 2),
+          })
           return { 类型: '继续循环' }
         }
         if (拦截返回.动作 === '打回') {
           let 失败结果 = { 结果: '失败' as const, 错误信息: 拦截返回.返回给AI的错误信息 }
           await 回调({ 类型: '工具调用失败', 工具名称: 调用.名称, id: 调用.id, 错误信息: 拦截返回.返回给AI的错误信息 })
           await 回调({ 类型: '工具调用结果', 工具名称: 调用.名称, id: 调用.id, 结果: 失败结果, 耗时ms: 0 })
-          消息列表.push({ role: 'tool', tool_call_id: 调用.id, content: JSON.stringify(失败结果, null, 2) })
+          消息列表.push({
+            role: 'tool',
+            tool_call_id: 调用.id,
+            content: JSON.stringify(转换通用协议结果(失败结果, 模型语言包), null, 2),
+          })
           return { 类型: '继续循环' }
         }
       }
 
       // 校验通过
       await 回调({ 类型: '工具调用开始', 工具名称: 调用.名称, id: 调用.id, 参数 })
-      let 结果 = { 结果: '成功' as const, 信息: '结果提交成功' }
+      let 结果 = { 结果: '成功' as const, 信息: 模型语言包.提交结果成功() }
       await 回调({ 类型: '工具调用结果', 工具名称: 调用.名称, id: 调用.id, 结果, 耗时ms: 0 })
 
       // 修复: 必须将提交结果的 tool 响应加入消息列表，否则下次请求 AI 时
       // 历史记录中的 assistant 消息会带有无响应的 tool_calls，导致 400 错误。
-      消息列表.push({ role: 'tool', tool_call_id: 调用.id, content: JSON.stringify(结果) })
+      消息列表.push({
+        role: 'tool',
+        tool_call_id: 调用.id,
+        content: JSON.stringify({
+          [模型语言包.模型字段名('结果')]: 模型语言包.模型枚举值('成功'),
+          [模型语言包.模型字段名('信息')]: 结果.信息,
+        }),
+      })
 
       return { 类型: '最终结果', 数据: 校验结果.data as Record<string, unknown> }
     }
 
     // 校验失败
-    let 错误描述 = 格式化zod错误(校验结果.error, 模型语言)
+    let 错误描述 = 格式化zod错误(校验结果.error, 模型语言包)
     let 预期JsonSchema = zodToJsonSchema(预期结果Schema)
     let 预期形状文本 = JSON.stringify(预期JsonSchema, null, 2)
     let 详细错误信息 = `${错误描述}\n预期结果形状 (JSON Schema):\n${预期形状文本}`
 
-    let 工具返回内容 =
-      模型语言 === 'en-US'
-        ? `Submitted data does not match the expected format:\n${错误描述}\n\nFix it and call ${提交结果函数名} again.`
-        : `提交的数据不符合预期格式:\n${错误描述}\n\n请修复后重新调用 ${提交结果函数名}`
-    let 错误处理结果 = await 处理工具错误(调用, 参数, 工具返回内容, 回调, 调试Hook)
+    let 工具返回内容 = 模型语言包.提交结果格式错误(错误描述, 提交结果函数名)
+    let 错误处理结果 = await 处理工具错误(调用, 参数, 工具返回内容, 回调, 调试Hook, undefined, 模型语言包)
     if (错误处理结果.handled === true && 错误处理结果.message !== undefined) {
       消息列表.push(错误处理结果.message)
       return { 类型: '继续循环' }
@@ -361,7 +410,10 @@ export async function 处理工具调用(
     消息列表.push({
       role: 'tool',
       tool_call_id: 调用.id,
-      content: JSON.stringify({ 结果: '失败', 错误信息: 工具返回内容 }),
+      content: JSON.stringify({
+        [模型语言包.模型字段名('结果')]: 模型语言包.模型枚举值('失败'),
+        [模型语言包.模型字段名('错误信息')]: 工具返回内容,
+      }),
     })
     return { 类型: '校验失败', 错误信息: 详细错误信息 }
   }

@@ -30,10 +30,10 @@ async function 运行测试(): Promise<void> {
   打印分隔线('第一步：通过代码 API 手动注册一个「运费计算器」动态工具')
 
   let 工具代码 = `
-工具 = {
-  名称: "calculate_shipping_fee",
-  描述: "计算包裹的快递运费。根据物品重量和运输距离进行自动计费。",
-  参数Schema: {
+tool = {
+  name: "calculate_shipping_fee",
+  description: "计算包裹的快递运费。根据物品重量和运输距离进行自动计费。",
+  parametersSchema: {
     type: "object",
     properties: {
       weight_kg: { type: "number", description: "物品重量(千克)" },
@@ -41,16 +41,16 @@ async function 运行测试(): Promise<void> {
     },
     required: ["weight_kg", "distance_km"]
   },
-  返回值Schema: {
+  returnSchema: {
     type: "object",
     properties: {
       fee: { type: "number", description: "最终运费" }
     },
     required: ["fee"]
   },
-  实现: async function(参数) {
-    let weight = 参数.weight_kg ?? 参数['重量kg'] ?? 参数.重量;
-    let distance = 参数.distance_km ?? 参数['距离km'] ?? 参数.距离;
+  execute: async function(args) {
+    let weight = args.weight_kg ?? args['重量kg'] ?? args.重量;
+    let distance = args.distance_km ?? args['距离km'] ?? args.距离;
     // 计费规则：首重1kg内10元，续重每kg 5元(向上取整)
     let baseFee = 10;
     if (weight > 1) {
