@@ -1,6 +1,9 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import type { PGlite } from '@electric-sql/pglite'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { z } from 'zod'
 import { 交互日志事件Schema, 带记忆的智能体, 记忆等级 } from '../../../src/index'
 import { 使用共享PGlite } from '../../helpers/shared-pglite-fixture'
+import { 创建带向量的PGlite } from '../../helpers/shared-storage-helper'
 
 describe('交互事件日志', () => {
   let 夹具 = 使用共享PGlite()
@@ -123,5 +126,127 @@ describe('交互事件日志', () => {
     智能体实例 = 夹具.新建智能体()
     await expect(智能体实例.载入快照('{不是合法快照}', 'rollback-group')).rejects.toThrow()
     expect(await 智能体实例.查询交互日志({ 事件组id: 'rollback-group' })).toEqual([])
+  })
+})
+
+let 标记Schema = z.object({ 标记: z.string() })
+
+describe('交互日志按开始时间过滤', () => {
+  let 夹具 = 使用共享PGlite()
+  let 智能体实例: 带记忆的智能体 | undefined
+  let 零点 = (日: number): Date => new Date(Date.UTC(2026, 0, 日, 0, 0, 0, 0))
+
+  afterEach(async (): Promise<void> => {
+    if (智能体实例 !== undefined) {
+      await 智能体实例.销毁()
+      智能体实例 = undefined
+    }
+  })
+
+  async function 写入三天(实例: 带记忆的智能体, 事件组id: string): Promise<void> {
+    // 故意乱序写入，序号顺序与时间顺序不同
+    await 实例.记录交互日志({ 类型: '自定义', 开始时间: 零点(2), 内容: { 标记: 'd2-0点' } }, 事件组id)
+    await 实例.记录交互日志({ 类型: '流程开始', 开始时间: 零点(1), 内容: { 标记: 'd1-0点' } }, 事件组id)
+    await 实例.记录交互日志(
+      { 类型: '自定义', 开始时间: new Date(零点(2).getTime() - 1), 内容: { 标记: 'd1-末' } },
+      事件组id,
+    )
+    await 实例.记录交互日志({ 类型: '自定义', 开始时间: 零点(3), 内容: { 标记: 'd3-0点' } }, 事件组id)
+  }
+
+  function 标记(日志列表: { 内容: unknown }[]): unknown[] {
+    return 日志列表.map((日志) => 标记Schema.parse(日志.内容).标记)
+  }
+
+  it('起包含、止不包含，起止组合按天切分', async (): Promise<void> => {
+    智能体实例 = 夹具.新建智能体()
+    await 写入三天(智能体实例, 'time-group')
+    expect(标记(await 智能体实例.查询交互日志({ 开始时间起: 零点(2) }))).toEqual(['d2-0点', 'd3-0点'])
+    expect(标记(await 智能体实例.查询交互日志({ 开始时间止: 零点(2) }))).toEqual(['d1-0点', 'd1-末'])
+    expect(标记(await 智能体实例.查询交互日志({ 开始时间起: 零点(1), 开始时间止: 零点(2) }))).toEqual([
+      'd1-0点',
+      'd1-末',
+    ])
+    expect(标记(await 智能体实例.查询交互日志({ 开始时间起: 零点(2), 开始时间止: 零点(3) }))).toEqual(['d2-0点'])
+  })
+
+  it('和事件组id、类型组合过滤，分页在过滤之后生效', async (): Promise<void> => {
+    智能体实例 = 夹具.新建智能体()
+    await 写入三天(智能体实例, 'time-group')
+    await 智能体实例.记录交互日志({ 类型: '自定义', 开始时间: 零点(2), 内容: { 标记: '别的组' } }, 'other-group')
+    let 区间 = { 开始时间起: 零点(1), 开始时间止: 零点(3) }
+    expect(标记(await 智能体实例.查询交互日志({ ...区间, 事件组id: 'time-group' }))).toEqual([
+      'd2-0点',
+      'd1-0点',
+      'd1-末',
+    ])
+    expect(标记(await 智能体实例.查询交互日志({ ...区间, 事件组id: 'time-group', 类型: '自定义' }))).toEqual([
+      'd2-0点',
+      'd1-末',
+    ])
+    expect(标记(await 智能体实例.查询交互日志({ ...区间, 事件组id: 'time-group', 偏移: 1, 数量: 1 }))).toEqual([
+      'd1-0点',
+    ])
+    expect(标记(await 智能体实例.查询交互日志({ ...区间, 事件组id: 'time-group', 偏移: 3 }))).toEqual([])
+  })
+
+  it('起不早于止或日期无效时报错', async (): Promise<void> => {
+    智能体实例 = 夹具.新建智能体()
+    await expect(智能体实例.查询交互日志({ 开始时间起: 零点(2), 开始时间止: 零点(2) })).rejects.toThrow()
+    await expect(智能体实例.查询交互日志({ 开始时间起: 零点(3), 开始时间止: 零点(2) })).rejects.toThrow()
+    await expect(智能体实例.查询交互日志({ 开始时间起: new Date('不是日期') })).rejects.toThrow()
+    await expect(智能体实例.查询交互日志({ 开始时间止: new Date(Number.NaN) })).rejects.toThrow()
+  })
+})
+
+describe('交互日志开始时间过滤在外部存储模式下', { timeout: 60000 }, () => {
+  let pglite: PGlite
+  let 实例列表: 带记忆的智能体[] = []
+
+  beforeEach((): void => {
+    pglite = 创建带向量的PGlite()
+  })
+
+  afterEach(async (): Promise<void> => {
+    for (let 实例 of 实例列表) await 实例.销毁()
+    实例列表 = []
+    await pglite.close()
+  })
+
+  function 创建实例(schema: string): 带记忆的智能体 {
+    let 实例 = new 带记忆的智能体({ 存储: { 模式: '外部', pglite, schema }, 向量模型: { 类型: '无' } })
+    实例列表.push(实例)
+    return 实例
+  }
+
+  async function 索引数量(schema: string): Promise<number> {
+    let 结果 = await pglite.query(
+      `SELECT 1 FROM pg_indexes WHERE schemaname = $1 AND tablename = '交互日志表' AND indexname = '交互日志表_开始时间_idx'`,
+      [schema],
+    )
+    return 结果.rows.length
+  }
+
+  it('两个 schema 的过滤结果互不串数据', async (): Promise<void> => {
+    let 甲 = 创建实例('log_a')
+    let 乙 = 创建实例('log_b')
+    let 时间 = new Date('2026-01-01T12:00:00.000Z')
+    await 甲.记录交互日志({ 类型: '自定义', 开始时间: 时间, 内容: { 来自: '甲' } })
+    await 乙.记录交互日志({ 类型: '自定义', 开始时间: 时间, 内容: { 来自: '乙' } })
+    let 区间 = { 开始时间起: new Date('2026-01-01T00:00:00.000Z'), 开始时间止: new Date('2026-01-02T00:00:00.000Z') }
+    expect((await 甲.查询交互日志(区间)).map((日志) => 日志.内容)).toEqual([{ 来自: '甲' }])
+    expect((await 乙.查询交互日志(区间)).map((日志) => 日志.内容)).toEqual([{ 来自: '乙' }])
+  })
+
+  it('开始时间索引存在，删掉后重新打开实例会补回', async (): Promise<void> => {
+    let 实例 = 创建实例('log_idx')
+    await 实例.初始化()
+    expect(await 索引数量('log_idx')).toBe(1)
+    await 实例.销毁()
+    实例列表 = []
+    await pglite.exec(`DROP INDEX "log_idx"."交互日志表_开始时间_idx"`)
+    expect(await 索引数量('log_idx')).toBe(0)
+    await 创建实例('log_idx').初始化()
+    expect(await 索引数量('log_idx')).toBe(1)
   })
 })

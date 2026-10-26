@@ -454,6 +454,10 @@ export type 压缩当前会话选项 = {
 export type 查询交互日志选项 = {
   事件组id?: string | undefined
   类型?: 交互日志事件类型 | undefined
+  /** 按日志的 `开始时间` 过滤: 只要 开始时间 >= 此值(包含); 必须是有效 Date */
+  开始时间起?: Date | undefined
+  /** 按日志的 `开始时间` 过滤: 只要 开始时间 < 此值(不包含); 必须是有效 Date; 与 `开始时间起` 同给时要求 起 < 止。按天切可用 [当天 0 点, 次日 0 点) */
+  开始时间止?: Date | undefined
   偏移?: number | undefined
   数量?: number | undefined
 }
