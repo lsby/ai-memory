@@ -1,4 +1,5 @@
 import type { Kysely } from 'kysely'
+import { randomUUID } from 'node:crypto'
 import { z } from 'zod'
 import { 智能体工具, type 智能体执行模式, type 智能体消息类型 } from '../../agent/types'
 import {
@@ -55,6 +56,9 @@ export class 会话控制器 {
     if (消息列表.length < this.已持久化消息数量) throw new Error('当前消息列表短于已经持久化的会话历史')
     let 新消息列表 = 消息列表.slice(this.已持久化消息数量)
     if (新消息列表.length === 0) return
+    for (let 消息 of 新消息列表) {
+      if (消息.持久化消息id === undefined) 消息.持久化消息id = randomUUID()
+    }
     let 新消息 = await 存储追加消息列表(this.依赖.数据库查询器, 会话id, this.当前消息id值, 新消息列表)
     let 末尾 = 新消息.at(-1)
     if (末尾 === undefined) return
@@ -92,6 +96,14 @@ export class 会话控制器 {
     await this.依赖.确保已初始化()
     let 会话 = await 存储查询会话(this.依赖.数据库查询器, id)
     if (会话 === null) throw new Error(`会话不存在: ${id}`)
+    await this.激活会话(会话)
+  }
+
+  public async 恢复当前会话(): Promise<void> {
+    let 会话id = this.当前会话id值
+    if (会话id === null) return
+    let 会话 = await 存储查询会话(this.依赖.数据库查询器, 会话id)
+    if (会话 === null) throw new Error(`会话不存在: ${会话id}`)
     await this.激活会话(会话)
   }
 
@@ -153,8 +165,9 @@ export class 会话控制器 {
       前驱会话id: 选项.前驱会话id,
       前驱消息id: 选项.前驱消息id,
     })
+    let { 持久化消息id: _原消息id, ...派生系统消息 } = 系统消息
     await 存储追加消息列表(this.依赖.数据库查询器, 会话.id, null, [
-      系统消息,
+      派生系统消息,
       {
         role: 'system',
         content: 选项.摘要,
@@ -181,9 +194,9 @@ export class 会话控制器 {
   public 创建历史阅读工具(): 智能体工具 {
     return 智能体工具.创建({
       名称: 'read_conversation_history',
-      描述: '读取当前会话或其不可变前驱会话中的历史原文。只能读取当前会话谱系上的消息。',
+      描述: 'Read original messages from the current immutable conversation lineage. Omit the target message ID to read from the compressed predecessor snapshot.',
       参数Schema: z.object({
-        目标消息id: z.string().min(1),
+        目标消息id: z.string().min(1).optional(),
         向上回溯条数: z.number().int().min(1).max(50).default(10),
       }),
       返回值Schema: z.object({
@@ -229,7 +242,7 @@ export class 会话控制器 {
   }
 
   private async 读取谱系历史(
-    目标消息id: string,
+    目标消息id: string | undefined,
     向上回溯条数: number,
   ): Promise<{
     结果: '成功' | '失败'
@@ -240,11 +253,14 @@ export class 会话控制器 {
     let 会话id = this.当前会话id值
     if (会话id === null) return { 结果: '失败', 错误信息: '当前没有持久化会话' }
     let 当前会话 = await 存储查询会话(this.依赖.数据库查询器, 会话id)
+    let 实际目标消息id = 目标消息id ?? 当前会话?.前驱消息id ?? 当前会话?.当前消息id
+    if (实际目标消息id === null || 实际目标消息id === undefined)
+      return { 结果: '失败', 错误信息: '当前会话没有可读取的历史消息' }
     let 锚点消息id = 当前会话?.当前消息id ?? null
     while (当前会话 !== null) {
       if (锚点消息id !== null) {
         let 谱系消息 = await 存储读取消息历史(this.依赖.数据库查询器, 锚点消息id, 100000)
-        let 目标索引 = 谱系消息.findIndex((消息) => 消息.id === 目标消息id)
+        let 目标索引 = 谱系消息.findIndex((消息) => 消息.id === 实际目标消息id)
         if (目标索引 >= 0) {
           let 起点 = Math.max(0, 目标索引 - 向上回溯条数 + 1)
           return {

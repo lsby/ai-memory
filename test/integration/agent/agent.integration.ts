@@ -179,6 +179,8 @@ let 事件处理 = async (事件: 智能体事件): Promise<void> => {
     case '模型请求审计':
       console.log(`\n📊 模型请求审计:`, JSON.stringify(事件.记录))
       break
+    case '模型响应完成':
+      break
   }
 }
 

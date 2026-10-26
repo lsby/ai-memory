@@ -12,12 +12,19 @@ export let 智能体系统消息Schema = z
     name: z.string().optional(),
     /** 前缀指纹: 系统提示词全文与工具定义的 sha256, 仅供库内部校验, 发给模型时不携带 */
     prefixFingerprint: z.string().optional(),
+    /** 持久化消息 ID，仅供库内部关联遥测，不发给模型商。 */
+    持久化消息id: z.string().optional(),
   })
   .passthrough()
 export type 智能体系统消息 = z.infer<typeof 智能体系统消息Schema>
 
 export let 智能体开发者消息Schema = z
-  .object({ role: z.literal('developer'), content: z.string(), name: z.string().optional() })
+  .object({
+    role: z.literal('developer'),
+    content: z.string(),
+    name: z.string().optional(),
+    持久化消息id: z.string().optional(),
+  })
   .passthrough()
 export type 智能体开发者消息 = z.infer<typeof 智能体开发者消息Schema>
 
@@ -31,6 +38,7 @@ export let 智能体用户消息Schema = z
     /** 注入消息的类型。库自己使用 memory-state、recall-context、current-time, 调用方可传任意字符串 */
     systemInjectionKind: z.string().optional(),
     systemInjectionFingerprint: z.string().optional(),
+    持久化消息id: z.string().optional(),
   })
   .passthrough()
 export type 智能体用户消息 = z.infer<typeof 智能体用户消息Schema>
@@ -52,17 +60,28 @@ export let 智能体助手消息Schema = z
       )
       .optional(),
     function_call: z.object({ name: z.string(), arguments: z.string() }).passthrough().nullable().optional(),
+    持久化消息id: z.string().optional(),
   })
   .passthrough()
 export type 智能体助手消息 = z.infer<typeof 智能体助手消息Schema>
 
 export let 智能体工具消息Schema = z
-  .object({ role: z.literal('tool'), content: z.string(), tool_call_id: z.string() })
+  .object({
+    role: z.literal('tool'),
+    content: z.string(),
+    tool_call_id: z.string(),
+    持久化消息id: z.string().optional(),
+  })
   .passthrough()
 export type 智能体工具消息 = z.infer<typeof 智能体工具消息Schema>
 
 export let 智能体函数消息Schema = z
-  .object({ role: z.literal('function'), content: z.string().nullable(), name: z.string() })
+  .object({
+    role: z.literal('function'),
+    content: z.string().nullable(),
+    name: z.string(),
+    持久化消息id: z.string().optional(),
+  })
   .passthrough()
 export type 智能体函数消息 = z.infer<typeof 智能体函数消息Schema>
 
@@ -78,22 +97,60 @@ export type 智能体消息类型 = z.infer<typeof 智能体消息Schema>
 
 export type 智能体事件 =
   | { 类型: 'AI文本片段'; 内容: string }
-  | { 类型: '工具调用开始'; 工具名称: string; id: string; 参数: Record<string, unknown> }
+  | {
+      类型: '工具调用开始'
+      工具名称: string
+      id: string
+      参数: Record<string, unknown>
+      模型请求id?: string
+      模型请求序号?: number
+      前缀id?: string
+    }
   | {
       类型: '工具调用结果'
       工具名称: string
       id: string
       结果: { 结果: '成功' | '失败' } & Record<string, unknown>
       耗时ms: number
+      模型请求id?: string
+      模型请求序号?: number
+      前缀id?: string
     }
-  | { 类型: '工具调用失败'; 工具名称: string; id: string; 错误信息: string }
+  | {
+      类型: '工具调用失败'
+      工具名称: string
+      id: string
+      错误信息: string
+      模型请求id?: string
+      模型请求序号?: number
+      前缀id?: string
+    }
   | { 类型: '校验失败'; 错误信息: string; 当前次数: number; 最大次数: number }
   | { 类型: '最终结果'; 结果: Record<string, unknown> }
   | { 类型: '流程信息'; 内容: string }
   | { 类型: '错误'; 错误信息: string }
-  | { 类型: '原始请求配置'; 配置: object }
-  | { 类型: '原始AI返回'; 完整文本: string; 工具调用列表: 累积工具调用[]; 当前消息列表: 智能体消息类型[] }
-  | { 类型: '模型请求审计'; 记录: 模型请求审计记录 }
+  | { 类型: '原始请求配置'; 配置: object; 模型请求id: string; 模型请求序号: number; 前缀id: string }
+  | {
+      类型: '原始AI返回'
+      完整文本: string
+      工具调用列表: 累积工具调用[]
+      当前消息列表: 智能体消息类型[]
+      模型请求id: string
+      模型请求序号: number
+      前缀id: string
+    }
+  | {
+      类型: '模型响应完成'
+      模型请求id: string
+      模型请求序号: number
+      前缀id: string
+      状态: '完成' | '中断' | '空响应'
+      响应消息id?: string
+      工具调用数量: number
+    }
+  | { 类型: '模型请求审计'; 记录: 模型请求审计记录; 模型请求id: string; 模型请求序号: number; 前缀id: string }
+
+export type 模型请求上下文 = { id: string; 序号: number; 前缀id: string }
 
 export type 智能体回调 = (事件: 智能体事件) => Promise<void>
 

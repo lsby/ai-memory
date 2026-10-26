@@ -166,12 +166,12 @@ export function 修改一级记忆工具(上下文: 一级记忆上下文): 智�
   })
 }
 
-export function 删除一级记忆工具(上下文: 一级记忆上下文): 智能体工具 {
+export function 移除一级记忆工具(上下文: 一级记忆上下文): 智能体工具 {
   let { 数据库查询器, 回调 } = 上下文
 
   return 智能体工具.创建({
-    名称: 'delete_level_1_memory',
-    描述: '直接删除某条一级记忆（而不是降级）。',
+    名称: 'remove_level_1_memory',
+    描述: '从当前记忆状态移除某条一级记忆（而不是降级）。',
     参数Schema: z.object({ id: z.string() }),
     返回值Schema: z.object({
       结果: z.enum(['成功', '失败']),
@@ -187,9 +187,9 @@ export function 删除一级记忆工具(上下文: 一级记忆上下文): 智�
 
         await 数据库查询器.deleteFrom('记忆表').where('id', '=', 参数.id).where('等级', '=', 记忆等级.一级).execute()
         if (回调 !== undefined) {
-          await 回调({ 类型: '流程信息', 内容: `[数据库更新] 成功删除一级记忆 (ID: ${参数.id})` })
+          await 回调({ 类型: '流程信息', 内容: `[数据库更新] 已从当前状态移除一级记忆 (ID: ${参数.id})` })
         }
-        return { 结果: '成功', 最新状态: `[一级记忆 ID: ${参数.id}] 已彻底删除` }
+        return { 结果: '成功', 最新状态: `[一级记忆 ID: ${参数.id}] 已从当前状态移除` }
       } catch (error: unknown) {
         return { 结果: '失败', 错误信息: String(error instanceof Error ? error.message : error) }
       }

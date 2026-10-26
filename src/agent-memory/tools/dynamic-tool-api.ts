@@ -198,7 +198,7 @@ export async function 更新动态工具核心(
   }
 }
 
-export async function 删除动态工具核心(
+export async function 移除动态工具核心(
   上下文: 动态工具上下文,
   参数: { 工具标识: string },
 ): Promise<{ 结果: '成功' | '失败'; 错误信息?: string }> {

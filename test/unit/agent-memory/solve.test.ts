@@ -67,9 +67,21 @@ describe('带记忆的智能体对话', () => {
     expect(结果.结果).toEqual({ 答案: '已完成' })
     expect(已更新记忆?.标签).toEqual(['旧标签', '新标签'])
     expect(流式请求AI模拟).toHaveBeenCalledTimes(2)
-    let 日志类型 = (await 智能体实例.查询交互日志({ 事件组id: 'conversation-group' })).map((日志) => 日志.类型)
+    let 日志列表 = await 智能体实例.查询交互日志({ 事件组id: 'conversation-group' })
+    let 日志类型 = 日志列表.map((日志) => 日志.类型)
     expect(日志类型).toEqual(
-      expect.arrayContaining(['流程开始', '工具调用开始', '记忆提交', '工具调用结果', '最终结果', '流程结束']),
+      expect.arrayContaining(['流程开始', '工具调用开始', '记忆提交', '工具调用结果', '模型响应完成', '流程结束']),
     )
+    expect(日志类型).not.toEqual(expect.arrayContaining(['AI文本片段', '原始AI返回', '最终结果']))
+    let 模型响应列表 = 日志列表.filter((日志) => 日志.类型 === '模型响应完成')
+    expect(模型响应列表).toHaveLength(2)
+    expect(模型响应列表.every((日志) => 日志.模型请求id !== undefined && 日志.前缀id !== undefined)).toBe(true)
+    expect(模型响应列表.every((日志) => 日志.消息id !== undefined)).toBe(true)
+    let 前缀id = 模型响应列表[0]?.前缀id
+    if (前缀id === undefined) throw new Error('模型响应日志缺少前缀引用')
+    expect(await 智能体实例.查询前缀快照(前缀id)).toMatchObject({ id: 前缀id })
+    let 模型工具事件 = 日志列表.filter((日志) => 日志.类型 === '工具调用开始' || 日志.类型 === '工具调用结果')
+    expect(模型工具事件.every((日志) => 日志.模型请求id !== undefined && 日志.前缀id !== undefined)).toBe(true)
+    expect(日志列表.at(-1)?.内容).not.toHaveProperty('结果')
   })
 })

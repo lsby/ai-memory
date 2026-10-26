@@ -2,10 +2,11 @@ import type { Kysely } from 'kysely'
 import type { 智能体事件 } from '../agent/types'
 import { 检查并清理二级记忆 as 外部检查并清理二级记忆, 检查并降级一级记忆 as 外部检查并降级一级记忆 } from './lifecycle'
 import { 创建事件组id, 记录交互日志 } from './logger'
+import { 获取当前提交ID } from './operations/commit'
 import { 保存快照 as 外部保存快照 } from './storage/snapshot'
 import { type 向量缓存, 向量未预取错误, 新向量缓存, 预取向量 } from './storage/vector-cache'
 import type { 动态工具上下文 } from './tools/dynamic-tool-api'
-import type { 内部带记忆的智能体配置, 获取向量结果, 记忆操作上下文, 记忆数据库 } from './types'
+import type { 公开交互日志, 内部带记忆的智能体配置, 获取向量结果, 记忆操作上下文, 记忆数据库 } from './types'
 
 /** 构建上下文所需的、由实例提供的能力。 */
 export type 上下文依赖 = {
@@ -67,7 +68,10 @@ export function 构建操作上下文(
       )
     },
     事件组id: 已校验事件组id,
-    记录交互日志: async (事件) => await 记录交互日志(trx, 事件, 已校验事件组id),
+    记录交互日志: async (事件): Promise<公开交互日志> => {
+      let 记忆提交id = 事件.记忆提交id ?? (await 获取当前提交ID(trx)) ?? undefined
+      return await 记录交互日志(trx, { ...事件, ...(记忆提交id !== undefined ? { 记忆提交id } : {}) }, 已校验事件组id)
+    },
     回调,
   }
 }

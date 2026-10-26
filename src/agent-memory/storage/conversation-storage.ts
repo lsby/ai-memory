@@ -113,7 +113,8 @@ export async function 追加消息列表(
     let 父消息id = 预期父消息id
     let 新消息列表: 公开消息[] = []
     for (let 消息 of 已校验消息列表) {
-      let id = randomUUID()
+      let id = 消息.持久化消息id ?? randomUUID()
+      消息.持久化消息id = id
       let 结果 = await trx
         .insertInto('消息表')
         .values({

@@ -48,11 +48,27 @@ export async function 执行带日志的记忆变更<R>(
         if (当前提交id !== 原提交id) {
           await 记录交互日志(
             trx,
-            { 类型: '记忆提交', 开始时间, 耗时ms, 内容: { 消息, 提交id: 当前提交id } },
+            {
+              类型: '记忆提交',
+              开始时间,
+              耗时ms,
+              内容: { 消息 },
+              ...(当前提交id !== null ? { 记忆提交id: 当前提交id } : {}),
+            },
             已校验事件组id,
           )
         }
-        await 记录交互日志(trx, { 类型: '流程结束', 开始时间, 耗时ms, 内容: { 入口: 消息 } }, 已校验事件组id)
+        await 记录交互日志(
+          trx,
+          {
+            类型: '流程结束',
+            开始时间,
+            耗时ms,
+            内容: { 入口: 消息 },
+            ...(当前提交id !== null ? { 记忆提交id: 当前提交id } : {}),
+          },
+          已校验事件组id,
+        )
         return 结果
       })
     } catch (错误) {
@@ -76,13 +92,15 @@ export async function 执行带日志的分支切换(
     await 记录交互日志(trx, { 类型: '流程开始', 开始时间, 内容: { 入口 } }, 已校验事件组id)
     let 结果 = await 操作(trx)
     let 耗时ms = Date.now() - 开始时间.getTime()
+    let 当前提交id = await 获取当前提交ID(trx)
     await 记录交互日志(
       trx,
       {
         类型: '记忆分支切换',
         开始时间,
         耗时ms,
-        内容: { 请求: 请求内容, 结果, 当前提交id: await 获取当前提交ID(trx) },
+        内容: { 请求: 请求内容, 结果, 当前提交id },
+        ...(当前提交id !== null ? { 记忆提交id: 当前提交id } : {}),
       },
       已校验事件组id,
     )
@@ -102,19 +120,43 @@ export async function 执行带日志的推理流程<T extends ZodType>(
   let 已校验事件组id = 创建事件组id(事件组id)
   let 开始时间 = new Date()
   let 日志回调 = async (事件: 智能体事件): Promise<void> => {
+    await 原回调(事件)
+    if (事件.类型 === 'AI文本片段' || 事件.类型 === '原始AI返回' || 事件.类型 === '最终结果') return
     let 耗时ms = '耗时ms' in 事件 && typeof 事件.耗时ms === 'number' ? 事件.耗时ms : undefined
     let 持久化事件内容: object
     if (事件.类型 === '原始请求配置') {
-      let 配置 = Object.fromEntries(Object.entries(事件.配置))
-      delete 配置['messages']
+      let 允许字段 = new Set(['model', 'max_tokens', 'temperature', 'top_p', 'presence_penalty', 'frequency_penalty'])
+      let 配置 = Object.fromEntries(Object.entries(事件.配置).filter(([键]) => 允许字段.has(键)))
       持久化事件内容 = { 配置 }
-    } else if (事件.类型 === '原始AI返回') {
-      持久化事件内容 = { 完整文本: 事件.完整文本, 工具调用列表: 事件.工具调用列表 }
+    } else if (事件.类型 === '工具调用开始') {
+      持久化事件内容 = { 工具名称: 事件.工具名称, id: 事件.id }
+    } else if (事件.类型 === '工具调用结果') {
+      持久化事件内容 = { 工具名称: 事件.工具名称, id: 事件.id, 状态: 事件.结果.结果 }
+    } else if (事件.类型 === '模型响应完成') {
+      持久化事件内容 = {
+        模型请求序号: 事件.模型请求序号,
+        状态: 事件.状态,
+        工具调用数量: 事件.工具调用数量,
+      }
+    } else if (事件.类型 === '校验失败') {
+      持久化事件内容 = { 当前次数: 事件.当前次数, 最大次数: 事件.最大次数 }
+    } else if (事件.类型 === '工具调用失败') {
+      持久化事件内容 = {
+        工具名称: 事件.工具名称,
+        id: 事件.id,
+        错误信息: 事件.错误信息.slice(0, 1000),
+      }
+    } else if (事件.类型 === '错误') {
+      持久化事件内容 = { 错误信息: 事件.错误信息.slice(0, 1000) }
     } else {
       let { 类型: _类型, ...事件内容 } = 事件
       持久化事件内容 = 事件内容
     }
     let 上下文消息id = 获取上下文消息id?.() ?? undefined
+    let 记忆提交id = (await 获取当前提交ID(数据库查询器)) ?? undefined
+    let 模型请求id = '模型请求id' in 事件 ? 事件.模型请求id : undefined
+    let 前缀id = '前缀id' in 事件 ? 事件.前缀id : undefined
+    let 消息id = 事件.类型 === '模型响应完成' ? 事件.响应消息id : undefined
     await 记录交互日志(
       数据库查询器,
       {
@@ -123,21 +165,38 @@ export async function 执行带日志的推理流程<T extends ZodType>(
         ...(耗时ms !== undefined ? { 耗时ms } : {}),
         内容: 转为JSON值(持久化事件内容),
         ...(上下文消息id !== undefined ? { 上下文消息id } : {}),
+        ...(消息id !== undefined ? { 消息id } : {}),
+        ...(模型请求id !== undefined ? { 模型请求id } : {}),
+        ...(记忆提交id !== undefined ? { 记忆提交id } : {}),
+        ...(前缀id !== undefined ? { 前缀id } : {}),
       },
       已校验事件组id,
     )
-    await 原回调(事件)
   }
-  await 记录交互日志(数据库查询器, { 类型: '流程开始', 开始时间, 内容: 流程内容 }, 已校验事件组id)
+  let 开始记忆提交id = (await 获取当前提交ID(数据库查询器)) ?? undefined
+  await 记录交互日志(
+    数据库查询器,
+    {
+      类型: '流程开始',
+      开始时间,
+      内容: 流程内容,
+      ...(开始记忆提交id !== undefined ? { 记忆提交id: 开始记忆提交id } : {}),
+    },
+    已校验事件组id,
+  )
   try {
     let 结果 = await 操作(日志回调, 已校验事件组id)
+    let 结束上下文消息id = 获取上下文消息id?.() ?? undefined
+    let 结束记忆提交id = (await 获取当前提交ID(数据库查询器)) ?? undefined
     await 记录交互日志(
       数据库查询器,
       {
         类型: '流程结束',
         开始时间,
         耗时ms: Date.now() - 开始时间.getTime(),
-        内容: 转为JSON值({ 结果: 结果.结果, 结束原因: 结果.结束原因, 用量: 结果.用量 }),
+        内容: 转为JSON值({ 结束原因: 结果.结束原因, 用量: 结果.用量 }),
+        ...(结束上下文消息id !== undefined ? { 上下文消息id: 结束上下文消息id } : {}),
+        ...(结束记忆提交id !== undefined ? { 记忆提交id: 结束记忆提交id } : {}),
       },
       已校验事件组id,
     )
@@ -150,7 +209,9 @@ export async function 执行带日志的推理流程<T extends ZodType>(
         开始时间,
         耗时ms: Date.now() - 开始时间.getTime(),
         内容: 转为JSON值(
-          错误 instanceof Error ? { 名称: 错误.name, 消息: 错误.message, 堆栈: 错误.stack } : { 错误: String(错误) },
+          错误 instanceof Error
+            ? { 名称: 错误.name, 消息: 错误.message.slice(0, 1000) }
+            : { 错误: String(错误).slice(0, 1000) },
         ),
       },
       已校验事件组id,
@@ -178,6 +239,9 @@ export async function 记录交互日志(
       内容: JSON.stringify(已校验事件.内容),
       上下文消息id: 已校验事件.上下文消息id ?? null,
       消息id: 已校验事件.消息id ?? null,
+      模型请求id: 已校验事件.模型请求id ?? null,
+      记忆提交id: 已校验事件.记忆提交id ?? null,
+      前缀id: 已校验事件.前缀id ?? null,
     })
     .returningAll()
     .executeTakeFirstOrThrow()
@@ -191,6 +255,9 @@ export async function 记录交互日志(
     内容: 结果.内容,
     ...(结果.上下文消息id !== null ? { 上下文消息id: 结果.上下文消息id } : {}),
     ...(结果.消息id !== null ? { 消息id: 结果.消息id } : {}),
+    ...(结果.模型请求id !== null ? { 模型请求id: 结果.模型请求id } : {}),
+    ...(结果.记忆提交id !== null ? { 记忆提交id: 结果.记忆提交id } : {}),
+    ...(结果.前缀id !== null ? { 前缀id: 结果.前缀id } : {}),
   }
 }
 
@@ -224,5 +291,8 @@ export async function 查询交互日志(
     内容: 结果.内容,
     ...(结果.上下文消息id !== null ? { 上下文消息id: 结果.上下文消息id } : {}),
     ...(结果.消息id !== null ? { 消息id: 结果.消息id } : {}),
+    ...(结果.模型请求id !== null ? { 模型请求id: 结果.模型请求id } : {}),
+    ...(结果.记忆提交id !== null ? { 记忆提交id: 结果.记忆提交id } : {}),
+    ...(结果.前缀id !== null ? { 前缀id: 结果.前缀id } : {}),
   }))
 }

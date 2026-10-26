@@ -1,7 +1,8 @@
+import { randomUUID } from 'node:crypto'
 import type OpenAI from 'openai'
 import { 工具调用引导前缀 } from '../constants'
 import { 转换为模型消息 } from '../message/message-serialization'
-import type { 智能体回调, 智能体消息类型, 累积工具调用 } from '../types'
+import type { 智能体回调, 智能体消息类型, 模型请求上下文, 累积工具调用 } from '../types'
 
 export { 转换为模型消息 } from '../message/message-serialization'
 
@@ -20,6 +21,7 @@ export async function 流式请求AI(
   存在惩罚?: number,
   频率惩罚?: number,
   额外请求参数?: Record<string, unknown>,
+  模型请求上下文?: 模型请求上下文,
 ): Promise<{
   完整文本: string
   原始完整文本?: string
@@ -35,6 +37,7 @@ export async function 流式请求AI(
   let 输入token数: number | undefined
   let 输出token数: number | undefined
   let 缓存命中token数: number | undefined
+  let 已解析模型请求上下文 = 模型请求上下文 ?? { id: randomUUID(), 序号: 1, 前缀id: '' }
 
   let 实际工具列表 = 工具列表
   let 实际消息列表 = 消息列表
@@ -74,7 +77,13 @@ export async function 流式请求AI(
     }
 
     try {
-      await 回调({ 类型: '原始请求配置', 配置: 请求配置 })
+      await 回调({
+        类型: '原始请求配置',
+        配置: 请求配置,
+        模型请求id: 已解析模型请求上下文.id,
+        模型请求序号: 已解析模型请求上下文.序号,
+        前缀id: 已解析模型请求上下文.前缀id,
+      })
     } catch (e) {
       console.error('[Agent Stream] Callback error on 原始请求配置:', e)
     }
@@ -156,7 +165,15 @@ export async function 流式请求AI(
 
   let 工具调用列表 = Array.from(工具调用映射.values())
   try {
-    await 回调({ 类型: '原始AI返回', 完整文本, 工具调用列表, 当前消息列表: 消息列表 })
+    await 回调({
+      类型: '原始AI返回',
+      完整文本,
+      工具调用列表,
+      当前消息列表: 消息列表,
+      模型请求id: 已解析模型请求上下文.id,
+      模型请求序号: 已解析模型请求上下文.序号,
+      前缀id: 已解析模型请求上下文.前缀id,
+    })
   } catch (e) {
     console.error('[Agent Stream] Callback error on 原始AI返回:', e)
   }

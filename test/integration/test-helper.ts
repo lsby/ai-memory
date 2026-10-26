@@ -53,7 +53,8 @@ export let 事件处理 = async (事件: 智能体事件): Promise<void> => {
     }
     case '原始请求配置':
     case '原始AI返回':
-    case '模型请求审计': {
+    case '模型请求审计':
+    case '模型响应完成': {
       break
     }
   }

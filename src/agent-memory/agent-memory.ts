@@ -47,6 +47,7 @@ import {
   批量注入记忆项Schema,
   type 交互日志事件,
   type 公开交互日志,
+  type 公开前缀快照,
   type 公开动态工具,
   type 公开记忆,
   type 公开记忆关联,
@@ -242,10 +243,10 @@ export class 带记忆的智能体 extends 持久化会话智能体 {
     return 记忆列表.find((记忆) => 记忆.id === id) ?? null
   }
 
-  public async 删除记忆(id: string, 事件组id?: string): Promise<boolean> {
+  public async 移除记忆(id: string, 事件组id?: string): Promise<boolean> {
     let 已校验id = z.string().trim().min(1).parse(id)
     return await this.执行无向量记忆变更任务(
-      '删除记忆',
+      '从当前状态移除记忆',
       async (trx): Promise<boolean> => {
         await trx
           .deleteFrom('记忆关联表')
@@ -301,6 +302,17 @@ export class 带记忆的智能体 extends 持久化会话智能体 {
   public async 查询交互日志(选项: 查询交互日志选项 = {}): Promise<公开交互日志[]> {
     await this.确保已初始化()
     return await 外部查询交互日志(this.数据库查询器, 选项)
+  }
+
+  public async 查询前缀快照(id: string): Promise<公开前缀快照 | null> {
+    await this.确保已初始化()
+    let 已校验id = z.string().trim().min(1).parse(id)
+    let 快照 = await this.数据库查询器
+      .selectFrom('前缀快照表')
+      .selectAll()
+      .where('id', '=', 已校验id)
+      .executeTakeFirst()
+    return 快照 ?? null
   }
 
   /** 返回当前记忆分支的 HEAD；尚无提交时返回 null。 */
@@ -409,7 +421,7 @@ export class 带记忆的智能体 extends 持久化会话智能体 {
     let 原回调 = 选项.回调
     return await 执行带日志的推理流程(
       this.数据库查询器,
-      转为JSON值({ 执行模式, 标题, 命令: 选项.命令 }),
+      转为JSON值({ 执行模式 }),
       原回调,
       async (日志回调, 事件组id): Promise<回合结果<T>> => {
         let 带日志选项 = { ...选项, 标题, 回调: 日志回调, 事件组id }
@@ -425,6 +437,15 @@ export class 带记忆的智能体 extends 持久化会话智能体 {
       选项.事件组id,
       (): string | null => this.会话控制器().当前消息id(),
     )
+  }
+
+  protected override async 同步前缀快照(前缀id: string, 系统提示词: string, 工具定义: object[]): Promise<void> {
+    await this.确保已初始化()
+    await this.数据库查询器
+      .insertInto('前缀快照表')
+      .values({ id: 前缀id, 系统提示词, 工具定义: JSON.stringify(工具定义), 创建时间: new Date() })
+      .onConflict((冲突) => 冲突.column('id').doNothing())
+      .execute()
   }
 
   public async 私有反思<T extends z.ZodType>(选项: 带记忆的对话选项<T>): Promise<回合结果<T>> {
@@ -511,12 +532,12 @@ export class 带记忆的智能体 extends 持久化会话智能体 {
     return await 动态工具管理.更新动态工具(this.获取动态工具管理依赖(), 工具标识, 新代码, 测试参数_json, 回调, 事件组id)
   }
 
-  public async 删除动态工具(
+  public async 移除动态工具(
     工具标识: string,
     回调?: (事件: 智能体事件) => Promise<void>,
     事件组id?: string,
-  ): Promise<动态工具管理.删除动态工具结果> {
-    return await 动态工具管理.删除动态工具(this.获取动态工具管理依赖(), 工具标识, 回调, 事件组id)
+  ): Promise<动态工具管理.移除动态工具结果> {
+    return await 动态工具管理.移除动态工具(this.获取动态工具管理依赖(), 工具标识, 回调, 事件组id)
   }
 
   public async 调用动态工具(

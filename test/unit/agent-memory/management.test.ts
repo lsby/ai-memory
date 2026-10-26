@@ -49,7 +49,7 @@ describe('记忆应用管理接口', () => {
 
     let 更新后 = await 智能体实例.更新记忆(第一条.id, { 内容: '更新后的苹果记忆', 标签: ['已更新'], 评分: 88 })
     expect(更新后).toMatchObject({ 内容: '更新后的苹果记忆', 标签: ['已更新'], 评分: 88 })
-    expect(await 智能体实例.删除记忆(第二条.id)).toBe(true)
+    expect(await 智能体实例.移除记忆(第二条.id)).toBe(true)
     expect(await 智能体实例.查找记忆(第二条.id)).toBeNull()
   })
 
@@ -69,7 +69,7 @@ describe('记忆应用管理接口', () => {
     await expect(智能体实例.更新记忆('id', {})).rejects.toThrow('至少提供一个')
   })
 
-  it('v2 记忆快照和 v3 完整状态往返恢复动态工具及完整会话', async (): Promise<void> => {
+  it('v2 记忆快照和 v4 完整状态往返恢复动态工具、前缀及完整会话', async (): Promise<void> => {
     智能体实例 = 夹具.新建智能体({ 向量模型: { 类型: '无' } })
     await 智能体实例.添加记忆({
       内容: '需要恢复的记忆',
@@ -97,7 +97,7 @@ describe('记忆应用管理接口', () => {
       格式版本: 2,
       动态工具列表: [{ 名称: 'snapshot_tool' }],
     })
-    await 智能体实例.删除动态工具('snapshot_tool')
+    await 智能体实例.移除动态工具('snapshot_tool')
     await 智能体实例.载入快照(快照)
     expect(await 智能体实例.查询动态工具()).toMatchObject([{ 名称: 'snapshot_tool' }])
     expect(await 智能体实例.调用动态工具('snapshot_tool', '{"value":4}')).toMatchObject({ 结果: '成功' })
@@ -105,7 +105,7 @@ describe('记忆应用管理接口', () => {
     let 完整状态文本 = await 智能体实例.导出完整状态()
     let 完整状态 = 完整状态Schema.parse(JSON.parse(完整状态文本))
     expect(完整状态).toMatchObject({
-      格式版本: 3,
+      格式版本: 4,
       当前会话id: 会话.id,
       会话列表: [{ id: 会话.id }],
       消息列表: [{ 消息: { role: 'system' } }, { 消息: { content: '完整内部状态' } }],

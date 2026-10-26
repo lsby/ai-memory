@@ -40,17 +40,17 @@ describe('变更记录', { timeout: 90000 }, () => {
     expect((await 实例.查询记忆()).map((记忆) => 记忆.内容)).toEqual(['第一条'])
   })
 
-  it('删除记忆保留完整历史并且可以回退', async (): Promise<void> => {
+  it('从当前状态移除记忆会保留完整历史并且可以回退', async (): Promise<void> => {
     let 实例 = 创建实例()
     let 记忆 = await 实例.添加记忆(记忆项('不会从历史消失', ['永久历史']))
-    expect(await 实例.删除记忆(记忆.id)).toBe(true)
+    expect(await 实例.移除记忆(记忆.id)).toBe(true)
     expect(await 实例.查询记忆()).toEqual([])
     expect(JSON.stringify(await 实例.查询记忆提交(100))).toContain('永久历史')
     expect(await 实例.回退最近记忆提交()).toBe(true)
     expect(await 实例.查找记忆(记忆.id)).toMatchObject({ 内容: '不会从历史消失' })
   })
 
-  it('数据库拒绝在活动提交之外修改任何受提交管理的状态', async (): Promise<void> => {
+  it('数据库拒绝绕过提交并保护已形成的提交、消息、前缀和日志', async (): Promise<void> => {
     let pglite = new PGlite({ extensions: { vector } })
     try {
       let 实例 = 创建实例({ 存储: { 模式: '外部', pglite } })
@@ -65,6 +65,34 @@ describe('变更记录', { timeout: 90000 }, () => {
           `INSERT INTO 动态工具表 (id, 名称, 描述, 代码, 创建时间) VALUES ('bypass', 'bypass', '', '', now())`,
         ),
       ).rejects.toThrow('只能在活动提交中修改')
+      let 提交 = (await 实例.查询记忆提交())[0]
+      let 变更 = 提交?.变更列表[0]
+      if (提交 === undefined || 变更 === undefined) throw new Error('缺少用于不可变约束测试的提交')
+      await expect(pglite.query(`UPDATE 记忆提交表 SET 消息 = '被篡改' WHERE id = $1`, [提交.id])).rejects.toThrow(
+        '不可修改',
+      )
+      await expect(pglite.query(`DELETE FROM 记忆变更表 WHERE id = $1`, [变更.id])).rejects.toThrow('不可修改或删除')
+
+      let 会话 = await 实例.创建会话({ 标题: '不可变消息测试' })
+      let 消息 = await 实例.追加会话消息({
+        会话id: 会话.id,
+        预期父消息id: null,
+        消息: { role: 'user', content: '原始内容' },
+      })
+      await expect(
+        pglite.query(`UPDATE 消息表 SET 载荷 = '{"role":"user","content":"篡改"}' WHERE id = $1`, [消息.id]),
+      ).rejects.toThrow('消息不可修改或删除')
+
+      await pglite.query(
+        `INSERT INTO 前缀快照表 (id, 系统提示词, 工具定义, 创建时间) VALUES ('prefix-test', '原始', '[]', now())`,
+      )
+      await expect(pglite.query(`UPDATE 前缀快照表 SET 系统提示词 = '篡改' WHERE id = 'prefix-test'`)).rejects.toThrow(
+        '前缀快照不可修改或删除',
+      )
+      let 日志 = await 实例.记录交互日志({ 类型: '自定义', 开始时间: new Date(), 内容: { 状态: '原始' } })
+      await expect(pglite.query(`DELETE FROM 交互日志表 WHERE id = $1`, [日志.id])).rejects.toThrow(
+        '交互日志不可修改或删除',
+      )
       expect(await 实例.查找记忆(记忆.id)).toMatchObject({ 内容: '受提交保护' })
     } finally {
       for (let 实例 of 智能体列表) await 实例.销毁()

@@ -23,6 +23,41 @@ export async function 初始化不可变约束(数据库查询器: Kysely<记忆
   )
 
   await 执行(`
+    CREATE OR REPLACE FUNCTION ${名('拒绝记忆变更修改_触发器')}()
+    RETURNS TRIGGER AS $$
+    BEGIN
+      RAISE EXCEPTION '记忆变更记录不可修改或删除';
+    END;
+    $$ LANGUAGE plpgsql;
+  `)
+  await 执行(`DROP TRIGGER IF EXISTS trg_拒绝记忆变更修改 ON ${名('记忆变更表')};`)
+  await 执行(`
+    CREATE TRIGGER trg_拒绝记忆变更修改 BEFORE UPDATE OR DELETE ON ${名('记忆变更表')}
+    FOR EACH ROW EXECUTE FUNCTION ${名('拒绝记忆变更修改_触发器')}();
+  `)
+  await 执行(`
+    CREATE OR REPLACE FUNCTION ${名('限制记忆提交修改_触发器')}()
+    RETURNS TRIGGER AS $$
+    BEGIN
+      IF TG_OP = 'UPDATE' THEN
+        RAISE EXCEPTION '记忆提交不可修改';
+      END IF;
+      IF EXISTS (SELECT 1 FROM ${名('记忆变更表')} WHERE 提交id = OLD.id)
+        OR EXISTS (SELECT 1 FROM ${名('记忆提交表')} WHERE 父提交id = OLD.id)
+        OR EXISTS (SELECT 1 FROM ${名('记忆元数据表')} WHERE 键 = 'HEAD_COMMIT' AND 值 = OLD.id) THEN
+        RAISE EXCEPTION '已完成或被引用的记忆提交不可删除';
+      END IF;
+      RETURN OLD;
+    END;
+    $$ LANGUAGE plpgsql;
+  `)
+  await 执行(`DROP TRIGGER IF EXISTS trg_限制记忆提交修改 ON ${名('记忆提交表')};`)
+  await 执行(`
+    CREATE TRIGGER trg_限制记忆提交修改 BEFORE UPDATE OR DELETE ON ${名('记忆提交表')}
+    FOR EACH ROW EXECUTE FUNCTION ${名('限制记忆提交修改_触发器')}();
+  `)
+
+  await 执行(`
     CREATE OR REPLACE FUNCTION ${名('拒绝消息修改_触发器')}()
     RETURNS TRIGGER AS $$
     BEGIN
@@ -124,5 +159,18 @@ export async function 初始化不可变约束(数据库查询器: Kysely<记忆
   await 执行(`
     CREATE TRIGGER trg_拒绝交互日志修改 BEFORE UPDATE OR DELETE ON ${名('交互日志表')}
     FOR EACH ROW EXECUTE FUNCTION ${名('拒绝交互日志修改_触发器')}();
+  `)
+  await 执行(`
+    CREATE OR REPLACE FUNCTION ${名('拒绝前缀快照修改_触发器')}()
+    RETURNS TRIGGER AS $$
+    BEGIN
+      RAISE EXCEPTION '前缀快照不可修改或删除';
+    END;
+    $$ LANGUAGE plpgsql;
+  `)
+  await 执行(`DROP TRIGGER IF EXISTS trg_拒绝前缀快照修改 ON ${名('前缀快照表')};`)
+  await 执行(`
+    CREATE TRIGGER trg_拒绝前缀快照修改 BEFORE UPDATE OR DELETE ON ${名('前缀快照表')}
+    FOR EACH ROW EXECUTE FUNCTION ${名('拒绝前缀快照修改_触发器')}();
   `)
 }

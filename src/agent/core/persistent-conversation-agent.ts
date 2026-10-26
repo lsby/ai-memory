@@ -28,6 +28,10 @@ export abstract class 持久化会话智能体 extends 智能体 {
     await this.会话控制器().同步消息(消息列表, 执行模式)
   }
 
+  protected override async 恢复持久化对话(): Promise<void> {
+    await this.会话控制器().恢复当前会话()
+  }
+
   public override 重置对话(): void {
     super.重置对话()
     this.会话控制器().重置()

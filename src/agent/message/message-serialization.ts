@@ -8,6 +8,9 @@ let 内部字段集合 = new Set([
   'systemInjectionKind',
   'systemInjectionFingerprint',
   'prefixFingerprint',
+  '持久化消息id',
+  'compressionSourceSessionId',
+  'compressionSourceMessageId',
 ])
 
 /**

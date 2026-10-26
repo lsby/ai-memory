@@ -34,11 +34,12 @@ export async function 载入快照(数据库查询器: Kysely<记忆数据库>, 
 
 export async function 导出完整状态(数据库查询器: Kysely<记忆数据库>, 当前会话id: string | null): Promise<string> {
   let 完整状态: 完整状态 = {
-    格式版本: 3,
+    格式版本: 4,
     记忆快照: await 读取快照(数据库查询器),
     当前会话id,
     会话列表: await 查询全部会话(数据库查询器),
     消息列表: await 查询全部消息(数据库查询器),
+    前缀快照列表: await 数据库查询器.selectFrom('前缀快照表').selectAll().orderBy('创建时间', 'asc').execute(),
   }
   return JSON.stringify(完整状态)
 }
@@ -54,6 +55,17 @@ export async function 导入完整状态(
     .executeTakeFirst()
   if (Number(已有会话?.数量 ?? 0) > 0) throw new Error('导入完整状态要求目标存储中不存在会话')
   await 载入快照(数据库查询器, JSON.stringify(数据.记忆快照))
+  if (数据.前缀快照列表.length > 0) {
+    await 数据库查询器
+      .insertInto('前缀快照表')
+      .values(
+        数据.前缀快照列表.map((快照) => ({
+          ...快照,
+          工具定义: JSON.stringify(快照.工具定义),
+        })),
+      )
+      .execute()
+  }
   await sql`SELECT set_config('lsby_ai_memory.导入中', 'true', true)`.execute(数据库查询器)
   for (let 会话 of 数据.会话列表) {
     await 数据库查询器

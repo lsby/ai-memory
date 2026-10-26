@@ -1,10 +1,10 @@
 import { z } from 'zod'
 import { 智能体工具 } from '../../agent/types'
 import {
-  删除动态工具核心,
   更新动态工具核心,
   查看动态工具代码核心,
   注册动态工具核心,
+  移除动态工具核心,
   调用动态工具核心,
   type 动态工具上下文,
 } from './dynamic-tool-api'
@@ -118,14 +118,14 @@ export function 更新动态工具工具(上下文: 动态工具上下文): 智�
   })
 }
 
-export function 删除动态工具工具(上下文: 动态工具上下文): 智能体工具 {
+export function 移除动态工具工具(上下文: 动态工具上下文): 智能体工具 {
   return 智能体工具.创建({
-    名称: 'delete_dynamic_tool',
-    描述: '永久删除某个动态工具。',
+    名称: 'remove_dynamic_tool',
+    描述: '从当前工具状态移除某个不再需要的动态工具。',
     参数Schema: z.object({ 工具标识: z.string().describe('要删除的工具的 ID 或名称') }),
     返回值Schema: z.object({ 结果: z.enum(['成功', '失败']), 错误信息: z.string().optional() }),
     实现: async (参数: { 工具标识: string }): Promise<{ 结果: '成功' | '失败'; 错误信息?: string }> => {
-      return await 删除动态工具核心(上下文, 参数)
+      return await 移除动态工具核心(上下文, 参数)
     },
   })
 }

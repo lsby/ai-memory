@@ -4,11 +4,11 @@ import { 创建向量缓存, 构建动态操作上下文, type 上下文依赖 }
 import { 创建事件组id, 记录交互日志, 转为JSON值 } from '../logger'
 import type { 向量缓存 } from '../storage/vector-cache'
 import {
-  删除动态工具核心,
   提取动态工具向量文本,
   更新动态工具核心,
   查看动态工具代码核心,
   注册动态工具核心,
+  移除动态工具核心,
   调用动态工具核心,
 } from '../tools/dynamic-tool-api'
 import type { 内部带记忆的智能体配置, 记忆数据库 } from '../types'
@@ -43,7 +43,7 @@ export type 查看动态工具结果 = {
   错误信息?: string
 }
 export type 更新动态工具结果 = { 结果: '成功' | '失败'; 测试执行输出?: string; 错误信息?: string }
-export type 删除动态工具结果 = { 结果: '成功' | '失败'; 错误信息?: string }
+export type 移除动态工具结果 = { 结果: '成功' | '失败'; 错误信息?: string }
 export type 调用动态工具结果 = { 结果: '成功' | '失败'; 执行输出?: string; 错误信息?: string }
 
 async function 动态工具向量文本(代码: string): Promise<string[]> {
@@ -97,15 +97,15 @@ export async function 更新动态工具(
   )
 }
 
-export async function 删除动态工具(
+export async function 移除动态工具(
   依赖: 动态工具管理依赖,
   工具标识: string,
   回调?: (事件: 智能体事件) => Promise<void>,
   事件组id?: string,
-): Promise<删除动态工具结果> {
+): Promise<移除动态工具结果> {
   return await 依赖.执行记忆变更任务(
-    '编程接入: 删除动态工具',
-    async (trx) => await 删除动态工具核心(构建动态操作上下文(依赖.上下文依赖, trx, 回调), { 工具标识 }),
+    '编程接入: 从当前状态移除动态工具',
+    async (trx) => await 移除动态工具核心(构建动态操作上下文(依赖.上下文依赖, trx, 回调), { 工具标识 }),
     undefined,
     回调,
     事件组id,
@@ -124,7 +124,7 @@ export async function 调用动态工具(
   let 开始时间 = new Date()
   await 记录交互日志(
     依赖.数据库查询器,
-    { 类型: '工具调用开始', 开始时间, 内容: 转为JSON值({ 工具名称, 参数json }) },
+    { 类型: '工具调用开始', 开始时间, 内容: 转为JSON值({ 工具名称 }) },
     已校验事件组id,
   )
   try {
@@ -134,7 +134,12 @@ export async function 调用动态工具(
     })
     await 记录交互日志(
       依赖.数据库查询器,
-      { 类型: '工具调用结果', 开始时间, 耗时ms: Date.now() - 开始时间.getTime(), 内容: 转为JSON值({ 工具名称, 结果 }) },
+      {
+        类型: '工具调用结果',
+        开始时间,
+        耗时ms: Date.now() - 开始时间.getTime(),
+        内容: 转为JSON值({ 工具名称, 状态: 结果.结果 }),
+      },
       已校验事件组id,
     )
     return 结果

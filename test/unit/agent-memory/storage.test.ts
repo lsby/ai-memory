@@ -54,7 +54,7 @@ describe('文件存储生命周期', () => {
     await expect(智能体实例.初始化()).rejects.toThrow('已销毁')
   })
 
-  it('初始化数据库会创建 v6 元数据、会话消息表和关键查询索引', async (): Promise<void> => {
+  it('初始化数据库会创建 v7 元数据、会话消息表和关键查询索引', async (): Promise<void> => {
     let pglite = new PGlite({ extensions: { vector } })
     let 数据库查询器 = new Kysely<记忆数据库>({ dialect: new PGliteDialect({ pglite }) })
     try {
@@ -74,7 +74,7 @@ describe('文件存储生命周期', () => {
         WHERE table_schema = 'public' AND table_name = '交互日志表' AND column_name = '内容'
       `.execute(数据库查询器)
 
-      expect(版本?.值).toBe('6')
+      expect(版本?.值).toBe('7')
       expect(日志内容列.rows).toEqual([{ data_type: 'json' }])
       expect(索引名称).toEqual(
         expect.arrayContaining([

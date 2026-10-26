@@ -86,6 +86,9 @@ let 交互日志公共字段 = {
   内容: JSON值Schema,
   上下文消息id: z.string().optional(),
   消息id: z.string().optional(),
+  模型请求id: z.string().optional(),
+  记忆提交id: z.string().optional(),
+  前缀id: z.string().optional(),
 }
 
 export let 交互日志事件类型Schema = z.enum([
@@ -106,6 +109,7 @@ export let 交互日志事件类型Schema = z.enum([
   '原始请求配置',
   '原始AI返回',
   '模型请求审计',
+  '模型响应完成',
   '自定义',
 ])
 
@@ -127,6 +131,7 @@ export let 交互日志事件Schema = z.discriminatedUnion('类型', [
   z.object({ 类型: z.literal('原始请求配置'), ...交互日志公共字段 }),
   z.object({ 类型: z.literal('原始AI返回'), ...交互日志公共字段 }),
   z.object({ 类型: z.literal('模型请求审计'), ...交互日志公共字段 }),
+  z.object({ 类型: z.literal('模型响应完成'), ...交互日志公共字段 }),
   z.object({ 类型: z.literal('自定义'), ...交互日志公共字段 }),
 ])
 export type 交互日志事件 = z.infer<typeof 交互日志事件Schema>
@@ -142,6 +147,16 @@ export type 交互日志表 = {
   内容: ColumnType<JSON值, string, string>
   上下文消息id: string | null
   消息id: string | null
+  模型请求id: string | null
+  记忆提交id: string | null
+  前缀id: string | null
+}
+
+export type 前缀快照表 = {
+  id: string
+  系统提示词: string
+  工具定义: ColumnType<JSON值, string, string>
+  创建时间: Date
 }
 
 export type 会话表 = {
@@ -171,6 +186,7 @@ export type 记忆数据库 = {
   记忆变更表: 记忆变更表
   记忆元数据表: 记忆元数据表
   动态工具表: 动态工具表
+  前缀快照表: 前缀快照表
   交互日志表: 交互日志表
   会话表: 会话表
   消息表: 消息表
@@ -356,6 +372,16 @@ export type 公开交互日志 = {
   内容: JSON值
   上下文消息id?: string
   消息id?: string
+  模型请求id?: string
+  记忆提交id?: string
+  前缀id?: string
+}
+
+export type 公开前缀快照 = {
+  id: string
+  系统提示词: string
+  工具定义: JSON值
+  创建时间: Date
 }
 
 export type 公开会话 = {
@@ -402,7 +428,7 @@ export let 快照数据Schema = z.object({
 export type 快照数据 = z.infer<typeof 快照数据Schema>
 
 export let 完整状态Schema = z.object({
-  格式版本: z.literal(3),
+  格式版本: z.literal(4),
   记忆快照: 快照数据Schema,
   当前会话id: z.string().nullable(),
   会话列表: z.array(
@@ -423,6 +449,14 @@ export let 完整状态Schema = z.object({
       会话id: z.string(),
       父消息id: z.string().nullable(),
       消息: 智能体消息Schema,
+      创建时间: z.union([z.string(), z.date()]).transform((值) => new Date(值)),
+    }),
+  ),
+  前缀快照列表: z.array(
+    z.object({
+      id: z.string(),
+      系统提示词: z.string(),
+      工具定义: JSON值Schema,
       创建时间: z.union([z.string(), z.date()]).transform((值) => new Date(值)),
     }),
   ),
