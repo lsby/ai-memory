@@ -56,6 +56,11 @@ export abstract class 持久化会话智能体 extends 智能体 {
     return await this.会话控制器().查询会话列表(选项)
   }
 
+  /** 查询以指定会话为前驱的派生会话（如压缩产生的会话），按更新时间倒序。 */
+  public async 查询派生会话(前驱会话id: string): Promise<公开会话[]> {
+    return await this.会话控制器().查询派生会话(前驱会话id)
+  }
+
   public async 读取当前会话(): Promise<公开会话> {
     return await this.会话控制器().读取当前会话()
   }

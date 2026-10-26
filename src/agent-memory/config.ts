@@ -21,6 +21,12 @@ export function 构建智能体配置(选项: 带记忆的智能体选项): {
       throw new Error('自动压缩.触发字符数 必须是正整数')
     if (Number.isInteger(选项.自动压缩.目标字符数) === false || 选项.自动压缩.目标字符数 < 1)
       throw new Error('自动压缩.目标字符数 必须是正整数')
+    if (选项.自动压缩.超时毫秒 !== undefined)
+      if (Number.isInteger(选项.自动压缩.超时毫秒) === false || 选项.自动压缩.超时毫秒 < 1)
+        throw new Error('自动压缩.超时毫秒 必须是正整数')
+    if (选项.自动压缩.失败后冷却字符数 !== undefined)
+      if (Number.isInteger(选项.自动压缩.失败后冷却字符数) === false || 选项.自动压缩.失败后冷却字符数 < 1)
+        throw new Error('自动压缩.失败后冷却字符数 必须是正整数')
     if (选项.自动压缩.目标字符数 >= 选项.自动压缩.触发字符数) throw new Error('自动压缩.目标字符数 必须小于触发字符数')
   }
   let 禁用深度推演 = 选项.禁用深度推演 ?? false

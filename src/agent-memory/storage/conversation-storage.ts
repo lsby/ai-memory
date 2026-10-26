@@ -87,6 +87,18 @@ export async function 查询会话列表(数据库查询器: Kysely<记忆数据
   return 会话列表.map(转为公开会话)
 }
 
+export async function 查询派生会话(数据库查询器: Kysely<记忆数据库>, 前驱会话id: string): Promise<公开会话[]> {
+  let 已校验前驱会话id = z.string().trim().min(1).parse(前驱会话id)
+  let 会话列表 = await 数据库查询器
+    .selectFrom('会话表')
+    .selectAll()
+    .where('前驱会话id', '=', 已校验前驱会话id)
+    .orderBy('更新时间', 'desc')
+    .orderBy('id', 'asc')
+    .execute()
+  return 会话列表.map(转为公开会话)
+}
+
 export async function 更新会话标题(数据库查询器: Kysely<记忆数据库>, 会话id: string, 标题: string): Promise<公开会话> {
   let 会话 = await 数据库查询器
     .updateTable('会话表')

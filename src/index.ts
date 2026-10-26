@@ -38,6 +38,7 @@ export type {
   查询交互日志选项,
   查询会话列表选项,
   查询记忆选项,
+  自动压缩配置,
 } from './agent-memory/types'
 export { 智能体 } from './agent/core/agent'
 export { 中文模型语言包, 英文模型语言包 } from './agent/model-language'
