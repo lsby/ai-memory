@@ -109,6 +109,18 @@ async function 在事务中初始化数据库(数据库查询器: Kysely<记忆�
         `)
 
   await 执行(`
+          CREATE TABLE IF NOT EXISTS ${名('交互日志表')} (
+            id TEXT PRIMARY KEY,
+            序号 BIGSERIAL,
+            事件组id TEXT NOT NULL,
+            类型 TEXT NOT NULL,
+            开始时间 TIMESTAMPTZ NOT NULL,
+            耗时ms DOUBLE PRECISION,
+            内容 JSON NOT NULL
+          )
+        `)
+
+  await 执行(`
     CREATE TABLE IF NOT EXISTS ${名('_agent_session_commit')} (
       id INTEGER PRIMARY KEY,
       commit_id TEXT,
@@ -133,6 +145,8 @@ async function 在事务中初始化数据库(数据库查询器: Kysely<记忆�
   await 执行(`CREATE INDEX IF NOT EXISTS 记忆变更表_提交_idx ON ${名('记忆变更表')} (提交id);`)
   await 执行(`CREATE INDEX IF NOT EXISTS 记忆提交表_创建时间_idx ON ${名('记忆提交表')} (创建时间 DESC);`)
   await 执行(`CREATE INDEX IF NOT EXISTS 记忆提交表_父提交_idx ON ${名('记忆提交表')} (父提交id);`)
+  await 执行(`CREATE INDEX IF NOT EXISTS 交互日志表_事件组_idx ON ${名('交互日志表')} (事件组id, 序号);`)
+  await 执行(`CREATE INDEX IF NOT EXISTS 交互日志表_开始时间_idx ON ${名('交互日志表')} (开始时间 DESC);`)
 
   let columnsCheck = await sql`
     SELECT column_name FROM information_schema.columns WHERE table_schema = ${schema} AND table_name = '记忆表'
@@ -345,7 +359,7 @@ async function 在事务中初始化数据库(数据库查询器: Kysely<记忆�
     FOR EACH ROW EXECUTE FUNCTION ${名('记录动态工具表变更_触发器')}();
   `)
 
-  if (原内核版本 !== undefined && 原内核版本 !== '4') {
+  if (原内核版本 !== undefined && Number(原内核版本) < 4) {
     let 基线id = randomUUID()
     await 数据库查询器
       .insertInto('记忆提交表')
@@ -380,7 +394,7 @@ async function 在事务中初始化数据库(数据库查询器: Kysely<记忆�
 
   await 数据库查询器
     .insertInto('记忆元数据表')
-    .values({ 键: 'KERNEL_SCHEMA_VERSION', 值: '4' })
-    .onConflict((冲突) => 冲突.column('键').doUpdateSet({ 值: '4' }))
+    .values({ 键: 'KERNEL_SCHEMA_VERSION', 值: '5' })
+    .onConflict((冲突) => 冲突.column('键').doUpdateSet({ 值: '5' }))
     .execute()
 }

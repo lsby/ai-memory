@@ -60,11 +60,16 @@ describe('带记忆的智能体对话', () => {
       openai客户端: new OpenAI({ apiKey: 'test' }),
       模型名称: 'mock-model',
       是否自动召回: false,
+      事件组id: 'conversation-group',
     })
 
     let 已更新记忆 = await 智能体实例.查找记忆(记忆.id)
     expect(结果.结果).toEqual({ 答案: '已完成' })
     expect(已更新记忆?.标签).toEqual(['旧标签', '新标签'])
     expect(流式请求AI模拟).toHaveBeenCalledTimes(2)
+    let 日志类型 = (await 智能体实例.查询交互日志({ 事件组id: 'conversation-group' })).map((日志) => 日志.类型)
+    expect(日志类型).toEqual(
+      expect.arrayContaining(['流程开始', '工具调用开始', '记忆提交', '工具调用结果', '最终结果', '流程结束']),
+    )
   })
 })

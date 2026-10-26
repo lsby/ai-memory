@@ -1,6 +1,9 @@
 export { 带记忆的智能体 } from './agent-memory/agent-memory'
 export { 删除记忆空间, 在互斥锁内执行 } from './agent-memory/agent-memory-connection'
 export {
+  JSON值Schema,
+  交互日志事件Schema,
+  交互日志事件类型Schema,
   完整状态Schema,
   快照数据Schema,
   批量注入记忆项Schema,
@@ -8,6 +11,10 @@ export {
   记忆等级,
 } from './agent-memory/agent-memory-types'
 export type {
+  JSON值,
+  交互日志事件,
+  交互日志事件类型,
+  公开交互日志,
   公开动态工具,
   公开记忆,
   公开记忆关联,
@@ -20,6 +27,7 @@ export type {
   快照数据,
   批量注入记忆项,
   更新记忆选项,
+  查询交互日志选项,
   查询记忆选项,
 } from './agent-memory/agent-memory-types'
 export { 生成默认记忆提示词 } from './agent-memory/memory-prompt'

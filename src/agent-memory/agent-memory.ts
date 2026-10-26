@@ -7,7 +7,6 @@ import { z } from 'zod'
 import { 智能体 } from '../agent/agent'
 import { type 回合结果, type 智能体事件, type 智能体执行模式, type 智能体消息类型 } from '../agent/types'
 import {
-  在提交中执行,
   切换记忆提交 as 外部切换记忆提交,
   回退到父记忆提交 as 外部回退到父记忆提交,
   获取当前提交ID,
@@ -15,14 +14,22 @@ import {
 import { 带互斥的PGlite方言, 校验schema名, 默认schema } from './agent-memory-connection'
 import {
   创建向量缓存 as 外部创建向量缓存,
-  构建动态操作上下文 as 外部构建动态操作上下文,
   构建操作上下文 as 外部构建操作上下文,
   type 上下文依赖,
 } from './agent-memory-context'
+import * as 动态工具管理 from './agent-memory-dynamic-management'
 import {
   批量注入记忆 as 外部批量注入记忆,
   检查并清理二级记忆 as 外部检查并清理二级记忆,
 } from './agent-memory-lifecycle'
+import {
+  查询交互日志 as 外部查询交互日志,
+  记录交互日志 as 外部记录交互日志,
+  执行带日志的分支切换,
+  执行带日志的推理流程,
+  执行带日志的记忆变更,
+  转为JSON值,
+} from './agent-memory-logger'
 import {
   更新记忆 as 外部更新记忆,
   查询动态工具 as 外部查询动态工具,
@@ -41,6 +48,8 @@ import { 解决问题 as 外部解决问题 } from './agent-memory-solve'
 import { 清除共享初始化锁, 获取或创建PGlite, 获取或创建共享初始化锁, 销毁存储 } from './agent-memory-storage'
 import {
   批量注入记忆项Schema,
+  type 交互日志事件,
+  type 公开交互日志,
   type 公开动态工具,
   type 公开记忆,
   type 公开记忆关联,
@@ -53,21 +62,14 @@ import {
   type 带记忆的解决问题选项,
   type 批量注入记忆项,
   type 更新记忆选项,
+  type 查询交互日志选项,
   type 查询记忆选项,
   type 记忆数据库,
 } from './agent-memory-types'
-import { 向量未预取错误, 新向量缓存, 预取向量, type 向量缓存 } from './agent-memory-vector-cache'
+import { 新向量缓存, type 向量缓存 } from './agent-memory-vector-cache'
 import { 生成默认记忆提示词 } from './memory-prompt'
 import { 全部记忆工具名, 记忆工具名 } from './memory-tool-names'
 import { 初始化数据库 } from './tools/db-schema'
-import {
-  删除动态工具核心,
-  提取动态工具向量文本,
-  更新动态工具核心,
-  查看动态工具代码核心,
-  注册动态工具核心,
-  调用动态工具核心,
-} from './tools/dynamic-tool-api'
 import { 全局排版 as 外部全局排版 } from './tools/layout'
 
 export class 带记忆的智能体 extends 智能体 {
@@ -193,25 +195,36 @@ export class 带记忆的智能体 extends 智能体 {
     操作: (trx: Kysely<记忆数据库>, 父提交id: string | null) => Promise<R>,
     缓存: 向量缓存 = 新向量缓存(),
     回调?: (事件: 智能体事件) => Promise<void>,
+    事件组id?: string,
   ): Promise<R> {
     await this.确保已初始化()
-    for (let 尝试次数 = 1; ; 尝试次数++) {
-      try {
-        let 结果 = await this.数据库查询器.transaction().execute(async (trx) => {
-          let 事务结果 = await 在提交中执行(trx, 消息, 操作)
-          if (缓存.缺失.size > 0) throw new 向量未预取错误([...缓存.缺失][0] ?? '')
-          return 事务结果
-        })
-        return 结果
-      } catch (错误) {
-        if (错误 instanceof 向量未预取错误 === false || 尝试次数 >= 3) throw 错误
-        await 预取向量(缓存, [...缓存.缺失], this.配置.向量模型, 回调)
-        缓存.缺失.clear()
-      }
+    return await 执行带日志的记忆变更(this.数据库查询器, this.配置, 消息, 操作, 缓存, 回调, 事件组id)
+  }
+
+  private async 执行无向量记忆变更任务<R>(
+    消息: string,
+    操作: (trx: Kysely<记忆数据库>, 父提交id: string | null) => Promise<R>,
+    事件组id?: string,
+    回调?: (事件: 智能体事件) => Promise<void>,
+  ): Promise<R> {
+    return await this.执行记忆变更任务(消息, 操作, undefined, 回调, 事件组id)
+  }
+
+  private 获取动态工具管理依赖(): 动态工具管理.动态工具管理依赖 {
+    return {
+      配置: this.配置,
+      上下文依赖: this.上下文依赖,
+      数据库查询器: this.数据库查询器,
+      确保已初始化: this.确保已初始化.bind(this),
+      执行记忆变更任务: this.执行记忆变更任务.bind(this),
     }
   }
 
-  public async 批量注入记忆(记忆项列表: 批量注入记忆项[], 回调?: (事件: 智能体事件) => Promise<void>): Promise<void> {
+  public async 批量注入记忆(
+    记忆项列表: 批量注入记忆项[],
+    回调?: (事件: 智能体事件) => Promise<void>,
+    事件组id?: string,
+  ): Promise<void> {
     let 已校验记忆项列表 = 批量注入记忆项Schema.array().parse(记忆项列表)
     let 缓存 = await 外部创建向量缓存(
       this.配置,
@@ -226,10 +239,15 @@ export class 带记忆的智能体 extends 智能体 {
       },
       缓存,
       回调,
+      事件组id,
     )
   }
 
-  public async 添加记忆(记忆项: 批量注入记忆项, 回调?: (事件: 智能体事件) => Promise<void>): Promise<公开记忆> {
+  public async 添加记忆(
+    记忆项: 批量注入记忆项,
+    回调?: (事件: 智能体事件) => Promise<void>,
+    事件组id?: string,
+  ): Promise<公开记忆> {
     let 已校验记忆项 = 批量注入记忆项Schema.parse(记忆项)
     let 缓存 = await 外部创建向量缓存(this.配置, [已校验记忆项.内容], 回调)
     let id = await this.执行记忆变更任务(
@@ -242,6 +260,7 @@ export class 带记忆的智能体 extends 智能体 {
       },
       缓存,
       回调,
+      事件组id,
     )
     let 记忆 = await this.查找记忆(id)
     if (记忆 === null) throw new Error(`添加记忆后无法读取记忆: ${id}`)
@@ -258,18 +277,23 @@ export class 带记忆的智能体 extends 智能体 {
     return 记忆列表.find((记忆) => 记忆.id === id) ?? null
   }
 
-  public async 删除记忆(id: string): Promise<boolean> {
+  public async 删除记忆(id: string, 事件组id?: string): Promise<boolean> {
     let 已校验id = z.string().trim().min(1).parse(id)
-    return await this.执行记忆变更任务('删除记忆', async (trx): Promise<boolean> => {
-      let 结果 = await trx.deleteFrom('记忆表').where('id', '=', 已校验id).executeTakeFirst()
-      return Number(结果.numDeletedRows) > 0
-    })
+    return await this.执行无向量记忆变更任务(
+      '删除记忆',
+      async (trx): Promise<boolean> => {
+        let 结果 = await trx.deleteFrom('记忆表').where('id', '=', 已校验id).executeTakeFirst()
+        return Number(结果.numDeletedRows) > 0
+      },
+      事件组id,
+    )
   }
 
   public async 更新记忆(
     id: string,
     选项: 更新记忆选项,
     回调?: (事件: 智能体事件) => Promise<void>,
+    事件组id?: string,
   ): Promise<公开记忆 | null> {
     let 已校验id = z.string().trim().min(1).parse(id)
     let 缓存 = await 外部创建向量缓存(this.配置, typeof 选项.内容 === 'string' ? [选项.内容.trim()] : [], 回调)
@@ -278,6 +302,7 @@ export class 带记忆的智能体 extends 智能体 {
       async (trx) => await 外部更新记忆(外部构建操作上下文(this.上下文依赖, trx, 回调, 缓存), 已校验id, 选项),
       缓存,
       回调,
+      事件组id,
     )
     return 是否存在 ? await this.查找记忆(已校验id) : null
   }
@@ -297,6 +322,18 @@ export class 带记忆的智能体 extends 智能体 {
     return await 外部查询记忆提交(this.数据库查询器, 数量)
   }
 
+  /** 追加一条强类型交互事件；事件组 ID 不传时自动生成并通过返回值带回。 */
+  public async 记录交互日志(事件: 交互日志事件, 事件组id?: string): Promise<公开交互日志> {
+    await this.确保已初始化()
+    return await 外部记录交互日志(this.数据库查询器, 事件, 事件组id)
+  }
+
+  /** 按物理序号读取交互事件；可按事件组或事件类型筛选。 */
+  public async 查询交互日志(选项: 查询交互日志选项 = {}): Promise<公开交互日志[]> {
+    await this.确保已初始化()
+    return await 外部查询交互日志(this.数据库查询器, 选项)
+  }
+
   /** 返回当前记忆分支的 HEAD；尚无提交时返回 null。 */
   public async 查询当前记忆提交id(): Promise<string | null> {
     await this.确保已初始化()
@@ -304,22 +341,39 @@ export class 带记忆的智能体 extends 智能体 {
   }
 
   /** 切换到指定提交的完整状态；已有提交不会被删除，之后的新提交将从该提交产生分支。 */
-  public async 切换记忆提交(提交id: string): Promise<boolean> {
+  public async 切换记忆提交(提交id: string, 事件组id?: string): Promise<boolean> {
     let 已校验提交id = z.string().trim().min(1).parse(提交id)
     await this.确保已初始化()
-    return await this.数据库查询器.transaction().execute(async (trx) => await 外部切换记忆提交(trx, 已校验提交id))
+    return await 执行带日志的分支切换(
+      this.数据库查询器,
+      '切换记忆提交',
+      { 目标提交id: 已校验提交id },
+      async (trx) => await 外部切换记忆提交(trx, 已校验提交id),
+      事件组id,
+    )
   }
 
   /** 将 HEAD 切换到当前提交的父提交；不会生成反向提交，也不会删除原分支。 */
-  public async 回退最近记忆提交(): Promise<boolean> {
+  public async 回退最近记忆提交(事件组id?: string): Promise<boolean> {
     await this.确保已初始化()
-    return await this.数据库查询器.transaction().execute(async (trx) => await 外部回退到父记忆提交(trx))
+    return await 执行带日志的分支切换(
+      this.数据库查询器,
+      '回退最近记忆提交',
+      {},
+      async (trx) => await 外部回退到父记忆提交(trx),
+      事件组id,
+    )
   }
 
-  public async 检查并清理二级记忆(回调?: (事件: 智能体事件) => Promise<void>): Promise<void> {
-    await this.执行记忆变更任务('检查并清理二级记忆', async (trx) => {
-      await 外部检查并清理二级记忆(trx, this.配置, 回调)
-    })
+  public async 检查并清理二级记忆(回调?: (事件: 智能体事件) => Promise<void>, 事件组id?: string): Promise<void> {
+    await this.执行无向量记忆变更任务(
+      '检查并清理二级记忆',
+      async (trx) => {
+        await 外部检查并清理二级记忆(trx, this.配置, 回调)
+      },
+      事件组id,
+      回调,
+    )
   }
 
   public async 执行记忆重组(选项: {
@@ -328,12 +382,13 @@ export class 带记忆的智能体 extends 智能体 {
     当前时间?: Date
     种子关键词?: string[]
     回调?: (事件: 智能体事件) => Promise<void>
+    事件组id?: string
   }): Promise<void> {
     await this.确保已初始化()
     await 外部执行记忆重组(
       this.数据库查询器,
       async <T extends z.ZodType>(s: 带记忆的解决问题选项<T>) =>
-        await this.执行回合({ ...s, 消息历史: s.消息历史 ?? [] }),
+        await this.执行回合({ ...s, 消息历史: s.消息历史 ?? [], 事件组id: 选项.事件组id ?? s.事件组id }),
       选项,
     )
   }
@@ -348,13 +403,14 @@ export class 带记忆的智能体 extends 智能体 {
     回调?: (事件: 智能体事件) => Promise<void>
     openai客户端?: OpenAI
     模型名称?: string
+    事件组id?: string
   }): Promise<void> {
     await this.确保已初始化()
-    let 上下文 = 外部构建操作上下文(this.上下文依赖, this.数据库查询器, 选项?.回调)
+    let 上下文 = 外部构建操作上下文(this.上下文依赖, this.数据库查询器, 选项?.回调, undefined, 选项?.事件组id)
     await 外部定时任务入口(
       上下文,
       async <T extends z.ZodType>(s: 带记忆的解决问题选项<T>) =>
-        await this.执行回合({ ...s, 消息历史: s.消息历史 ?? [] }),
+        await this.执行回合({ ...s, 消息历史: s.消息历史 ?? [], 事件组id: 选项?.事件组id ?? s.事件组id }),
       选项,
     )
   }
@@ -367,33 +423,36 @@ export class 带记忆的智能体 extends 智能体 {
     return await super.推演(选项)
   }
 
+  public override async 执行回合<T extends z.ZodType>(选项: 带记忆的解决问题选项<T>): Promise<回合结果<T>> {
+    return await super.执行回合(选项)
+  }
+
   protected override async 执行解决问题<T extends z.ZodType>(
     选项: 内部带记忆的解决问题选项<T>,
     执行模式: 智能体执行模式,
     首次请求是否新建对话: boolean = false,
     更新当前会话审计状态: boolean = false,
   ): Promise<回合结果<T>> {
+    await this.确保已初始化()
     let 简短命令 = 选项.命令.replace(/\n/g, ' ')
     let 标题 = 选项.标题 ?? `对话: ${简短命令.slice(0, 20)}`
-    if (执行模式 === '推演') {
-      await this.确保已初始化()
-      let 上下文 = 外部构建操作上下文(this.上下文依赖, this.数据库查询器, 选项.回调)
-      return await 外部解决问题(
-        上下文,
-        选项,
-        async (新选项) => await super.执行解决问题(新选项, 执行模式, 首次请求是否新建对话, 更新当前会话审计状态),
-        执行模式,
-        (新选项) => this.检查前缀(新选项, 执行模式),
-      )
-    }
-    await this.确保已初始化()
-    let 上下文 = 外部构建操作上下文(this.上下文依赖, this.数据库查询器, 选项.回调)
-    return await 外部解决问题(
-      上下文,
-      { ...选项, 标题 },
-      async (新选项) => await super.执行解决问题(新选项, 执行模式, 首次请求是否新建对话, 更新当前会话审计状态),
-      执行模式,
-      (新选项) => this.检查前缀(新选项, 执行模式),
+    let 原回调 = 选项.回调
+    return await 执行带日志的推理流程(
+      this.数据库查询器,
+      转为JSON值({ 执行模式, 标题, 命令: 选项.命令 }),
+      原回调,
+      async (日志回调, 事件组id): Promise<回合结果<T>> => {
+        let 带日志选项 = { ...选项, 标题, 回调: 日志回调, 事件组id }
+        let 上下文 = 外部构建操作上下文(this.上下文依赖, this.数据库查询器, 原回调, undefined, 事件组id)
+        return await 外部解决问题(
+          上下文,
+          执行模式 === '推演' ? { ...带日志选项, 标题: 选项.标题 } : 带日志选项,
+          async (新选项) => await super.执行解决问题(新选项, 执行模式, 首次请求是否新建对话, 更新当前会话审计状态),
+          执行模式,
+          (新选项) => this.检查前缀(新选项, 执行模式),
+        )
+      },
+      选项.事件组id,
     )
   }
 
@@ -421,10 +480,14 @@ export class 带记忆的智能体 extends 智能体 {
     return await 外部保存快照(this.数据库查询器)
   }
 
-  public async 载入快照(json字符串: string): Promise<void> {
-    await this.执行记忆变更任务('载入快照', async (trx) => {
-      await 外部载入快照(trx, json字符串)
-    })
+  public async 载入快照(json字符串: string, 事件组id?: string): Promise<void> {
+    await this.执行无向量记忆变更任务(
+      '载入快照',
+      async (trx) => {
+        await 外部载入快照(trx, json字符串)
+      },
+      事件组id,
+    )
   }
 
   public override async 导出完整状态(当前消息历史?: 智能体消息类型[]): Promise<string> {
@@ -432,46 +495,37 @@ export class 带记忆的智能体 extends 智能体 {
     return await 外部导出完整状态(this.数据库查询器, 当前消息历史 ?? this.读取对话历史(), this.读取会话标识())
   }
 
-  public override async 导入完整状态(状态数据: string): Promise<智能体消息类型[]> {
-    let 状态 = await this.执行记忆变更任务('导入完整状态', async (trx) => await 外部导入完整状态(trx, 状态数据))
+  public override async 导入完整状态(状态数据: string, 事件组id?: string): Promise<智能体消息类型[]> {
+    let 状态 = await this.执行无向量记忆变更任务(
+      '导入完整状态',
+      async (trx) => await 外部导入完整状态(trx, 状态数据),
+      事件组id,
+    )
     this.载入对话历史(状态.消息历史, 状态.会话标识)
     return this.读取对话历史()
   }
 
-  public async 整理布局(): Promise<void> {
-    await this.执行记忆变更任务('整理布局', async (trx) => {
-      await 外部全局排版(trx)
-    })
+  public async 整理布局(事件组id?: string): Promise<void> {
+    await this.执行无向量记忆变更任务(
+      '整理布局',
+      async (trx) => {
+        await 外部全局排版(trx)
+      },
+      事件组id,
+    )
   }
 
   public async 注册动态工具(
     代码: string,
     测试参数_json: string,
     回调?: (事件: 智能体事件) => Promise<void>,
-  ): Promise<{ 结果: '成功' | '失败'; id?: string; 工具名称?: string; 测试执行输出?: string; 错误信息?: string }> {
-    let 缓存 = await 外部创建向量缓存(this.配置, await this.动态工具向量文本(代码), 回调)
-    return await this.执行记忆变更任务(
-      '编程接入: 注册动态工具',
-      async (trx) => {
-        let 动态上下文 = 外部构建动态操作上下文(this.上下文依赖, trx, 回调, 缓存)
-        return await 注册动态工具核心(动态上下文, { 代码, 测试参数_json })
-      },
-      缓存,
-      回调,
-    )
+    事件组id?: string,
+  ): Promise<动态工具管理.注册动态工具结果> {
+    return await 动态工具管理.注册动态工具(this.获取动态工具管理依赖(), 代码, 测试参数_json, 回调, 事件组id)
   }
 
-  private async 动态工具向量文本(代码: string): Promise<string[]> {
-    let 文本 = await 提取动态工具向量文本(代码)
-    return 文本 === null ? [] : [文本]
-  }
-
-  public async 查看动态工具(
-    工具标识: string,
-  ): Promise<{ 结果: '成功' | '失败'; id?: string; 名称?: string; 描述?: string; 代码?: string; 错误信息?: string }> {
-    await this.确保已初始化()
-    let 动态上下文 = 外部构建动态操作上下文(this.上下文依赖, this.数据库查询器)
-    return await 查看动态工具代码核心(动态上下文, { 工具标识 })
+  public async 查看动态工具(工具标识: string): Promise<动态工具管理.查看动态工具结果> {
+    return await 动态工具管理.查看动态工具(this.获取动态工具管理依赖(), 工具标识)
   }
 
   public async 更新动态工具(
@@ -479,42 +533,26 @@ export class 带记忆的智能体 extends 智能体 {
     新代码: string,
     测试参数_json: string,
     回调?: (事件: 智能体事件) => Promise<void>,
-  ): Promise<{ 结果: '成功' | '失败'; 测试执行输出?: string; 错误信息?: string }> {
-    let 缓存 = await 外部创建向量缓存(this.配置, await this.动态工具向量文本(新代码), 回调)
-    return await this.执行记忆变更任务(
-      '编程接入: 更新动态工具',
-      async (trx) => {
-        let 动态上下文 = 外部构建动态操作上下文(this.上下文依赖, trx, 回调, 缓存)
-        return await 更新动态工具核心(动态上下文, { 工具标识, 新代码, 测试参数_json })
-      },
-      缓存,
-      回调,
-    )
+    事件组id?: string,
+  ): Promise<动态工具管理.更新动态工具结果> {
+    return await 动态工具管理.更新动态工具(this.获取动态工具管理依赖(), 工具标识, 新代码, 测试参数_json, 回调, 事件组id)
   }
 
   public async 删除动态工具(
     工具标识: string,
     回调?: (事件: 智能体事件) => Promise<void>,
-  ): Promise<{ 结果: '成功' | '失败'; 错误信息?: string }> {
-    return await this.执行记忆变更任务(
-      '编程接入: 删除动态工具',
-      async (trx) => {
-        let 动态上下文 = 外部构建动态操作上下文(this.上下文依赖, trx, 回调)
-        return await 删除动态工具核心(动态上下文, { 工具标识 })
-      },
-      undefined,
-      回调,
-    )
+    事件组id?: string,
+  ): Promise<动态工具管理.删除动态工具结果> {
+    return await 动态工具管理.删除动态工具(this.获取动态工具管理依赖(), 工具标识, 回调, 事件组id)
   }
 
   public async 调用动态工具(
     工具名称: string,
     参数json: string,
     回调?: (事件: 智能体事件) => Promise<void>,
-  ): Promise<{ 结果: '成功' | '失败'; 执行输出?: string; 错误信息?: string }> {
-    await this.确保已初始化()
-    let 动态上下文 = 外部构建动态操作上下文(this.上下文依赖, this.数据库查询器, 回调)
-    return await 调用动态工具核心(动态上下文, { name: 工具名称, arguments: 参数json })
+    事件组id?: string,
+  ): Promise<动态工具管理.调用动态工具结果> {
+    return await 动态工具管理.调用动态工具(this.获取动态工具管理依赖(), 工具名称, 参数json, 回调, 事件组id)
   }
 
   public async 销毁(): Promise<void> {

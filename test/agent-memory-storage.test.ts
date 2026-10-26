@@ -54,7 +54,7 @@ describe('文件存储生命周期', () => {
     await expect(智能体实例.初始化()).rejects.toThrow('已销毁')
   })
 
-  it('初始化数据库会创建 v4 元数据和关键查询索引', async (): Promise<void> => {
+  it('初始化数据库会创建 v5 元数据、JSON 交互日志表和关键查询索引', async (): Promise<void> => {
     let pglite = new PGlite({ extensions: { vector } })
     let 数据库查询器 = new Kysely<记忆数据库>({ dialect: new PGliteDialect({ pglite }) })
     try {
@@ -65,11 +65,17 @@ describe('文件存储生命周期', () => {
         .where('键', '=', 'KERNEL_SCHEMA_VERSION')
         .executeTakeFirst()
       let 索引结果 = await sql<{ indexname: string }>`
-        SELECT indexname FROM pg_indexes WHERE tablename IN ('记忆表', '记忆关联表', '记忆变更表', '记忆提交表')
+        SELECT indexname FROM pg_indexes
+        WHERE tablename IN ('记忆表', '记忆关联表', '记忆变更表', '记忆提交表', '交互日志表')
       `.execute(数据库查询器)
       let 索引名称 = 索引结果.rows.map((行) => 行.indexname)
+      let 日志内容列 = await sql<{ data_type: string }>`
+        SELECT data_type FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = '交互日志表' AND column_name = '内容'
+      `.execute(数据库查询器)
 
-      expect(版本?.值).toBe('4')
+      expect(版本?.值).toBe('5')
+      expect(日志内容列.rows).toEqual([{ data_type: 'json' }])
       expect(索引名称).toEqual(
         expect.arrayContaining([
           '记忆表_等级_创建序号_idx',
@@ -78,6 +84,7 @@ describe('文件存储生命周期', () => {
           '记忆关联表_终点_idx',
           '记忆变更表_提交_idx',
           '记忆提交表_父提交_idx',
+          '交互日志表_事件组_idx',
         ]),
       )
     } finally {

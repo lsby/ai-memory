@@ -5,6 +5,7 @@ import { 构造前缀已变结果 } from '../agent/prefix'
 import { 校验时区 } from '../agent/timezone'
 import type { 内部注入消息, 回合结果, 智能体执行模式 } from '../agent/types'
 import { 智能体工具 } from '../agent/types'
+import { 转为JSON值 } from './agent-memory-logger'
 import {
   格式化为本地时间字符串,
   记忆等级,
@@ -123,6 +124,7 @@ export async function 解决问题<T extends z.ZodType>(
   执行模式: 智能体执行模式,
   检查前缀: (选项: 带记忆的解决问题选项<T>) => string,
 ): Promise<回合结果<T>> {
+  let 召回开始时间 = new Date()
   let { 配置, 数据库查询器, 保存快照 } = 上下文
   let 当前时间 = 选项.当前时间 ?? new Date()
   let 时区 = 选项.时区 ?? 配置.时区
@@ -355,6 +357,13 @@ export async function 解决问题<T extends z.ZodType>(
   if (本轮召回内容片段.length > 0) {
     本轮注入消息列表.push({ 类型: 'recall-context', 内容: 本轮召回内容片段.join('\n'), 总是追加: true })
   }
+
+  await 上下文.记录交互日志({
+    类型: '记忆召回',
+    开始时间: 召回开始时间,
+    耗时ms: Date.now() - 召回开始时间.getTime(),
+    内容: 转为JSON值({ 命令: 选项.命令, 注入内容: 本轮召回内容片段 }),
+  })
 
   let 新选项: 内部带记忆的解决问题选项<T> = {
     ...选项,

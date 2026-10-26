@@ -1,5 +1,5 @@
 import type { PGlite } from '@electric-sql/pglite'
-import type { Kysely } from 'kysely'
+import type { ColumnType, Kysely } from 'kysely'
 import type OpenAI from 'openai'
 import { z } from 'zod'
 import { 格式化当前时间 } from '../agent/injection'
@@ -73,6 +73,72 @@ export let 动态工具表Schema = z.object({
 })
 export type 动态工具表 = z.infer<typeof 动态工具表Schema>
 
+export type JSON值 = string | number | boolean | null | JSON值[] | { [键: string]: JSON值 }
+
+export let JSON值Schema: z.ZodType<JSON值> = z.lazy(() =>
+  z.union([z.string(), z.number().finite(), z.boolean(), z.null(), z.array(JSON值Schema), z.record(JSON值Schema)]),
+)
+
+let 交互日志公共字段 = {
+  开始时间: z.union([z.string(), z.date()]).transform((值) => new Date(值)),
+  耗时ms: z.number().finite().nonnegative().optional(),
+  内容: JSON值Schema,
+}
+
+export let 交互日志事件类型Schema = z.enum([
+  '流程开始',
+  '流程结束',
+  '流程异常',
+  '记忆召回',
+  '记忆提交',
+  '记忆分支切换',
+  'AI文本片段',
+  '工具调用开始',
+  '工具调用结果',
+  '工具调用失败',
+  '校验失败',
+  '最终结果',
+  '流程信息',
+  '错误',
+  '原始请求配置',
+  '原始AI返回',
+  '模型请求审计',
+  '自定义',
+])
+
+export let 交互日志事件Schema = z.discriminatedUnion('类型', [
+  z.object({ 类型: z.literal('流程开始'), ...交互日志公共字段 }),
+  z.object({ 类型: z.literal('流程结束'), ...交互日志公共字段 }),
+  z.object({ 类型: z.literal('流程异常'), ...交互日志公共字段 }),
+  z.object({ 类型: z.literal('记忆召回'), ...交互日志公共字段 }),
+  z.object({ 类型: z.literal('记忆提交'), ...交互日志公共字段 }),
+  z.object({ 类型: z.literal('记忆分支切换'), ...交互日志公共字段 }),
+  z.object({ 类型: z.literal('AI文本片段'), ...交互日志公共字段 }),
+  z.object({ 类型: z.literal('工具调用开始'), ...交互日志公共字段 }),
+  z.object({ 类型: z.literal('工具调用结果'), ...交互日志公共字段 }),
+  z.object({ 类型: z.literal('工具调用失败'), ...交互日志公共字段 }),
+  z.object({ 类型: z.literal('校验失败'), ...交互日志公共字段 }),
+  z.object({ 类型: z.literal('最终结果'), ...交互日志公共字段 }),
+  z.object({ 类型: z.literal('流程信息'), ...交互日志公共字段 }),
+  z.object({ 类型: z.literal('错误'), ...交互日志公共字段 }),
+  z.object({ 类型: z.literal('原始请求配置'), ...交互日志公共字段 }),
+  z.object({ 类型: z.literal('原始AI返回'), ...交互日志公共字段 }),
+  z.object({ 类型: z.literal('模型请求审计'), ...交互日志公共字段 }),
+  z.object({ 类型: z.literal('自定义'), ...交互日志公共字段 }),
+])
+export type 交互日志事件 = z.infer<typeof 交互日志事件Schema>
+export type 交互日志事件类型 = z.infer<typeof 交互日志事件类型Schema>
+
+export type 交互日志表 = {
+  id: string
+  序号?: number
+  事件组id: string
+  类型: 交互日志事件类型
+  开始时间: Date
+  耗时ms: number | null
+  内容: ColumnType<JSON值, string, string>
+}
+
 export type 记忆数据库 = {
   记忆表: 记忆表
   记忆关联表: 记忆关联表
@@ -80,6 +146,7 @@ export type 记忆数据库 = {
   记忆变更表: 记忆变更表
   记忆元数据表: 记忆元数据表
   动态工具表: 动态工具表
+  交互日志表: 交互日志表
 }
 
 export type 带记忆的智能体选项 = 智能体选项 & {
@@ -177,6 +244,8 @@ export type 内部带记忆的智能体配置 = 智能体选项 &
 export type 带记忆的解决问题选项<T extends z.ZodType> = 解决问题选项<T> & {
   标题?: string | undefined
   是否自动召回?: boolean | undefined
+  /** 将本次流程挂到指定事件组；不传则自动生成。 */
+  事件组id?: string | undefined
 }
 
 /** 库内部使用: 在公开选项上附带内部注入消息。不对外导出 */
@@ -249,6 +318,23 @@ export type 公开记忆提交 = {
   变更列表: 公开记忆变更[]
 }
 
+export type 公开交互日志 = {
+  id: string
+  序号: number
+  事件组id: string
+  类型: 交互日志事件类型
+  开始时间: Date
+  耗时ms?: number
+  内容: JSON值
+}
+
+export type 查询交互日志选项 = {
+  事件组id?: string | undefined
+  类型?: 交互日志事件类型 | undefined
+  偏移?: number | undefined
+  数量?: number | undefined
+}
+
 export let 快照数据Schema = z.object({
   格式版本: z.literal(2),
   记忆列表: z.array(记忆表Schema),
@@ -286,6 +372,8 @@ export type 记忆操作上下文 = {
   检查并清理二级记忆: () => Promise<void>
   保存快照: () => Promise<string>
   执行记忆变更: <R>(消息: string, 操作: (上下文: 记忆操作上下文) => Promise<R>) => Promise<R>
+  事件组id: string
+  记录交互日志: (事件: 交互日志事件) => Promise<公开交互日志>
   回调?: ((事件: 智能体事件) => Promise<void>) | undefined
 }
 
