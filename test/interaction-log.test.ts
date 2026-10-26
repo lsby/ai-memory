@@ -62,6 +62,63 @@ describe('交互事件日志', () => {
     expect(结束[0]?.类型).toBe('流程结束')
   })
 
+  it('支持分页并拒绝无效的查询条件', async (): Promise<void> => {
+    智能体实例 = 夹具.新建智能体()
+    let 开始时间 = new Date('2026-01-01T00:00:00.000Z')
+    await 智能体实例.记录交互日志({ 类型: '自定义', 开始时间, 内容: { 次序: 1 } }, 'page-group')
+    await 智能体实例.记录交互日志({ 类型: '自定义', 开始时间, 内容: { 次序: 2 } }, 'page-group')
+    await 智能体实例.记录交互日志({ 类型: '自定义', 开始时间, 内容: { 次序: 3 } }, 'page-group')
+
+    let 第二页 = await 智能体实例.查询交互日志({ 事件组id: 'page-group', 偏移: 1, 数量: 1 })
+    expect(第二页.map((日志) => 日志.内容)).toEqual([{ 次序: 2 }])
+    await expect(智能体实例.查询交互日志({ 偏移: -1 })).rejects.toThrow()
+    await expect(智能体实例.查询交互日志({ 数量: 1001 })).rejects.toThrow()
+    await expect(智能体实例.查询交互日志({ 事件组id: '   ' })).rejects.toThrow()
+  })
+
+  it('分支切换事件记录请求、结果和切换后的 HEAD', async (): Promise<void> => {
+    智能体实例 = 夹具.新建智能体()
+    let 记忆 = await 智能体实例.添加记忆({
+      内容: '分支日志基线',
+      关键词: ['分支'],
+      标签: [],
+      评分: 80,
+      等级: 记忆等级.一级,
+      创建时间: new Date('2026-01-01T00:00:00.000Z'),
+    })
+    let 基线提交id = await 智能体实例.查询当前记忆提交id()
+    await 智能体实例.更新记忆(记忆.id, { 内容: '另一分支' })
+    if (基线提交id === null) throw new Error('基线提交未生成')
+
+    expect(await 智能体实例.切换记忆提交(基线提交id, 'branch-group')).toBe(true)
+
+    let 日志列表 = await 智能体实例.查询交互日志({ 事件组id: 'branch-group' })
+    expect(日志列表.map((日志) => 日志.类型)).toEqual(['流程开始', '记忆分支切换', '流程结束'])
+    expect(日志列表[1]?.内容).toEqual({ 请求: { 目标提交id: 基线提交id }, 结果: true, 当前提交id: 基线提交id })
+  })
+
+  it('编程调用动态工具时记录同组的开始和结果事件', async (): Promise<void> => {
+    智能体实例 = 夹具.新建智能体()
+    let 注册结果 = await 智能体实例.注册动态工具(
+      `工具 = {
+  名称: 'telemetry_echo',
+  描述: '返回输入值',
+  参数Schema: { type: 'object', properties: { value: { type: 'number' } }, required: ['value'] },
+  返回值Schema: { type: 'object', properties: { value: { type: 'number' } }, required: ['value'] },
+  实现: async function(参数) { return { value: 参数.value }; }
+}`,
+      '{"value":7}',
+    )
+    expect(注册结果.结果).toBe('成功')
+
+    let 调用结果 = await 智能体实例.调用动态工具('telemetry_echo', '{"value":7}', undefined, 'tool-group')
+    expect(调用结果.结果).toBe('成功')
+    let 日志列表 = await 智能体实例.查询交互日志({ 事件组id: 'tool-group' })
+    expect(日志列表.map((日志) => 日志.类型)).toEqual(['工具调用开始', '工具调用结果'])
+    expect(日志列表[0]?.内容).toEqual({ 工具名称: 'telemetry_echo', 参数json: '{"value":7}' })
+    expect(日志列表[1]?.内容).toMatchObject({ 工具名称: 'telemetry_echo', 结果: { 结果: '成功' } })
+  })
+
   it('记忆操作失败时同一事务里的日志也会回滚', async (): Promise<void> => {
     智能体实例 = 夹具.新建智能体()
     await expect(智能体实例.载入快照('{不是合法快照}', 'rollback-group')).rejects.toThrow()

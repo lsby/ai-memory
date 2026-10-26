@@ -67,7 +67,7 @@ import {
   type 记忆数据库,
 } from './agent-memory-types'
 import { 新向量缓存, type 向量缓存 } from './agent-memory-vector-cache'
-import { 生成默认记忆提示词 } from './memory-prompt'
+import { 生成默认记忆提示词, 附加不可变历史原则 } from './memory-prompt'
 import { 全部记忆工具名, 记忆工具名 } from './memory-tool-names'
 import { 初始化数据库 } from './tools/db-schema'
 import { 全局排版 as 外部全局排版 } from './tools/layout'
@@ -121,8 +121,8 @@ export class 带记忆的智能体 extends 智能体 {
       自定义提示词 === undefined
         ? 生成默认记忆提示词(启用的记忆工具名)
         : typeof 自定义提示词 === 'string'
-          ? 自定义提示词
-          : 自定义提示词([...启用的记忆工具名])
+          ? 附加不可变历史原则(自定义提示词)
+          : 附加不可变历史原则(自定义提示词([...启用的记忆工具名]))
     this.schema名 = 存储.schema ?? 默认schema
     this.上下文依赖 = { 配置: this.配置, 执行记忆变更任务: this.执行记忆变更任务.bind(this) }
     let pglite选项: PGliteOptions = { extensions: { vector } }
