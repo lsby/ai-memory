@@ -65,9 +65,35 @@ describe('变更记录', { timeout: 90000 }, () => {
           `INSERT INTO 动态工具表 (id, 名称, 描述, 代码, 创建时间) VALUES ('bypass', 'bypass', '', '', now())`,
         ),
       ).rejects.toThrow('只能在活动提交中修改')
-      let 提交 = (await 实例.查询记忆提交())[0]
+      let 提交列表 = await 实例.查询记忆提交()
+      let 提交 = 提交列表[0]
       let 变更 = 提交?.变更列表[0]
       if (提交 === undefined || 变更 === undefined) throw new Error('缺少用于不可变约束测试的提交')
+      await expect(
+        pglite.query(`INSERT INTO 记忆提交表 (id, 父提交id, 消息, 创建时间) VALUES ('blank', NULL, '   ', now())`),
+      ).rejects.toThrow()
+      await expect(
+        pglite.query(
+          `INSERT INTO 记忆提交表 (id, 父提交id, 消息, 创建时间) VALUES ('orphan', 'missing-parent', '孤立提交', now())`,
+        ),
+      ).rejects.toThrow()
+      await expect(
+        pglite.query(
+          `INSERT INTO 记忆变更表 (id, 提交id, 操作类型, 目标表, 目标id, 旧值, 新值) VALUES ('invalid-change', $1, 'update', 'node', $2, NULL, NULL)`,
+          [提交.id, 记忆.id],
+        ),
+      ).rejects.toThrow()
+
+      let 非当前提交 = 提交列表[1]
+      if (非当前提交 === undefined) throw new Error('缺少用于 HEAD 一致性测试的历史提交')
+      await pglite.query(`UPDATE _agent_session_commit SET commit_id = $1 WHERE id = 1`, [非当前提交.id])
+      try {
+        await expect(
+          pglite.query(`UPDATE 记忆表 SET 内容 = '错误 HEAD 写入' WHERE id = $1`, [记忆.id]),
+        ).rejects.toThrow('活动记忆提交必须是当前 HEAD')
+      } finally {
+        await pglite.query(`UPDATE _agent_session_commit SET commit_id = NULL WHERE id = 1`)
+      }
       await expect(pglite.query(`UPDATE 记忆提交表 SET 消息 = '被篡改' WHERE id = $1`, [提交.id])).rejects.toThrow(
         '不可修改',
       )

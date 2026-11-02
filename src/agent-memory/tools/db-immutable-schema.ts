@@ -21,6 +21,30 @@ export async function 初始化不可变约束(数据库查询器: Kysely<记忆
   await 执行(
     `ALTER TABLE ${名('记忆变更表')} ADD CONSTRAINT 记忆变更表_提交id_fkey FOREIGN KEY (提交id) REFERENCES ${名('记忆提交表')}(id) ON DELETE RESTRICT;`,
   )
+  await 执行(`ALTER TABLE ${名('记忆提交表')} DROP CONSTRAINT IF EXISTS 记忆提交表_父提交id_fkey;`)
+  await 执行(
+    `ALTER TABLE ${名('记忆提交表')} ADD CONSTRAINT 记忆提交表_父提交id_fkey FOREIGN KEY (父提交id) REFERENCES ${名('记忆提交表')}(id) ON DELETE RESTRICT;`,
+  )
+  await 执行(`ALTER TABLE ${名('记忆提交表')} DROP CONSTRAINT IF EXISTS 记忆提交表_消息非空_check;`)
+  await 执行(
+    `ALTER TABLE ${名('记忆提交表')} ADD CONSTRAINT 记忆提交表_消息非空_check CHECK (length(btrim(消息)) > 0);`,
+  )
+  await 执行(`ALTER TABLE ${名('记忆变更表')} DROP CONSTRAINT IF EXISTS 记忆变更表_操作类型_check;`)
+  await 执行(
+    `ALTER TABLE ${名('记忆变更表')} ADD CONSTRAINT 记忆变更表_操作类型_check CHECK (操作类型 IN ('add', 'update', 'delete', 'init'));`,
+  )
+  await 执行(`ALTER TABLE ${名('记忆变更表')} DROP CONSTRAINT IF EXISTS 记忆变更表_目标表_check;`)
+  await 执行(
+    `ALTER TABLE ${名('记忆变更表')} ADD CONSTRAINT 记忆变更表_目标表_check CHECK (目标表 IN ('node', 'link', 'tool'));`,
+  )
+  await 执行(`ALTER TABLE ${名('记忆变更表')} DROP CONSTRAINT IF EXISTS 记忆变更表_值形状_check;`)
+  await 执行(`
+    ALTER TABLE ${名('记忆变更表')} ADD CONSTRAINT 记忆变更表_值形状_check CHECK (
+      (操作类型 IN ('add', 'init') AND 旧值 IS NULL AND 新值 IS NOT NULL)
+      OR (操作类型 = 'update' AND 旧值 IS NOT NULL AND 新值 IS NOT NULL)
+      OR (操作类型 = 'delete' AND 旧值 IS NOT NULL AND 新值 IS NULL)
+    );
+  `)
 
   await 执行(`
     CREATE OR REPLACE FUNCTION ${名('拒绝记忆变更修改_触发器')}()

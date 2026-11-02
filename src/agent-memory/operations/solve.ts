@@ -102,19 +102,23 @@ async function 提取工具向量文本(工具名称: string, 参数: Record<str
 
 function 创建事务化记忆工具(上下文: 记忆工具上下文, 工厂: 记忆工具工厂): 智能体工具 {
   let 模板 = 工厂(上下文)
+  let 需要模型提供消息 = 模板.名称 !== 记忆工具名.回忆延伸
+  let 参数Schema = 需要模型提供消息
+    ? 模板.参数Schema.extend({
+        消息: z.string().trim().min(1).describe('说明为什么要执行这次记忆变更'),
+      })
+    : 模板.参数Schema
   return 智能体工具.创建({
     名称: 模板.名称,
     描述: 模板.描述,
-    参数Schema: 模板.参数Schema,
+    参数Schema,
     返回值Schema: 模板.返回值Schema,
     返回值描述: 模板.返回值描述,
     实现: async (参数): Promise<{ 结果: '成功' | '失败' } & Record<string, unknown>> => {
       // 两段式：先在事务外把向量算好，再开事务；事务期间互斥锁一直被占着，不能在里面等网络
       let 带缓存上下文 = await 上下文.带向量缓存(await 提取工具向量文本(模板.名称, 参数))
-      return await 带缓存上下文.执行记忆变更(
-        `工具: ${模板.名称}`,
-        async (事务上下文) => await 工厂(事务上下文).实现(参数),
-      )
+      let 提交消息 = 需要模型提供消息 ? String(参数['消息']) : 'AI 请求记忆召回'
+      return await 带缓存上下文.执行记忆变更(提交消息, async (事务上下文) => await 工厂(事务上下文).实现(参数))
     },
   })
 }

@@ -36,6 +36,8 @@ let 关键词与标签段 = `**关键词与标签**:
 
 let 工具管理总结句 = `你可以调用提供的专用工具来精细化管理这一切。`
 
+let 变更消息说明 = `**变更消息**: 每次调用会修改记忆状态的工具时，必须在「消息」参数中简要说明为什么要执行这次变更。该消息会随记忆提交永久保存。`
+
 let 动态工具标题 = `## 动态工具系统`
 
 let 动态工具介绍_可创建 = `你拥有一个可自主扩展的「动态工具库」。如果你在执行任务时发现缺少某种特定的处理能力（例如特殊的数学计算、格式转换、数据处理等），你可以通过 \`create_dynamic_tool\` 自行编写一段纯 JavaScript 代码来创造新技能，并将其持久化到工具库中。`
@@ -77,12 +79,18 @@ let 动态工具名: readonly 记忆工具名类型[] = [
   记忆工具名.调用动态工具,
 ]
 
+let 需要变更消息的工具名: readonly 记忆工具名类型[] = [
+  ...记忆管理工具名,
+  记忆工具名.创建动态工具,
+  记忆工具名.更新动态工具,
+  记忆工具名.移除动态工具,
+]
+
 /**
  * 按启用的工具名生成默认记忆提示词。
  * - 没有任何记忆管理工具时, 不写认知进化、经验沉淀、关键词与标签这几段;
  * - 没有回忆延伸时, 不提「主动深挖」那句;
  * - 没有任何动态工具时, 不写动态工具系统; 动态工具的各条说明也按启用的工具取舍。
- * 全部启用时与 0.2.3 版的写死文本逐字一致。
  */
 export function 生成中文默认记忆提示词(启用的工具名: readonly string[]): string {
   let 已启用 = (名称: string): boolean => 启用的工具名.includes(名称)
@@ -93,6 +101,7 @@ export function 生成中文默认记忆提示词(启用的工具名: readonly s
     [开头, 已启用(记忆工具名.回忆延伸) ? 二级记忆介绍_前半 + 二级记忆介绍_后半 : 二级记忆介绍_前半].join('\n'),
   ]
   if (有记忆管理工具) 段落列表.push(认知进化段, 经验沉淀段, 关键词与标签段, 工具管理总结句)
+  if (需要变更消息的工具名.some(已启用)) 段落列表.push(变更消息说明)
   if (有动态工具) {
     let 维护项列表 = [
       已启用(记忆工具名.查看动态工具代码) ? `\`${记忆工具名.查看动态工具代码}\` 查看源码` : null,
@@ -120,6 +129,11 @@ export function 生成英文默认记忆提示词(启用的工具名: readonly s
   if (记忆管理工具名.some(已启用)) {
     段落列表.push(
       `**Memory practice**\nUse evidence to test uncertain hypotheses. Update memories when evidence changes. Preserve general rules and reusable lessons rather than unnecessary task-specific detail. Keywords build the relation graph; tags describe metadata and state; scores from 0 to 100 represent importance. Removing a memory means removing it from the current state, not erasing historical commits.`,
+    )
+  }
+  if (需要变更消息的工具名.some(已启用)) {
+    段落列表.push(
+      '**Commit message**\nEvery tool call that changes memory state must include a concise `commit_message` explaining why the change is needed. The message is permanently stored with the memory commit.',
     )
   }
   if (动态工具名.some(已启用)) {

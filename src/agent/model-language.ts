@@ -104,6 +104,7 @@ export type 模型语言包 = {
 let 英文字段映射: Record<string, string> = {
   结果: 'status',
   信息: 'message',
+  消息: 'commit_message',
   错误信息: 'error',
   内容: 'content',
   关键词: 'keywords',

@@ -27,6 +27,7 @@ export async function 创建记忆提交(
   数据库查询器: Kysely<记忆数据库>,
   消息: string,
 ): Promise<{ commitId: string; parentCommitId: string | null }> {
+  if (消息.trim() === '') throw new Error('记忆提交消息不能为空')
   let parentCommitId = await 获取当前提交ID(数据库查询器)
   let commitId = randomUUID()
 
@@ -208,6 +209,13 @@ export async function 在提交中执行<R>(
   消息: string,
   操作: (trx: Kysely<记忆数据库>, 父提交id: string | null) => Promise<R>,
 ): Promise<R> {
+  let 活动提交状态 = await sql<{ commit_id: string | null; 恢复中: boolean }>`
+    SELECT commit_id, 恢复中 FROM _agent_session_commit WHERE id = 1
+  `.execute(trx)
+  let 状态 = 活动提交状态.rows[0]
+  if (状态 === undefined) throw new Error('缺少记忆提交事务上下文')
+  if (状态.恢复中 === true) throw new Error('恢复历史期间不能创建记忆提交')
+  if (状态.commit_id !== null) throw new Error(`已经存在活动记忆提交: ${状态.commit_id}`)
   let { commitId, parentCommitId } = await 创建记忆提交(trx, 消息)
   await sql`UPDATE _agent_session_commit SET commit_id = ${commitId}, 恢复中 = FALSE WHERE id = 1`.execute(trx)
 

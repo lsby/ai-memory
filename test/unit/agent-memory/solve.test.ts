@@ -45,7 +45,7 @@ describe('带记忆的智能体对话', () => {
           {
             id: 'append_tag',
             名称: 'append_memory_tags',
-            参数片段: JSON.stringify({ id: 记忆.id, 标签列表: ['新标签'] }),
+            参数片段: JSON.stringify({ id: 记忆.id, 标签列表: ['新标签'], 消息: '补充更准确的记忆分类' }),
           },
         ],
         已中断: false,

@@ -239,6 +239,53 @@ async function 在事务中初始化数据库(数据库查询器: Kysely<记忆�
 
   await 初始化不可变约束(数据库查询器, schema)
 
+  // 所有业务写入必须先创建提交并把它设为 HEAD。BEFORE 触发器负责在改动发生前快速失败，
+  // AFTER 触发器只负责把已经通过校验的行级 Diff 记入当前提交。
+  await 执行(`
+    CREATE OR REPLACE FUNCTION ${名('校验记忆写入上下文_触发器')}()
+    RETURNS TRIGGER AS $$
+    DECLARE
+      v_commit_id TEXT;
+      v_restoring BOOLEAN := FALSE;
+      v_head_id TEXT;
+      v_commit_message TEXT;
+    BEGIN
+      SELECT commit_id, 恢复中 INTO v_commit_id, v_restoring
+      FROM ${名('_agent_session_commit')} WHERE id = 1;
+
+      IF v_restoring THEN
+        IF TG_OP = 'DELETE' THEN RETURN OLD; END IF;
+        RETURN NEW;
+      END IF;
+
+      IF v_commit_id IS NULL OR v_commit_id = '' THEN
+        RAISE EXCEPTION '%只能在活动提交中修改', TG_TABLE_NAME;
+      END IF;
+
+      SELECT 消息 INTO v_commit_message FROM ${名('记忆提交表')} WHERE id = v_commit_id;
+      IF v_commit_message IS NULL OR length(btrim(v_commit_message)) = 0 THEN
+        RAISE EXCEPTION '活动记忆提交不存在或消息为空: %', v_commit_id;
+      END IF;
+
+      SELECT 值 INTO v_head_id FROM ${名('记忆元数据表')} WHERE 键 = 'HEAD_COMMIT';
+      IF v_head_id IS DISTINCT FROM v_commit_id THEN
+        RAISE EXCEPTION '活动记忆提交必须是当前 HEAD: 活动提交 %, HEAD %', v_commit_id, v_head_id;
+      END IF;
+
+      IF TG_OP = 'DELETE' THEN RETURN OLD; END IF;
+      RETURN NEW;
+    END;
+    $$ LANGUAGE plpgsql;
+  `)
+  for (let 表名 of ['记忆表', '记忆关联表', '动态工具表']) {
+    await 执行(`DROP TRIGGER IF EXISTS trg_校验记忆写入上下文 ON ${名(表名)};`)
+    await 执行(`
+      CREATE TRIGGER trg_校验记忆写入上下文
+      BEFORE INSERT OR UPDATE OR DELETE ON ${名(表名)}
+      FOR EACH ROW EXECUTE FUNCTION ${名('校验记忆写入上下文_触发器')}();
+    `)
+  }
+
   let columnsCheck = await sql`
     SELECT column_name FROM information_schema.columns WHERE table_schema = ${schema} AND table_name = '记忆表'
   `.execute(数据库查询器)
@@ -485,7 +532,7 @@ async function 在事务中初始化数据库(数据库查询器: Kysely<记忆�
 
   await 数据库查询器
     .insertInto('记忆元数据表')
-    .values({ 键: 'KERNEL_SCHEMA_VERSION', 值: '7' })
-    .onConflict((冲突) => 冲突.column('键').doUpdateSet({ 值: '7' }))
+    .values({ 键: 'KERNEL_SCHEMA_VERSION', 值: '8' })
+    .onConflict((冲突) => 冲突.column('键').doUpdateSet({ 值: '8' }))
     .execute()
 }

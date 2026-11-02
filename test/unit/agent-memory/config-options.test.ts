@@ -174,6 +174,7 @@ describe('模型语言包', () => {
     let 工具定义 = JSON.stringify(添加记忆工具)
     expect(工具定义).toContain('working memory')
     expect(工具定义).toContain('content')
+    expect(工具定义).toContain('commit_message')
     expect(工具定义).not.toMatch(/[\u3400-\u9fff]/u)
     expect(取注入文本(请求, '### Current memory state')).toContain('Current level 0 memories')
   })
@@ -198,6 +199,7 @@ describe('模型语言包', () => {
               keywords: ['production', 'port'],
               tags: ['verified'],
               score: 90,
+              commit_message: 'Remember this stable production configuration.',
             },
           },
         ],
