@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url'
 import type { LocomoParsedSample, LocomoParsedSession, LocomoTurn } from './types'
 
 let __dirname = path.dirname(fileURLToPath(import.meta.url))
-let defaultDataPath = path.resolve(__dirname, 'data/locomo10.json')
+let defaultDataPath = path.resolve(__dirname, '../data/locomo10.json')
 
 export function loadLocomoSamples(dataPath: string = defaultDataPath): LocomoParsedSample[] {
   if (fs.existsSync(dataPath) === false) {

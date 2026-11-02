@@ -1,4 +1,4 @@
-import type { 模型审计汇总 } from '../../../src/agent/types'
+import type { 模型审计汇总 } from '../../../../src/agent/types'
 
 export interface LocomoTurn {
   speaker: string

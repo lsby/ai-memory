@@ -6,14 +6,18 @@
 
 ```text
 test/benchmark/locomo/
-├── data/
-│   └── locomo10.json       # 官方 10 组超长多会话数据集 (CC BY-NC 4.0)
-├── types.ts                # TypeScript 类型定义
-├── loader.ts               # 数据集加载与会话解析器
-├── runner.ts               # 测试执行器（驱动“带记忆的智能体”提取与作答）
-├── judge.ts                # LLM-as-a-Judge 自动阅卷评分器
-├── run-sample.ts           # 评测启动入口脚本
-└── README.md               # 使用说明文档
+├── data/                    # 评测原始数据
+│   └── locomo10.json        # 官方 10 组超长多会话数据集 (CC BY-NC 4.0)
+├── output/                  # 各次评测运行结果与持久化记忆库目录
+├── src/                     # 核心评测与解析模块
+│   ├── types.ts             # TypeScript 类型定义
+│   ├── loader.ts            # 数据集加载与会话解析器
+│   ├── runner.ts            # 测试执行器（驱动“带记忆的智能体”提取、重组与作答）
+│   ├── judge.ts             # LLM-as-a-Judge 自动阅卷评分器
+│   ├── options.ts           # CLI 选项解析与配置环境探测
+│   └── reporter.ts          # 终端成绩单与审计大盘排版输出
+├── index.ts                 # 评测主流程协调器（CLI 启动入口）
+└── README.md                # 使用说明文档
 ```
 
 ## 运行前准备
@@ -49,7 +53,7 @@ $env:AI_MODEL="gpt-oss-20b"
 $env:LOCOMO_MAX_SESSIONS="2"
 $env:LOCOMO_MAX_QA="3"
 $env:VERBOSE="1"
-pnpm tsx test/benchmark/locomo/run-sample.ts
+pnpm tsx test/benchmark/locomo/index.ts
 ```
 
 ### 完整单样本评测（包含该样本的所有 Session 与近 200 道 QA）
@@ -57,7 +61,7 @@ pnpm tsx test/benchmark/locomo/run-sample.ts
 ```powershell
 $env:AI_BASE_URL="http://localhost:11434/v1"
 $env:AI_MODEL="gpt-oss-20b"
-pnpm tsx test/benchmark/locomo/run-sample.ts
+pnpm tsx test/benchmark/locomo/index.ts
 ```
 
 ## 输出产物
