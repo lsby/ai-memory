@@ -311,6 +311,8 @@ export type 内部带记忆的智能体配置 = Omit<智能体选项, '模型语
 export type 带记忆的解决问题选项<T extends z.ZodType> = 解决问题选项<T> & {
   标题?: string | undefined
   是否自动召回?: boolean | undefined
+  /** 自定义自动记忆召回所使用的查询文本。如果不传，默认使用 选项.命令。 */
+  召回查询内容?: string | undefined
   /** 将本次流程挂到指定事件组；不传则自动生成。 */
   事件组id?: string | undefined
 }

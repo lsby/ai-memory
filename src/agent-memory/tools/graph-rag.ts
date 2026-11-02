@@ -81,7 +81,16 @@ export function 回忆延伸工具(上下文: 图谱检索上下文): 智能体�
         let segmenter = new Intl.Segmenter('zh-CN', { granularity: 'word' })
         let 基础分词 = [...segmenter.segment(参数.查询内容)].filter((s) => s.isWordLike === true).map((s) => s.segment)
 
-        let 词语列表 = Array.from(new Set([...基础分词, ...(参数.目标关键词 ?? [])])).filter((s) => s.trim().length > 0)
+        let 短语片段: string[] = []
+        for (let len = 2; len <= 4; len++) {
+          for (let i = 0; i <= 基础分词.length - len; i++) {
+            短语片段.push(基础分词.slice(i, i + len).join(' '))
+          }
+        }
+
+        let 词语列表 = Array.from(new Set([...基础分词, ...短语片段, ...(参数.目标关键词 ?? [])])).filter(
+          (s) => s.trim().length > 0,
+        )
 
         let 向量 = await 获取向量(参数.查询内容)
 

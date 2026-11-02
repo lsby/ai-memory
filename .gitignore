@@ -1,3 +1,9 @@
 /node_modules
 /dist
 /coverage
+/test/benchmark/locomo/output/
+/.env
+/.env.*
+!/.env.example
+/test/.env/*
+!/test/.env/example.env
