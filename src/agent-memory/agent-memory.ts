@@ -166,6 +166,7 @@ export class 带记忆的智能体 extends 持久化会话智能体 {
     回调?: (事件: 智能体事件) => Promise<void>,
     事件组id?: string,
   ): Promise<R> {
+    if (this.配置.只读模式 === true) throw new Error('智能体当前处于只读模式，禁止执行任何记忆变更')
     await this.确保已初始化()
     return await 执行带日志的记忆变更(this.数据库查询器, this.配置, 消息, 操作, 缓存, 回调, 事件组id)
   }
@@ -242,8 +243,7 @@ export class 带记忆的智能体 extends 持久化会话智能体 {
   }
 
   public async 查找记忆(id: string): Promise<公开记忆 | null> {
-    let 记忆列表 = await this.查询记忆()
-    return 记忆列表.find((记忆) => 记忆.id === id) ?? null
+    return (await this.查询记忆()).find((记忆) => 记忆.id === id) ?? null
   }
 
   public async 移除记忆(id: string, 事件组id?: string): Promise<boolean> {
@@ -310,12 +310,10 @@ export class 带记忆的智能体 extends 持久化会话智能体 {
   public async 查询前缀快照(id: string): Promise<公开前缀快照 | null> {
     await this.确保已初始化()
     let 已校验id = z.string().trim().min(1).parse(id)
-    let 快照 = await this.数据库查询器
-      .selectFrom('前缀快照表')
-      .selectAll()
-      .where('id', '=', 已校验id)
-      .executeTakeFirst()
-    return 快照 ?? null
+    return (
+      (await this.数据库查询器.selectFrom('前缀快照表').selectAll().where('id', '=', 已校验id).executeTakeFirst()) ??
+      null
+    )
   }
 
   /** 返回当前记忆分支的 HEAD；尚无提交时返回 null。 */
@@ -557,9 +555,8 @@ export class 带记忆的智能体 extends 持久化会话智能体 {
   }
 
   public async 销毁(): Promise<void> {
-    if (this._已销毁) return
+    if (this._已销毁 === true) return
     this._已销毁 = true
-
     await 销毁存储(this.配置.存储, this.PGlite就绪, this.数据库查询器)
   }
 }

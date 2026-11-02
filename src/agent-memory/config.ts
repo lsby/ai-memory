@@ -1,7 +1,7 @@
 import path from 'node:path'
 import { 中文模型语言包 } from '../agent/model-language'
 import { 生成默认记忆提示词 } from './prompt/memory-prompt'
-import { 全部记忆工具名, 记忆工具名 } from './prompt/memory-tool-names'
+import { 全部记忆工具名, 记忆写工具名集合, 记忆工具名 } from './prompt/memory-tool-names'
 import { 校验schema名 } from './storage/connection'
 import type { 内部带记忆的智能体配置, 存储配置, 带记忆的智能体选项 } from './types'
 
@@ -29,14 +29,18 @@ export function 构建智能体配置(选项: 带记忆的智能体选项): {
         throw new Error('自动压缩.失败后冷却字符数 必须是正整数')
     if (选项.自动压缩.目标字符数 >= 选项.自动压缩.触发字符数) throw new Error('自动压缩.目标字符数 必须小于触发字符数')
   }
+  let 只读模式 = 选项.只读模式 ?? false
   let 禁用深度推演 = 选项.禁用深度推演 ?? false
   let 筛选 = 选项.记忆工具筛选
   let 启用的记忆工具名 = 全部记忆工具名.filter(
     (名称): boolean =>
-      (名称 !== 记忆工具名.深度推演 || 禁用深度推演 === false) && (筛选 === undefined || 筛选(名称) === true),
+      (只读模式 === false || 记忆写工具名集合.has(名称) === false) &&
+      (名称 !== 记忆工具名.深度推演 || 禁用深度推演 === false) &&
+      (筛选 === undefined || 筛选(名称) === true),
   )
   let 配置: 内部带记忆的智能体配置 = {
     ...选项,
+    只读模式,
     模型语言包: 选项.模型语言包 ?? 中文模型语言包,
     启用的记忆工具名,
     遗忘豁免: 选项.遗忘豁免 ?? ((): boolean => false),

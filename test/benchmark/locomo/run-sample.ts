@@ -34,11 +34,13 @@ function formatTimestamp(d: Date): string {
 interface CliOptions {
   configName?: string | undefined
   note?: string | undefined
+  fromDb?: string | undefined
 }
 
 function parseCliOptions(): CliOptions {
   let configName = process.env['CONFIG'] ?? process.env['ENV_CONFIG']
   let note = process.env['NOTE'] ?? process.env['RUN_NOTE'] ?? process.env['COMMENT']
+  let fromDb = process.env['FROM_DB'] ?? process.env['SOURCE_DB']
 
   let args = process.argv.slice(2)
   for (let i = 0; i < args.length; i++) {
@@ -58,13 +60,18 @@ function parseCliOptions(): CliOptions {
     ) {
       note = args[i + 1]?.trim()
       i++
+    } else if (arg.startsWith('--from-db=')) {
+      fromDb = arg.slice('--from-db='.length).trim()
+    } else if ((arg === '--from-db' || arg === '--db') && args[i + 1] !== undefined) {
+      fromDb = args[i + 1]?.trim()
+      i++
     } else if (arg.startsWith('-') === false && arg.includes('=') === false && configName === undefined) {
       // 首个非选项裸参数视为配置名称，例如 `npx tsx run-sample.ts deepseek`
       configName = arg.trim()
     }
   }
 
-  return { configName, note }
+  return { configName, note, fromDb }
 }
 
 function loadBenchmarkEnv(configName?: string): { loadedPath?: string; configName?: string } {
@@ -158,15 +165,49 @@ async function runBenchmarkSample(): Promise<void> {
   let useNativeToolCalls =
     process.env['USE_NATIVE_TOOL_CALLS'] === '1' || process.env['USE_NATIVE_TOOL_CALLS'] === 'true'
 
+  let fromDb = cliOptions.fromDb ?? process.env['FROM_DB'] ?? process.env['SOURCE_DB']
+  let sourceDbDir: string | undefined = undefined
+
   // 目录结构：每一次测试独立放在一个时间戳目录下（先日期），里面包含 db/ 文件夹及评测 JSON 结果
   let outputDir = path.resolve(__dirname, 'output')
+
+  if (fromDb !== undefined && fromDb.trim() !== '') {
+    let rawPath = fromDb.trim()
+    let candidates = [
+      rawPath,
+      path.resolve(outputDir, rawPath),
+      path.resolve(outputDir, rawPath, 'db'),
+      path.resolve(__dirname, rawPath),
+    ]
+    for (let c of candidates) {
+      if (fs.existsSync(c) === true) {
+        if (fs.existsSync(path.join(c, 'db')) === true && fs.statSync(path.join(c, 'db')).isDirectory() === true) {
+          sourceDbDir = path.join(c, 'db')
+          break
+        }
+        if (fs.statSync(c).isDirectory() === true) {
+          sourceDbDir = c
+          break
+        }
+      }
+    }
+    if (sourceDbDir === undefined) {
+      throw new Error(`找不到指定的预置数据库目录: ${rawPath}`)
+    }
+  }
+
   let runDirName = `${timestamp}-sample-${String(sampleIndex)}`
   let runDir = path.join(outputDir, runDirName)
   if (fs.existsSync(runDir) === false) {
     fs.mkdirSync(runDir, { recursive: true })
   }
   let storageDir = path.join(runDir, 'db')
-  if (fs.existsSync(storageDir) === false) {
+  if (sourceDbDir !== undefined) {
+    console.log(`[复用] 安全深拷贝已有记忆库 (绝不污染原数据库):`)
+    console.log(`       源目录: ${sourceDbDir}`)
+    console.log(`       新目录: ${storageDir}`)
+    fs.cpSync(sourceDbDir, storageDir, { recursive: true })
+  } else if (fs.existsSync(storageDir) === false) {
     fs.mkdirSync(storageDir, { recursive: true })
   }
 
@@ -183,6 +224,9 @@ async function runBenchmarkSample(): Promise<void> {
   console.log(`[配置] 被测模型: ${targetModel} @ ${targetBaseURL}`)
   console.log(`[配置] 函数调用模式: ${useNativeToolCalls ? '原生 tools' : '框架自解析 (规避本地 PEG 500)'}`)
   console.log(`[配置] 数据库存储: 本次独立持久化目录 (${storageDir})`)
+  if (sourceDbDir !== undefined) {
+    console.log(`[配置] 预置数据库: 来源 ${sourceDbDir}`)
+  }
   console.log(`[配置] 一级记忆容量: ${String(firstLevelCapacity)}`)
   console.log(`[配置] 裁判模型: ${judgeModel} @ ${judgeBaseURL}`)
   console.log(
@@ -216,13 +260,18 @@ async function runBenchmarkSample(): Promise<void> {
   await runner.init()
 
   // 4. 阶段一：记忆摄取
-  console.log('\n--- 阶段一：多轮长程对话输入，AI 自主构建记忆 ---')
   let ingestStartMs = Date.now()
-  await runner.ingestSessions(sessionsToRun, (cur, total) => {
-    process.stdout.write(`\r  正在灌入 Session: [${String(cur)}/${String(total)}]...`)
-  })
-  let ingestTimeMs = Date.now() - ingestStartMs
-  console.log(`\n✅ 记忆沉淀完成！耗时: ${formatDuration(ingestTimeMs)}`)
+  let ingestTimeMs = 0
+  if (sourceDbDir !== undefined) {
+    console.log('\n--- 阶段一：跳过多轮对话灌入（已复用预置数据库构建的独立副本）---')
+  } else {
+    console.log('\n--- 阶段一：多轮长程对话输入，AI 自主构建记忆 ---')
+    await runner.ingestSessions(sessionsToRun, (cur, total) => {
+      process.stdout.write(`\r  正在灌入 Session: [${String(cur)}/${String(total)}]...`)
+    })
+    ingestTimeMs = Date.now() - ingestStartMs
+    console.log(`\n✅ 记忆沉淀完成！耗时: ${formatDuration(ingestTimeMs)}`)
+  }
 
   // 5. 阶段二：QA 问答考评
   console.log('\n--- 阶段二：QA 记忆回捞与作答考评 ---')
@@ -273,6 +322,9 @@ async function runBenchmarkSample(): Promise<void> {
   summary.audit = auditStats
   summary.configName = configName
   summary.note = note
+  if (sourceDbDir !== undefined) {
+    summary.fromDb = sourceDbDir
+  }
 
   let evaluationFile = path.join(runDir, 'evaluation.json')
   fs.writeFileSync(evaluationFile, JSON.stringify({ summary, evaluations }, null, 2), 'utf-8')
@@ -284,6 +336,9 @@ async function runBenchmarkSample(): Promise<void> {
   console.log('=====================================================')
   if (configName !== undefined) {
     console.log(`使用配置: ${configName}`)
+  }
+  if (sourceDbDir !== undefined) {
+    console.log(`复用数据库: ${sourceDbDir}`)
   }
   if (note !== undefined && note !== '') {
     console.log(`本次备注: ${note}`)

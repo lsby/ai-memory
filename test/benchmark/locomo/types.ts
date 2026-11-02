@@ -71,6 +71,7 @@ export interface LocomoAuditStats {
 export interface LocomoBenchmarkSummary {
   configName?: string | undefined
   note?: string | undefined
+  fromDb?: string | undefined
   totalQuestions: number
   correctCount: number
   accuracy: number

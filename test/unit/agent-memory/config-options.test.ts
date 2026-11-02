@@ -480,4 +480,16 @@ describe('P5 遗忘豁免', () => {
     expect(await 内容(默认)).toHaveLength(5)
     expect(await 内容(默认)).not.toContain('最老的')
   })
+
+  it('只读模式: 过滤写工具，只保留只读工具，且底层禁止任何记忆修改', async (): Promise<void> => {
+    let 实例 = 创建记忆实例({ 只读模式: true })
+    let { 假 } = await 跑一轮(实例)
+    let 工具名 = 取工具名列表(假.请求列表[0])
+    expect(工具名).toContain(记忆工具名.回忆延伸)
+    expect(工具名).not.toContain(记忆工具名.添加一级记忆)
+    expect(工具名).not.toContain(记忆工具名.修改一级记忆)
+    expect(工具名).not.toContain(记忆工具名.移除一级记忆)
+
+    await expect(实例.批量注入记忆([二级记忆('测试', 10)])).rejects.toThrow('智能体当前处于只读模式')
+  })
 })
