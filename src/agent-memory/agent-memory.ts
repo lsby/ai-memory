@@ -365,6 +365,8 @@ export class 带记忆的智能体 extends 持久化会话智能体 {
     种子关键词?: string[]
     回调?: (事件: 智能体事件) => Promise<void>
     事件组id?: string
+    是否支持函数调用?: boolean | undefined
+    温度?: number | undefined
   }): Promise<void> {
     await this.确保已初始化()
     await 外部执行记忆重组(
@@ -386,6 +388,8 @@ export class 带记忆的智能体 extends 持久化会话智能体 {
     openai客户端?: OpenAI
     模型名称?: string
     事件组id?: string
+    是否支持函数调用?: boolean | undefined
+    温度?: number | undefined
   }): Promise<void> {
     await this.确保已初始化()
     let 上下文 = 外部构建操作上下文(this.上下文依赖, this.数据库查询器, 选项?.回调, undefined, 选项?.事件组id)
@@ -454,21 +458,13 @@ export class 带记忆的智能体 extends 持久化会话智能体 {
   }
 
   public async 私有反思<T extends z.ZodType>(选项: 带记忆的对话选项<T>): Promise<回合结果<T>> {
-    let 新选项 = {
-      ...选项,
-      标题: '私有反思',
-      命令: this.模型语言包.私有反思(选项.命令),
-    }
+    let 新选项 = { ...选项, 标题: '私有反思', 命令: this.模型语言包.私有反思(选项.命令) }
     return await this.执行不追加历史的对话(新选项)
   }
 
   /** 将反思过程作为一轮正常对话写入会话历史。 */
   public async 会话反思<T extends z.ZodType>(选项: 带记忆的对话选项<T>): Promise<回合结果<T>> {
-    let 新选项 = {
-      ...选项,
-      标题: '会话反思',
-      命令: this.模型语言包.会话反思(选项.命令),
-    }
+    let 新选项 = { ...选项, 标题: '会话反思', 命令: this.模型语言包.会话反思(选项.命令) }
     return await this.对话(新选项)
   }
 
@@ -505,13 +501,7 @@ export class 带记忆的智能体 extends 持久化会话智能体 {
   }
 
   public async 整理布局(事件组id?: string): Promise<void> {
-    await this.执行无向量记忆变更任务(
-      '整理布局',
-      async (trx) => {
-        await 外部全局排版(trx)
-      },
-      事件组id,
-    )
+    await this.执行无向量记忆变更任务('整理布局', async (trx) => await 外部全局排版(trx), 事件组id)
   }
 
   public async 注册动态工具(

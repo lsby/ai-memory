@@ -16,6 +16,8 @@ export async function 执行记忆重组(
     种子关键词?: string[]
     回调?: (事件: 智能体事件) => Promise<void>
     模型语言包: 模型语言包
+    是否支持函数调用?: boolean | undefined
+    温度?: number | undefined
   },
 ): Promise<void> {
   let 随机词: string[] = []
@@ -55,6 +57,8 @@ export async function 执行记忆重组(
     预期结果描述: 选项.模型语言包.记忆重组结果描述(),
     openai客户端: 选项.openai客户端,
     模型名称: 选项.模型名称,
+    ...(选项.是否支持函数调用 !== undefined ? { 是否支持函数调用: 选项.是否支持函数调用 } : {}),
+    ...(选项.温度 !== undefined ? { 温度: 选项.温度 } : {}),
     回调: async (事件: 智能体事件): Promise<void> => {
       if (事件.类型 === '流程信息' && 选项.回调 !== undefined) {
         await 选项.回调({ 类型: '流程信息', 内容: `[重组中] ${事件.内容}` })
@@ -89,7 +93,14 @@ export async function 执行记忆重组(
 export async function 定时任务入口(
   上下文: 记忆操作上下文,
   解决问题: <T extends z.ZodType>(选项: 带记忆的解决问题选项<T>) => Promise<unknown>,
-  选项?: { 当前时间?: Date; 回调?: (事件: 智能体事件) => Promise<void>; openai客户端?: OpenAI; 模型名称?: string },
+  选项?: {
+    当前时间?: Date
+    回调?: (事件: 智能体事件) => Promise<void>
+    openai客户端?: OpenAI
+    模型名称?: string
+    是否支持函数调用?: boolean | undefined
+    温度?: number | undefined
+  },
 ): Promise<void> {
   let 当前时间 = 选项?.当前时间 ?? new Date()
 
@@ -112,6 +123,8 @@ export async function 定时任务入口(
       模型语言包: 上下文.配置.模型语言包,
       当前时间: 当前时间,
       ...(选项.回调 !== undefined ? { 回调: 选项.回调 } : {}),
+      ...(选项.是否支持函数调用 !== undefined ? { 是否支持函数调用: 选项.是否支持函数调用 } : {}),
+      ...(选项.温度 !== undefined ? { 温度: 选项.温度 } : {}),
     })
   }
 

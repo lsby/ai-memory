@@ -51,6 +51,7 @@ export interface LocomoEvaluationResult {
 
 export interface LocomoBenchmarkTiming {
   ingestTimeMs: number
+  reorganizeTimeMs?: number | undefined
   answerTimeMs: number
   judgeTimeMs: number
   totalTimeMs: number
@@ -72,6 +73,7 @@ export interface LocomoBenchmarkSummary {
   configName?: string | undefined
   note?: string | undefined
   fromDb?: string | undefined
+  reorganizeRounds?: number | undefined
   totalQuestions: number
   correctCount: number
   accuracy: number

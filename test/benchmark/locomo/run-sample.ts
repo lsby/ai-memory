@@ -1,3 +1,4 @@
+import childProcess from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -35,12 +36,14 @@ interface CliOptions {
   configName?: string | undefined
   note?: string | undefined
   fromDb?: string | undefined
+  reorganizeRounds?: number | undefined
 }
 
 function parseCliOptions(): CliOptions {
   let configName = process.env['CONFIG'] ?? process.env['ENV_CONFIG']
   let note = process.env['NOTE'] ?? process.env['RUN_NOTE'] ?? process.env['COMMENT']
   let fromDb = process.env['FROM_DB'] ?? process.env['SOURCE_DB']
+  let reorganizeRounds = process.env['REORGANIZE'] !== undefined ? Number(process.env['REORGANIZE']) : undefined
 
   let args = process.argv.slice(2)
   for (let i = 0; i < args.length; i++) {
@@ -65,13 +68,25 @@ function parseCliOptions(): CliOptions {
     } else if ((arg === '--from-db' || arg === '--db') && args[i + 1] !== undefined) {
       fromDb = args[i + 1]?.trim()
       i++
+    } else if (arg.startsWith('--reorganize=')) {
+      reorganizeRounds = Number(arg.slice('--reorganize='.length).trim())
+    } else if (arg === '--reorganize' || arg === '--dream') {
+      let nextArg = args[i + 1]
+      if (nextArg !== undefined && /^\d+$/.test(nextArg) === true) {
+        reorganizeRounds = Number(nextArg.trim())
+        i++
+      } else {
+        reorganizeRounds = 10
+      }
+    } else if (arg.startsWith('--reorganize-rounds=')) {
+      reorganizeRounds = Number(arg.slice('--reorganize-rounds='.length).trim())
     } else if (arg.startsWith('-') === false && arg.includes('=') === false && configName === undefined) {
       // 首个非选项裸参数视为配置名称，例如 `npx tsx run-sample.ts deepseek`
       configName = arg.trim()
     }
   }
 
-  return { configName, note, fromDb }
+  return { configName, note, fromDb, reorganizeRounds }
 }
 
 function loadBenchmarkEnv(configName?: string): { loadedPath?: string; configName?: string } {
@@ -144,8 +159,12 @@ async function runBenchmarkSample(): Promise<void> {
   }
 
   let note = cliOptions.note ?? process.env['NOTE']
+  let reorganizeRounds = cliOptions.reorganizeRounds
   if (note !== undefined && note !== '') {
     console.log(`[备注] 本次运行说明: ${note}`)
+  }
+  if (reorganizeRounds !== undefined && reorganizeRounds > 0) {
+    console.log(`[重组] 潜意识梦境重组轮数: ${String(reorganizeRounds)} 轮`)
   }
 
   let targetBaseURL = process.env['AI_BASE_URL'] ?? 'http://localhost:11434/v1'
@@ -200,6 +219,14 @@ async function runBenchmarkSample(): Promise<void> {
   let runDir = path.join(outputDir, runDirName)
   if (fs.existsSync(runDir) === false) {
     fs.mkdirSync(runDir, { recursive: true })
+  }
+
+  // 记录代码 commit 哈希至 commit.txt
+  try {
+    let commitHash = childProcess.execSync('git rev-parse HEAD', { encoding: 'utf-8' }).trim()
+    fs.writeFileSync(path.join(runDir, 'commit.txt'), commitHash, 'utf-8')
+  } catch {
+    // 忽略异常
   }
   let storageDir = path.join(runDir, 'db')
   if (sourceDbDir !== undefined) {
@@ -273,6 +300,18 @@ async function runBenchmarkSample(): Promise<void> {
     console.log(`\n✅ 记忆沉淀完成！耗时: ${formatDuration(ingestTimeMs)}`)
   }
 
+  // 阶段 1.5：记忆重组与梦境巩固 (Memory Consolidation)
+  let reorganizeTimeMs = 0
+  if (reorganizeRounds !== undefined && reorganizeRounds > 0) {
+    console.log(`\n--- 阶段 1.5：启动潜意识记忆重组与梦境巩固（共 ${String(reorganizeRounds)} 轮）---`)
+    let reorgStartMs = Date.now()
+    await runner.reorganizeMemories(reorganizeRounds, (cur, total) => {
+      process.stdout.write(`\r  正在重组潜意识网络 (第 [${String(cur)}/${String(total)}] 场梦)...`)
+    })
+    reorganizeTimeMs = Date.now() - reorgStartMs
+    console.log(`\n✅ 潜意识记忆重组完成！耗时: ${formatDuration(reorganizeTimeMs)}`)
+  }
+
   // 5. 阶段二：QA 问答考评
   console.log('\n--- 阶段二：QA 记忆回捞与作答考评 ---')
   let answerStartMs = Date.now()
@@ -312,6 +351,7 @@ async function runBenchmarkSample(): Promise<void> {
   let totalTimeMs = Date.now() - overallStartMs
   let timing: LocomoBenchmarkTiming = {
     ingestTimeMs,
+    ...(reorganizeTimeMs > 0 ? { reorganizeTimeMs } : {}),
     answerTimeMs,
     judgeTimeMs,
     totalTimeMs,
@@ -324,6 +364,9 @@ async function runBenchmarkSample(): Promise<void> {
   summary.note = note
   if (sourceDbDir !== undefined) {
     summary.fromDb = sourceDbDir
+  }
+  if (reorganizeRounds !== undefined && reorganizeRounds > 0) {
+    summary.reorganizeRounds = reorganizeRounds
   }
 
   let evaluationFile = path.join(runDir, 'evaluation.json')
@@ -342,6 +385,9 @@ async function runBenchmarkSample(): Promise<void> {
   }
   if (note !== undefined && note !== '') {
     console.log(`本次备注: ${note}`)
+  }
+  if (reorganizeRounds !== undefined && reorganizeRounds > 0) {
+    console.log(`潜意识重组: 开启 (${String(reorganizeRounds)} 轮梦境重组)`)
   }
   console.log(`总题目数: ${String(summary.totalQuestions)}`)
   console.log(`正确数: ${String(summary.correctCount)}`)
@@ -364,6 +410,11 @@ async function runBenchmarkSample(): Promise<void> {
   console.log(
     `  - 记忆摄取耗时: ${formatDuration(timing.ingestTimeMs)} (平均每会话: ${formatDuration(timing.avgSessionTimeMs)})`,
   )
+  if (reorganizeTimeMs > 0) {
+    console.log(
+      `  - 记忆重组耗时: ${formatDuration(reorganizeTimeMs)} (平均每轮: ${formatDuration(Math.round(reorganizeTimeMs / (reorganizeRounds ?? 1)))})`,
+    )
+  }
   console.log(
     `  - QA 作答耗时  : ${formatDuration(timing.answerTimeMs)} (平均每题: ${formatDuration(timing.avgQATimeMs)})`,
   )

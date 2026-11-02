@@ -126,6 +126,26 @@ export class LocomoRunner {
   }
 
   /**
+   * 阶段 1.5：记忆重组与潜意识梦境巩固 (Memory Consolidation)
+   */
+  public async reorganizeMemories(
+    rounds: number,
+    onProgress?: (current: number, total: number) => void,
+  ): Promise<void> {
+    for (let i = 1; i <= rounds; i++) {
+      if (onProgress !== undefined) {
+        onProgress(i, rounds)
+      }
+      await this.agent.执行记忆重组({
+        openai客户端: this.openaiClient,
+        模型名称: this.modelName,
+        回调: this.handleEvent,
+        是否支持函数调用: this.useNativeToolCalls,
+      })
+    }
+  }
+
+  /**
    * 阶段二：通用 QA 记忆回捞与作答（强化绝对时间换算与列举项穷尽聚合）
    */
   public async answerQuestions(
