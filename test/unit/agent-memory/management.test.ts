@@ -46,6 +46,10 @@ describe('记忆应用管理接口', () => {
     expect((await 智能体实例.查询记忆({ 偏移: 1, 数量: 1 })).map((记忆) => 记忆.id)).toEqual([第二条.id])
     let [起点id, 终点id] = 第一条.id < 第二条.id ? [第一条.id, 第二条.id] : [第二条.id, 第一条.id]
     expect(await 智能体实例.查询记忆关联(第一条.id)).toEqual([{ 起点id, 终点id, 关联度: 1 }])
+    let 关联变更 = (await 智能体实例.查询记忆提交())
+      .flatMap((提交) => 提交.变更列表)
+      .find((变更) => 变更.目标类型 === 'link')
+    expect(关联变更).toMatchObject({ 关联起点id: 起点id, 关联终点id: 终点id, 记忆id: null, 动态工具id: null })
 
     let 更新后 = await 智能体实例.更新记忆(第一条.id, { 内容: '更新后的苹果记忆', 标签: ['已更新'], 评分: 88 })
     expect(更新后).toMatchObject({ 内容: '更新后的苹果记忆', 标签: ['已更新'], 评分: 88 })
@@ -132,7 +136,7 @@ describe('记忆应用管理接口', () => {
 
     let 更新提交 = (await 智能体实例.查询记忆提交()).find((提交) => 提交.消息 === '更新记忆')
     expect(更新提交?.变更列表).toHaveLength(1)
-    expect(更新提交?.变更列表[0]).toMatchObject({ 操作类型: 'update', 目标表: 'node', 目标id: 记忆.id })
+    expect(更新提交?.变更列表[0]).toMatchObject({ 操作类型: 'update', 目标类型: 'node', 记忆id: 记忆.id })
     expect(更新提交?.变更列表[0]?.旧值).toContain('回退前内容')
     expect(更新提交?.变更列表[0]?.新值).toContain('回退后内容')
     let 回退前提交数 = (await 智能体实例.查询记忆提交()).length
@@ -157,7 +161,7 @@ describe('记忆应用管理接口', () => {
 
     let 注册提交 = (await 智能体实例.查询记忆提交()).find((提交) => 提交.消息 === '编程接入: 注册动态工具')
     expect(注册提交?.变更列表).toHaveLength(1)
-    expect(注册提交?.变更列表[0]).toMatchObject({ 操作类型: 'add', 目标表: 'tool' })
+    expect(注册提交?.变更列表[0]).toMatchObject({ 操作类型: 'add', 目标类型: 'tool' })
 
     expect(await 智能体实例.回退最近记忆提交()).toBe(true)
     expect(await 智能体实例.查询动态工具()).toEqual([])

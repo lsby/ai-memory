@@ -26,8 +26,8 @@ export async function 查询记忆新增相关消息(
   let 变更列表 = await 数据库查询器
     .selectFrom('记忆变更表')
     .select(['提交id'])
-    .where('目标表', '=', 'node')
-    .where('目标id', '=', 记忆id)
+    .where('目标类型', '=', 'node')
+    .where('记忆id', '=', 记忆id)
     .where('操作类型', '=', 'add')
     .execute()
   let 结果: 记忆相关消息[] = []

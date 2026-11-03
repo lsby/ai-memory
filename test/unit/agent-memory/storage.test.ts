@@ -144,4 +144,41 @@ describe('文件存储生命周期', () => {
       await 数据库查询器.destroy()
     }
   })
+
+  it('组合外键保证消息、HEAD 和前驱消息的会话归属', async (): Promise<void> => {
+    let pglite = new PGlite({ extensions: { vector } })
+    let 数据库查询器 = new Kysely<记忆数据库>({ dialect: new PGliteDialect({ pglite }) })
+    try {
+      await 初始化数据库(数据库查询器)
+      await pglite.exec(`
+        INSERT INTO 会话表 (id, 标题, 创建时间, 更新时间) VALUES
+          ('session-a', 'A', now(), now()),
+          ('session-b', 'B', now(), now());
+        INSERT INTO 消息表 (id, 会话id, 父消息id, 角色, 载荷, 创建时间) VALUES
+          ('message-a', 'session-a', NULL, 'user', '{"role":"user","content":"A"}', now()),
+          ('message-b', 'session-b', NULL, 'user', '{"role":"user","content":"B"}', now());
+      `)
+
+      await pglite.query(`UPDATE 会话表 SET 当前消息id = 'message-a' WHERE id = 'session-a'`)
+      await pglite.query(
+        `INSERT INTO 消息表 (id, 会话id, 父消息id, 角色, 载荷, 创建时间) VALUES ('message-a-2', 'session-a', 'message-a', 'assistant', '{"role":"assistant","content":"A2"}', now())`,
+      )
+      await expect(
+        pglite.query(
+          `INSERT INTO 消息表 (id, 会话id, 父消息id, 角色, 载荷, 创建时间) VALUES ('cross-parent', 'session-a', 'message-b', 'assistant', '{"role":"assistant","content":"x"}', now())`,
+        ),
+      ).rejects.toThrow()
+      await expect(pglite.query(`UPDATE 会话表 SET 当前消息id = 'message-b' WHERE id = 'session-a'`)).rejects.toThrow()
+      await expect(
+        pglite.query(
+          `INSERT INTO 会话表 (id, 标题, 前驱会话id, 前驱消息id, 创建时间, 更新时间) VALUES ('session-c', 'C', 'session-a', 'message-b', now(), now())`,
+        ),
+      ).rejects.toThrow()
+      await expect(
+        pglite.query(`UPDATE _agent_session_commit SET commit_id = 'missing-commit' WHERE id = 1`),
+      ).rejects.toThrow()
+    } finally {
+      await 数据库查询器.destroy()
+    }
+  })
 })

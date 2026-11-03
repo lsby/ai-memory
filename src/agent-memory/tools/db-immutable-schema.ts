@@ -25,6 +25,12 @@ export async function 初始化不可变约束(数据库查询器: Kysely<记忆
   await 执行(
     `ALTER TABLE ${名('记忆提交表')} ADD CONSTRAINT 记忆提交表_父提交id_fkey FOREIGN KEY (父提交id) REFERENCES ${名('记忆提交表')}(id) ON DELETE RESTRICT;`,
   )
+  await 执行(
+    `ALTER TABLE ${名('_agent_session_commit')} DROP CONSTRAINT IF EXISTS _agent_session_commit_commit_id_fkey;`,
+  )
+  await 执行(
+    `ALTER TABLE ${名('_agent_session_commit')} ADD CONSTRAINT _agent_session_commit_commit_id_fkey FOREIGN KEY (commit_id) REFERENCES ${名('记忆提交表')}(id) ON DELETE RESTRICT;`,
+  )
   await 执行(`ALTER TABLE ${名('记忆提交表')} DROP CONSTRAINT IF EXISTS 记忆提交表_禁止自引用_check;`)
   await 执行(
     `ALTER TABLE ${名('记忆提交表')} ADD CONSTRAINT 记忆提交表_禁止自引用_check CHECK (父提交id IS NULL OR 父提交id <> id);`,
@@ -37,10 +43,18 @@ export async function 初始化不可变约束(数据库查询器: Kysely<记忆
   await 执行(
     `ALTER TABLE ${名('记忆变更表')} ADD CONSTRAINT 记忆变更表_操作类型_check CHECK (操作类型 IN ('add', 'update', 'delete', 'init'));`,
   )
-  await 执行(`ALTER TABLE ${名('记忆变更表')} DROP CONSTRAINT IF EXISTS 记忆变更表_目标表_check;`)
+  await 执行(`ALTER TABLE ${名('记忆变更表')} DROP CONSTRAINT IF EXISTS 记忆变更表_目标类型_check;`)
   await 执行(
-    `ALTER TABLE ${名('记忆变更表')} ADD CONSTRAINT 记忆变更表_目标表_check CHECK (目标表 IN ('node', 'link', 'tool'));`,
+    `ALTER TABLE ${名('记忆变更表')} ADD CONSTRAINT 记忆变更表_目标类型_check CHECK (目标类型 IN ('node', 'link', 'tool'));`,
   )
+  await 执行(`ALTER TABLE ${名('记忆变更表')} DROP CONSTRAINT IF EXISTS 记忆变更表_目标形状_check;`)
+  await 执行(`
+    ALTER TABLE ${名('记忆变更表')} ADD CONSTRAINT 记忆变更表_目标形状_check CHECK (
+      (目标类型 = 'node' AND 记忆id IS NOT NULL AND 关联起点id IS NULL AND 关联终点id IS NULL AND 动态工具id IS NULL)
+      OR (目标类型 = 'link' AND 记忆id IS NULL AND 关联起点id IS NOT NULL AND 关联终点id IS NOT NULL AND 动态工具id IS NULL)
+      OR (目标类型 = 'tool' AND 记忆id IS NULL AND 关联起点id IS NULL AND 关联终点id IS NULL AND 动态工具id IS NOT NULL)
+    );
+  `)
   await 执行(`ALTER TABLE ${名('记忆变更表')} DROP CONSTRAINT IF EXISTS 记忆变更表_值形状_check;`)
   await 执行(`
     ALTER TABLE ${名('记忆变更表')} ADD CONSTRAINT 记忆变更表_值形状_check CHECK (
@@ -92,38 +106,33 @@ export async function 初始化不可变约束(数据库查询器: Kysely<记忆
     END;
     $$ LANGUAGE plpgsql;
   `)
-  await 执行(`
-    CREATE OR REPLACE FUNCTION ${名('校验消息归属_触发器')}()
-    RETURNS TRIGGER AS $$
-    DECLARE
-      v_parent_session TEXT;
-    BEGIN
-      IF NEW.父消息id IS NOT NULL THEN
-        SELECT 会话id INTO v_parent_session FROM ${名('消息表')} WHERE id = NEW.父消息id;
-        IF v_parent_session IS NULL OR v_parent_session <> NEW.会话id THEN
-          RAISE EXCEPTION '父消息必须属于同一会话';
-        END IF;
-      END IF;
-      RETURN NEW;
-    END;
-    $$ LANGUAGE plpgsql;
-  `)
   await 执行(`DROP TRIGGER IF EXISTS trg_校验消息归属 ON ${名('消息表')};`)
-  await 执行(`
-    CREATE TRIGGER trg_校验消息归属 BEFORE INSERT ON ${名('消息表')}
-    FOR EACH ROW EXECUTE FUNCTION ${名('校验消息归属_触发器')}();
-  `)
+  await 执行(`DROP FUNCTION IF EXISTS ${名('校验消息归属_触发器')}();`)
   await 执行(`DROP TRIGGER IF EXISTS trg_拒绝消息修改 ON ${名('消息表')};`)
   await 执行(`
     CREATE TRIGGER trg_拒绝消息修改 BEFORE UPDATE OR DELETE ON ${名('消息表')}
     FOR EACH ROW EXECUTE FUNCTION ${名('拒绝消息修改_触发器')}();
   `)
 
+  await 执行(`ALTER TABLE ${名('消息表')} DROP CONSTRAINT IF EXISTS 消息表_父消息id_fkey;`)
+  await 执行(`ALTER TABLE ${名('消息表')} DROP CONSTRAINT IF EXISTS 消息表_父消息归属_fkey;`)
+  await 执行(
+    `ALTER TABLE ${名('消息表')} ADD CONSTRAINT 消息表_父消息归属_fkey FOREIGN KEY (会话id, 父消息id) REFERENCES ${名('消息表')}(会话id, id) ON DELETE RESTRICT;`,
+  )
+  await 执行(`ALTER TABLE ${名('会话表')} DROP CONSTRAINT IF EXISTS 会话表_当前消息id_fkey;`)
+  await 执行(`ALTER TABLE ${名('会话表')} DROP CONSTRAINT IF EXISTS 会话表_当前消息归属_fkey;`)
+  await 执行(
+    `ALTER TABLE ${名('会话表')} ADD CONSTRAINT 会话表_当前消息归属_fkey FOREIGN KEY (id, 当前消息id) REFERENCES ${名('消息表')}(会话id, id) ON DELETE RESTRICT;`,
+  )
+  await 执行(`ALTER TABLE ${名('会话表')} DROP CONSTRAINT IF EXISTS 会话表_前驱消息id_fkey;`)
+  await 执行(`ALTER TABLE ${名('会话表')} DROP CONSTRAINT IF EXISTS 会话表_前驱消息归属_fkey;`)
+  await 执行(
+    `ALTER TABLE ${名('会话表')} ADD CONSTRAINT 会话表_前驱消息归属_fkey FOREIGN KEY (前驱会话id, 前驱消息id) REFERENCES ${名('消息表')}(会话id, id) ON DELETE RESTRICT;`,
+  )
+
   await 执行(`
     CREATE OR REPLACE FUNCTION ${名('限制会话修改_触发器')}()
     RETURNS TRIGGER AS $$
-    DECLARE
-      v_message_session TEXT;
     BEGIN
       IF current_setting('lsby_ai_memory.导入中', true) = 'true' THEN
         RETURN NEW;
@@ -137,37 +146,12 @@ export async function 初始化不可变约束(数据库查询器: Kysely<记忆
         OR OLD.创建时间 IS DISTINCT FROM NEW.创建时间 THEN
         RAISE EXCEPTION '会话身份、前驱和创建时间不可修改';
       END IF;
-      IF NEW.当前消息id IS NOT NULL THEN
-        SELECT 会话id INTO v_message_session FROM ${名('消息表')} WHERE id = NEW.当前消息id;
-        IF v_message_session IS NULL OR v_message_session <> NEW.id THEN
-          RAISE EXCEPTION '当前消息必须属于当前会话';
-        END IF;
-      END IF;
-      RETURN NEW;
-    END;
-    $$ LANGUAGE plpgsql;
-  `)
-  await 执行(`
-    CREATE OR REPLACE FUNCTION ${名('校验会话前驱_触发器')}()
-    RETURNS TRIGGER AS $$
-    DECLARE
-      v_message_session TEXT;
-    BEGIN
-      IF NEW.前驱消息id IS NOT NULL THEN
-        SELECT 会话id INTO v_message_session FROM ${名('消息表')} WHERE id = NEW.前驱消息id;
-        IF v_message_session IS NULL OR v_message_session <> NEW.前驱会话id THEN
-          RAISE EXCEPTION '前驱消息必须属于前驱会话';
-        END IF;
-      END IF;
       RETURN NEW;
     END;
     $$ LANGUAGE plpgsql;
   `)
   await 执行(`DROP TRIGGER IF EXISTS trg_校验会话前驱 ON ${名('会话表')};`)
-  await 执行(`
-    CREATE TRIGGER trg_校验会话前驱 BEFORE INSERT ON ${名('会话表')}
-    FOR EACH ROW EXECUTE FUNCTION ${名('校验会话前驱_触发器')}();
-  `)
+  await 执行(`DROP FUNCTION IF EXISTS ${名('校验会话前驱_触发器')}();`)
   await 执行(`DROP TRIGGER IF EXISTS trg_限制会话修改 ON ${名('会话表')};`)
   await 执行(`
     CREATE TRIGGER trg_限制会话修改 BEFORE UPDATE OR DELETE ON ${名('会话表')}

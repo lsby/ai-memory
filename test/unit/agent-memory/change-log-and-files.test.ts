@@ -79,7 +79,13 @@ describe('变更记录', { timeout: 90000 }, () => {
       ).rejects.toThrow()
       await expect(
         pglite.query(
-          `INSERT INTO 记忆变更表 (id, 提交id, 操作类型, 目标表, 目标id, 旧值, 新值) VALUES ('invalid-change', $1, 'update', 'node', $2, NULL, NULL)`,
+          `INSERT INTO 记忆变更表 (id, 提交id, 操作类型, 目标类型, 记忆id, 旧值, 新值) VALUES ('invalid-change', $1, 'update', 'node', $2, NULL, NULL)`,
+          [提交.id, 记忆.id],
+        ),
+      ).rejects.toThrow()
+      await expect(
+        pglite.query(
+          `INSERT INTO 记忆变更表 (id, 提交id, 操作类型, 目标类型, 记忆id, 动态工具id, 旧值, 新值) VALUES ('mixed-target', $1, 'add', 'node', $2, 'tool-id', NULL, '{}')`,
           [提交.id, 记忆.id],
         ),
       ).rejects.toThrow()

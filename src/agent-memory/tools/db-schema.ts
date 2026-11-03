@@ -93,8 +93,11 @@ async function 在事务中初始化数据库(数据库查询器: Kysely<记忆�
             序号 BIGSERIAL,
             提交id TEXT NOT NULL REFERENCES ${名('记忆提交表')}(id) ON DELETE CASCADE,
             操作类型 TEXT NOT NULL,
-            目标表 TEXT NOT NULL,
-            目标id TEXT NOT NULL,
+            目标类型 TEXT NOT NULL,
+            记忆id TEXT,
+            关联起点id TEXT,
+            关联终点id TEXT,
+            动态工具id TEXT,
             旧值 TEXT,
             新值 TEXT
           )
@@ -152,25 +155,12 @@ async function 在事务中初始化数据库(数据库查询器: Kysely<记忆�
             id TEXT PRIMARY KEY,
             序号 BIGSERIAL,
             会话id TEXT NOT NULL REFERENCES ${名('会话表')}(id) ON DELETE RESTRICT,
-            父消息id TEXT REFERENCES ${名('消息表')}(id) ON DELETE RESTRICT,
+            父消息id TEXT,
             角色 TEXT NOT NULL CHECK (角色 IN ('system', 'developer', 'user', 'assistant', 'tool', 'function')),
             载荷 JSONB NOT NULL,
             创建时间 TIMESTAMPTZ NOT NULL
           )
         `)
-
-  await 执行(`
-    DO $$ BEGIN
-      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = '会话表_当前消息id_fkey' AND conrelid = '会话表'::regclass) THEN
-        ALTER TABLE ${名('会话表')} ADD CONSTRAINT 会话表_当前消息id_fkey
-          FOREIGN KEY (当前消息id) REFERENCES ${名('消息表')}(id) ON DELETE RESTRICT;
-      END IF;
-      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = '会话表_前驱消息id_fkey' AND conrelid = '会话表'::regclass) THEN
-        ALTER TABLE ${名('会话表')} ADD CONSTRAINT 会话表_前驱消息id_fkey
-          FOREIGN KEY (前驱消息id) REFERENCES ${名('消息表')}(id) ON DELETE RESTRICT;
-      END IF;
-    END $$;
-  `)
 
   await 执行(`
           CREATE TABLE IF NOT EXISTS ${名('前缀快照表')} (
@@ -258,6 +248,7 @@ async function 在事务中初始化数据库(数据库查询器: Kysely<记忆�
   await 执行(`CREATE INDEX IF NOT EXISTS 会话表_前驱会话_idx ON ${名('会话表')} (前驱会话id);`)
   await 执行(`CREATE INDEX IF NOT EXISTS 消息表_会话序号_idx ON ${名('消息表')} (会话id, 序号);`)
   await 执行(`CREATE INDEX IF NOT EXISTS 消息表_父消息_idx ON ${名('消息表')} (父消息id);`)
+  await 执行(`CREATE UNIQUE INDEX IF NOT EXISTS 消息表_会话_id_unique ON ${名('消息表')} (会话id, id);`)
   await 执行(`CREATE INDEX IF NOT EXISTS 交互日志表_上下文消息_idx ON ${名('交互日志表')} (上下文消息id);`)
   await 执行(`CREATE INDEX IF NOT EXISTS 交互日志表_消息_idx ON ${名('交互日志表')} (消息id);`)
   await 执行(`CREATE INDEX IF NOT EXISTS 交互日志表_模型请求_idx ON ${名('交互日志表')} (模型请求id, 序号);`)
@@ -344,7 +335,7 @@ async function 在事务中初始化数据库(数据库查询器: Kysely<记忆�
       v_commit_id TEXT;
       v_restoring BOOLEAN := FALSE;
       v_op_type TEXT;
-      v_target_id TEXT;
+      v_memory_id TEXT;
       v_old_val TEXT := NULL;
       v_new_val TEXT := NULL;
     BEGIN
@@ -362,7 +353,7 @@ async function 在事务中初始化数据库(数据库查询器: Kysely<记忆�
 
       IF TG_OP = 'INSERT' THEN
         v_op_type := 'add';
-        v_target_id := NEW.id;
+        v_memory_id := NEW.id;
         v_new_val := row_to_json(NEW)::TEXT;
       ELSIF TG_OP = 'UPDATE' THEN
         IF OLD.等级 IS NOT DISTINCT FROM NEW.等级
@@ -381,17 +372,17 @@ async function 在事务中初始化数据库(数据库查询器: Kysely<记忆�
           RETURN NULL;
         END IF;
         v_op_type := 'update';
-        v_target_id := NEW.id;
+        v_memory_id := NEW.id;
         v_old_val := row_to_json(OLD)::TEXT;
         v_new_val := row_to_json(NEW)::TEXT;
       ELSIF TG_OP = 'DELETE' THEN
         v_op_type := 'delete';
-        v_target_id := OLD.id;
+        v_memory_id := OLD.id;
         v_old_val := row_to_json(OLD)::TEXT;
       END IF;
 
-      INSERT INTO ${名('记忆变更表')} (id, 提交id, 操作类型, 目标表, 目标id, 旧值, 新值)
-      VALUES (gen_random_uuid()::TEXT, v_commit_id, v_op_type, 'node', v_target_id, v_old_val, v_new_val);
+      INSERT INTO ${名('记忆变更表')} (id, 提交id, 操作类型, 目标类型, 记忆id, 旧值, 新值)
+      VALUES (gen_random_uuid()::TEXT, v_commit_id, v_op_type, 'node', v_memory_id, v_old_val, v_new_val);
 
       RETURN NULL;
     END;
@@ -413,7 +404,8 @@ async function 在事务中初始化数据库(数据库查询器: Kysely<记忆�
       v_commit_id TEXT;
       v_restoring BOOLEAN := FALSE;
       v_op_type TEXT;
-      v_target_id TEXT;
+      v_source_id TEXT;
+      v_end_id TEXT;
       v_old_val TEXT := NULL;
       v_new_val TEXT := NULL;
     BEGIN
@@ -431,24 +423,27 @@ async function 在事务中初始化数据库(数据库查询器: Kysely<记忆�
 
       IF TG_OP = 'INSERT' THEN
         v_op_type := 'add';
-        v_target_id := NEW.起点id || '_' || NEW.终点id;
+        v_source_id := NEW.起点id;
+        v_end_id := NEW.终点id;
         v_new_val := row_to_json(NEW)::TEXT;
       ELSIF TG_OP = 'UPDATE' THEN
         IF OLD.关联度 IS NOT DISTINCT FROM NEW.关联度 THEN
           RETURN NULL;
         END IF;
         v_op_type := 'update';
-        v_target_id := NEW.起点id || '_' || NEW.终点id;
+        v_source_id := NEW.起点id;
+        v_end_id := NEW.终点id;
         v_old_val := row_to_json(OLD)::TEXT;
         v_new_val := row_to_json(NEW)::TEXT;
       ELSIF TG_OP = 'DELETE' THEN
         v_op_type := 'delete';
-        v_target_id := OLD.起点id || '_' || OLD.终点id;
+        v_source_id := OLD.起点id;
+        v_end_id := OLD.终点id;
         v_old_val := row_to_json(OLD)::TEXT;
       END IF;
 
-      INSERT INTO ${名('记忆变更表')} (id, 提交id, 操作类型, 目标表, 目标id, 旧值, 新值)
-      VALUES (gen_random_uuid()::TEXT, v_commit_id, v_op_type, 'link', v_target_id, v_old_val, v_new_val);
+      INSERT INTO ${名('记忆变更表')} (id, 提交id, 操作类型, 目标类型, 关联起点id, 关联终点id, 旧值, 新值)
+      VALUES (gen_random_uuid()::TEXT, v_commit_id, v_op_type, 'link', v_source_id, v_end_id, v_old_val, v_new_val);
 
       RETURN NULL;
     END;
@@ -470,7 +465,7 @@ async function 在事务中初始化数据库(数据库查询器: Kysely<记忆�
       v_commit_id TEXT;
       v_restoring BOOLEAN := FALSE;
       v_op_type TEXT;
-      v_target_id TEXT;
+      v_tool_id TEXT;
       v_old_val TEXT := NULL;
       v_new_val TEXT := NULL;
     BEGIN
@@ -488,7 +483,7 @@ async function 在事务中初始化数据库(数据库查询器: Kysely<记忆�
 
       IF TG_OP = 'INSERT' THEN
         v_op_type := 'add';
-        v_target_id := NEW.id;
+        v_tool_id := NEW.id;
         v_new_val := row_to_json(NEW)::TEXT;
       ELSIF TG_OP = 'UPDATE' THEN
         IF OLD.名称 IS NOT DISTINCT FROM NEW.名称
@@ -500,17 +495,17 @@ async function 在事务中初始化数据库(数据库查询器: Kysely<记忆�
           RETURN NULL;
         END IF;
         v_op_type := 'update';
-        v_target_id := NEW.id;
+        v_tool_id := NEW.id;
         v_old_val := row_to_json(OLD)::TEXT;
         v_new_val := row_to_json(NEW)::TEXT;
       ELSIF TG_OP = 'DELETE' THEN
         v_op_type := 'delete';
-        v_target_id := OLD.id;
+        v_tool_id := OLD.id;
         v_old_val := row_to_json(OLD)::TEXT;
       END IF;
 
-      INSERT INTO ${名('记忆变更表')} (id, 提交id, 操作类型, 目标表, 目标id, 旧值, 新值)
-      VALUES (gen_random_uuid()::TEXT, v_commit_id, v_op_type, 'tool', v_target_id, v_old_val, v_new_val);
+      INSERT INTO ${名('记忆变更表')} (id, 提交id, 操作类型, 目标类型, 动态工具id, 旧值, 新值)
+      VALUES (gen_random_uuid()::TEXT, v_commit_id, v_op_type, 'tool', v_tool_id, v_old_val, v_new_val);
 
       RETURN NULL;
     END;

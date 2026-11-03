@@ -63,20 +63,25 @@ export async function 尝试清理空提交(
 
   if (变更记录.length === 0) {
     await 设置当前提交ID(数据库查询器, 旧HEAD)
+    await sql`UPDATE _agent_session_commit SET commit_id = NULL WHERE id = 1 AND commit_id = ${commitId}`.execute(
+      数据库查询器,
+    )
     await 数据库查询器.deleteFrom('记忆提交表').where('id', '=', commitId).execute()
   }
 }
 
 async function 应用记忆节点变更(数据库查询器: Kysely<记忆数据库>, 变更: 记忆变更表): Promise<void> {
+  if (变更.记忆id === null) throw new Error(`提交变更 ${变更.id} 缺少记忆id，无法重放`)
   switch (变更.操作类型) {
     case 'delete':
-      await 数据库查询器.deleteFrom('记忆表').where('id', '=', 变更.目标id).execute()
+      await 数据库查询器.deleteFrom('记忆表').where('id', '=', 变更.记忆id).execute()
       break
     case 'add':
     case 'init':
     case 'update': {
       if (变更.新值 === null) throw new Error(`提交变更 ${变更.id} 缺少新值，无法重放`)
       let 记忆 = 记忆表Schema.parse(JSON.parse(变更.新值))
+      if (记忆.id !== 变更.记忆id) throw new Error(`提交变更 ${变更.id} 的记忆id与新值不一致`)
       let { id: _id, ...可更新记忆 } = 记忆
       await 数据库查询器
         .insertInto('记忆表')
@@ -89,9 +94,15 @@ async function 应用记忆节点变更(数据库查询器: Kysely<记忆数据�
 }
 
 async function 应用记忆关联变更(数据库查询器: Kysely<记忆数据库>, 变更: 记忆变更表): Promise<void> {
+  if (变更.关联起点id === null || 变更.关联终点id === null) {
+    throw new Error(`提交变更 ${变更.id} 缺少关联端点，无法重放`)
+  }
   let 值 = 变更.新值 ?? 变更.旧值
   if (值 === null) throw new Error(`提交变更 ${变更.id} 缺少关联值，无法重放`)
   let 关联 = 记忆关联表Schema.parse(JSON.parse(值))
+  if (关联.起点id !== 变更.关联起点id || 关联.终点id !== 变更.关联终点id) {
+    throw new Error(`提交变更 ${变更.id} 的关联端点与变更值不一致`)
+  }
   switch (变更.操作类型) {
     case 'delete':
       await 数据库查询器
@@ -113,15 +124,17 @@ async function 应用记忆关联变更(数据库查询器: Kysely<记忆数据�
 }
 
 async function 应用动态工具变更(数据库查询器: Kysely<记忆数据库>, 变更: 记忆变更表): Promise<void> {
+  if (变更.动态工具id === null) throw new Error(`提交变更 ${变更.id} 缺少动态工具id，无法重放`)
   switch (变更.操作类型) {
     case 'delete':
-      await 数据库查询器.deleteFrom('动态工具表').where('id', '=', 变更.目标id).execute()
+      await 数据库查询器.deleteFrom('动态工具表').where('id', '=', 变更.动态工具id).execute()
       break
     case 'add':
     case 'init':
     case 'update': {
       if (变更.新值 === null) throw new Error(`提交变更 ${变更.id} 缺少新值，无法重放`)
       let 工具 = 动态工具表Schema.parse(JSON.parse(变更.新值))
+      if (工具.id !== 变更.动态工具id) throw new Error(`提交变更 ${变更.id} 的动态工具id与新值不一致`)
       let { id: _id, ...可更新工具 } = 工具
       await 数据库查询器
         .insertInto('动态工具表')
@@ -134,7 +147,7 @@ async function 应用动态工具变更(数据库查询器: Kysely<记忆数据�
 }
 
 async function 应用变更(数据库查询器: Kysely<记忆数据库>, 变更: 记忆变更表): Promise<void> {
-  switch (变更.目标表) {
+  switch (变更.目标类型) {
     case 'node':
       await 应用记忆节点变更(数据库查询器, 变更)
       break

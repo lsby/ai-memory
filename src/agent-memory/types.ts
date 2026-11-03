@@ -55,8 +55,11 @@ export let 记忆变更表Schema = z.object({
   序号: z.number().optional(),
   提交id: z.string(),
   操作类型: z.enum(['add', 'update', 'delete', 'init']),
-  目标表: z.enum(['node', 'link', 'tool']),
-  目标id: z.string(),
+  目标类型: z.enum(['node', 'link', 'tool']),
+  记忆id: z.string().nullable(),
+  关联起点id: z.string().nullable(),
+  关联终点id: z.string().nullable(),
+  动态工具id: z.string().nullable(),
   旧值: z.string().nullable(),
   新值: z.string().nullable(),
 })
@@ -416,8 +419,11 @@ export type 公开动态工具 = { id: string; 名称: string; 描述: string; �
 export type 公开记忆变更 = {
   id: string
   操作类型: 'add' | 'update' | 'delete' | 'init'
-  目标表: 'node' | 'link' | 'tool'
-  目标id: string
+  目标类型: 'node' | 'link' | 'tool'
+  记忆id: string | null
+  关联起点id: string | null
+  关联终点id: string | null
+  动态工具id: string | null
   旧值: string | null
   新值: string | null
 }
