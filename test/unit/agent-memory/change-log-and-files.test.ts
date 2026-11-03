@@ -57,10 +57,10 @@ describe('变更记录', { timeout: 90000 }, () => {
       let 记忆 = await 实例.添加记忆(记忆项('永久实体记忆'))
       expect(await 实例.移除记忆(记忆.id)).toBe(true)
 
-      let 当前投影 = await pglite.query(`SELECT id FROM 记忆表 WHERE id = $1`, [记忆.id])
+      let 当前投影 = await pglite.query(`SELECT id FROM 当前记忆表 WHERE id = $1`, [记忆.id])
       let 永久实体 = await pglite.query(`SELECT id FROM 记忆实体表 WHERE id = $1`, [记忆.id])
       let 删除变更 = await pglite.query<{ 数量: number }>(
-        `SELECT count(*)::int AS 数量 FROM 记忆变更表 WHERE 记忆id = $1 AND 操作类型 = 'delete'`,
+        `SELECT count(*)::int AS 数量 FROM 记忆提交变更表 WHERE 记忆实体id = $1 AND 变更类型 = 'remove'`,
         [记忆.id],
       )
       expect(当前投影.rows).toEqual([])
@@ -74,8 +74,8 @@ describe('变更记录', { timeout: 90000 }, () => {
       if (提交 === undefined) throw new Error('缺少用于外键测试的提交')
       await expect(
         pglite.query(
-          `INSERT INTO 记忆变更表 (id, 提交id, 操作类型, 目标类型, 记忆id, 旧值, 新值)
-           VALUES ('missing-memory-change', $1, 'delete', 'node', 'missing-memory', '{}', NULL)`,
+          `INSERT INTO 记忆提交变更表 (id, 记忆提交id, 变更类型, 目标实体类型, 记忆实体id, 变更前数据, 变更后数据)
+           VALUES ('missing-memory-change', $1, 'remove', 'memory', 'missing-memory', '{}', NULL)`,
           [提交.id],
         ),
       ).rejects.toThrow()
@@ -95,13 +95,13 @@ describe('变更记录', { timeout: 90000 }, () => {
       let 实例 = 创建实例({ 存储: { 模式: '外部', pglite } })
       let 记忆 = await 实例.添加记忆(记忆项('受提交保护', ['共同关键词']))
       await 实例.添加记忆(记忆项('关联也受保护', ['共同关键词']))
-      await expect(pglite.query(`UPDATE 记忆表 SET 内容 = '绕过提交' WHERE id = $1`, [记忆.id])).rejects.toThrow(
+      await expect(pglite.query(`UPDATE 当前记忆表 SET 内容 = '绕过提交' WHERE id = $1`, [记忆.id])).rejects.toThrow(
         '只能在活动提交中修改',
       )
-      await expect(pglite.query(`UPDATE 记忆关联表 SET 关联度 = 999`)).rejects.toThrow('只能在活动提交中修改')
+      await expect(pglite.query(`UPDATE 当前记忆关联表 SET 关联度 = 999`)).rejects.toThrow('只能在活动提交中修改')
       await expect(
         pglite.query(
-          `INSERT INTO 动态工具表 (id, 名称, 描述, 代码, 创建时间) VALUES ('bypass', 'bypass', '', '', now())`,
+          `INSERT INTO 当前动态工具表 (id, 名称, 描述, 代码, 创建时间) VALUES ('bypass', 'bypass', '', '', now())`,
         ),
       ).rejects.toThrow('只能在活动提交中修改')
       let 提交列表 = await 实例.查询记忆提交()
@@ -109,40 +109,56 @@ describe('变更记录', { timeout: 90000 }, () => {
       let 变更 = 提交?.变更列表[0]
       if (提交 === undefined || 变更 === undefined) throw new Error('缺少用于不可变约束测试的提交')
       await expect(
-        pglite.query(`INSERT INTO 记忆提交表 (id, 父提交id, 消息, 创建时间) VALUES ('blank', NULL, '   ', now())`),
-      ).rejects.toThrow()
-      await expect(
         pglite.query(
-          `INSERT INTO 记忆提交表 (id, 父提交id, 消息, 创建时间) VALUES ('orphan', 'missing-parent', '孤立提交', now())`,
+          `INSERT INTO 记忆提交表 (id, 父记忆提交id, 提交说明, 创建时间) VALUES ('blank', NULL, '   ', now())`,
         ),
       ).rejects.toThrow()
       await expect(
         pglite.query(
-          `INSERT INTO 记忆变更表 (id, 提交id, 操作类型, 目标类型, 记忆id, 旧值, 新值) VALUES ('invalid-change', $1, 'update', 'node', $2, NULL, NULL)`,
+          `INSERT INTO 记忆提交表 (id, 父记忆提交id, 提交说明, 创建时间) VALUES ('orphan', 'missing-parent', '孤立提交', now())`,
+        ),
+      ).rejects.toThrow()
+      await expect(
+        pglite.query(
+          `INSERT INTO 记忆提交变更表 (id, 记忆提交id, 变更类型, 目标实体类型, 记忆实体id, 变更前数据, 变更后数据) VALUES ('invalid-change', $1, 'update', 'memory', $2, NULL, NULL)`,
           [提交.id, 记忆.id],
         ),
       ).rejects.toThrow()
       await expect(
         pglite.query(
-          `INSERT INTO 记忆变更表 (id, 提交id, 操作类型, 目标类型, 记忆id, 动态工具id, 旧值, 新值) VALUES ('mixed-target', $1, 'add', 'node', $2, 'tool-id', NULL, '{}')`,
+          `INSERT INTO 记忆提交变更表 (id, 记忆提交id, 变更类型, 目标实体类型, 记忆实体id, 动态工具实体id, 变更前数据, 变更后数据) VALUES ('mixed-target', $1, 'add', 'memory', $2, 'tool-id', NULL, '{}')`,
+          [提交.id, 记忆.id],
+        ),
+      ).rejects.toThrow()
+      await expect(
+        pglite.query(
+          `INSERT INTO 记忆提交变更表 (id, 记忆提交id, 变更类型, 目标实体类型, 记忆实体id, 变更前数据, 变更后数据) VALUES ('mismatched-memory-data', $1, 'add', 'memory', $2, NULL, '{"id":"another-memory"}')`,
+          [提交.id, 记忆.id],
+        ),
+      ).rejects.toThrow()
+      await expect(
+        pglite.query(
+          `INSERT INTO 记忆提交变更表 (id, 记忆提交id, 变更类型, 目标实体类型, 记忆实体id, 变更前数据, 变更后数据) VALUES ('array-memory-data', $1, 'add', 'memory', $2, NULL, '[]')`,
           [提交.id, 记忆.id],
         ),
       ).rejects.toThrow()
 
       let 非当前提交 = 提交列表[1]
       if (非当前提交 === undefined) throw new Error('缺少用于 HEAD 一致性测试的历史提交')
-      await pglite.query(`UPDATE _agent_session_commit SET commit_id = $1 WHERE id = 1`, [非当前提交.id])
+      await pglite.query(`UPDATE _记忆提交上下文表 SET 活动记忆提交id = $1 WHERE id = 1`, [非当前提交.id])
       try {
         await expect(
-          pglite.query(`UPDATE 记忆表 SET 内容 = '错误 HEAD 写入' WHERE id = $1`, [记忆.id]),
+          pglite.query(`UPDATE 当前记忆表 SET 内容 = '错误 HEAD 写入' WHERE id = $1`, [记忆.id]),
         ).rejects.toThrow('活动记忆提交必须是当前 HEAD')
       } finally {
-        await pglite.query(`UPDATE _agent_session_commit SET commit_id = NULL WHERE id = 1`)
+        await pglite.query(`UPDATE _记忆提交上下文表 SET 活动记忆提交id = NULL WHERE id = 1`)
       }
-      await expect(pglite.query(`UPDATE 记忆提交表 SET 消息 = '被篡改' WHERE id = $1`, [提交.id])).rejects.toThrow(
+      await expect(pglite.query(`UPDATE 记忆提交表 SET 提交说明 = '被篡改' WHERE id = $1`, [提交.id])).rejects.toThrow(
         '不可修改',
       )
-      await expect(pglite.query(`DELETE FROM 记忆变更表 WHERE id = $1`, [变更.id])).rejects.toThrow('不可修改或删除')
+      await expect(pglite.query(`DELETE FROM 记忆提交变更表 WHERE id = $1`, [变更.id])).rejects.toThrow(
+        '不可修改或删除',
+      )
 
       let 会话 = await 实例.创建会话({ 标题: '不可变消息测试' })
       let 消息 = await 实例.追加会话消息({
@@ -161,7 +177,7 @@ describe('变更记录', { timeout: 90000 }, () => {
         '前缀快照不可修改或删除',
       )
       let 日志 = await 实例.记录交互日志({ 类型: '自定义', 开始时间: new Date(), 内容: { 状态: '原始' } })
-      await expect(pglite.query(`DELETE FROM 交互日志表 WHERE id = $1`, [日志.id])).rejects.toThrow(
+      await expect(pglite.query(`DELETE FROM 日志表 WHERE id = $1`, [日志.id])).rejects.toThrow(
         '交互日志不可修改或删除',
       )
       expect(await 实例.查找记忆(记忆.id)).toMatchObject({ 内容: '受提交保护' })

@@ -49,7 +49,7 @@ export async function 注册动态工具核心(
     }
 
     let 已有工具 = await 数据库查询器
-      .selectFrom('动态工具表')
+      .selectFrom('当前动态工具表')
       .select('id')
       .where('名称', '=', 加载结果.工具.名称)
       .executeTakeFirst()
@@ -74,7 +74,7 @@ export async function 注册动态工具核心(
 
     let id = randomUUID()
     await 数据库查询器
-      .insertInto('动态工具表')
+      .insertInto('当前动态工具表')
       .values({
         id,
         名称: 加载结果.工具.名称,
@@ -104,7 +104,7 @@ export async function 查看动态工具代码核心(
 
   try {
     let 工具记录 = await 数据库查询器
-      .selectFrom('动态工具表')
+      .selectFrom('当前动态工具表')
       .selectAll()
       .where((eb) => eb.or([eb('id', '=', 参数.工具标识), eb('名称', '=', 参数.工具标识)]))
       .executeTakeFirst()
@@ -141,7 +141,7 @@ export async function 更新动态工具核心(
     }
 
     let 已有工具 = await 数据库查询器
-      .selectFrom('动态工具表')
+      .selectFrom('当前动态工具表')
       .select(['id', '名称'])
       .where((eb) => eb.or([eb('id', '=', 参数.工具标识), eb('名称', '=', 参数.工具标识)]))
       .executeTakeFirst()
@@ -156,7 +156,7 @@ export async function 更新动态工具核心(
 
     if (加载结果.工具.名称 !== 已有工具.名称) {
       let 重名工具 = await 数据库查询器
-        .selectFrom('动态工具表')
+        .selectFrom('当前动态工具表')
         .select('id')
         .where('名称', '=', 加载结果.工具.名称)
         .executeTakeFirst()
@@ -181,7 +181,7 @@ export async function 更新动态工具核心(
     let 向量 = await 获取向量(向量文本)
 
     await 数据库查询器
-      .updateTable('动态工具表')
+      .updateTable('当前动态工具表')
       .set({
         名称: 加载结果.工具.名称,
         描述: 加载结果.工具.描述,
@@ -210,7 +210,7 @@ export async function 移除动态工具核心(
 
   try {
     let 已有工具 = await 数据库查询器
-      .selectFrom('动态工具表')
+      .selectFrom('当前动态工具表')
       .select(['id', '名称'])
       .where((eb) => eb.or([eb('id', '=', 参数.工具标识), eb('名称', '=', 参数.工具标识)]))
       .executeTakeFirst()
@@ -218,7 +218,7 @@ export async function 移除动态工具核心(
       return { 结果: '失败', 错误信息: 配置.模型语言包.未找到动态工具('标识', 参数.工具标识) }
     }
 
-    await 数据库查询器.deleteFrom('动态工具表').where('id', '=', 已有工具.id).execute()
+    await 数据库查询器.deleteFrom('当前动态工具表').where('id', '=', 已有工具.id).execute()
 
     if (回调 !== undefined) {
       await 回调({ 类型: '流程信息', 内容: `[动态工具] 成功删除工具「${已有工具.名称}」(ID: ${已有工具.id})` })
@@ -238,7 +238,7 @@ export async function 调用动态工具核心(
 
   try {
     let 工具记录 = await 数据库查询器
-      .selectFrom('动态工具表')
+      .selectFrom('当前动态工具表')
       .select(['id', '名称', '代码'])
       .where('名称', '=', 参数.name)
       .executeTakeFirst()

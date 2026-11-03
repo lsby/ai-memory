@@ -28,7 +28,11 @@ describe('交互事件日志', () => {
 
     let 查询结果 = await 智能体实例.查询交互日志({ 事件组id: 写入结果.事件组id })
     expect(查询结果).toEqual([写入结果])
-    expect(查询结果[0]).toMatchObject({ 类型: '自定义', 耗时ms: 12, 内容: { 任意字段: ['由调用方', 1, true, null] } })
+    expect(查询结果[0]).toMatchObject({
+      事件类型: '自定义',
+      耗时ms: 12,
+      事件内容: { 任意字段: ['由调用方', 1, true, null] },
+    })
     expect(() => 交互日志事件Schema.parse({ 类型: '未设计事件', 开始时间, 内容: {} })).toThrow()
   })
 
@@ -48,8 +52,8 @@ describe('交互事件日志', () => {
     )
 
     let 日志列表 = await 智能体实例.查询交互日志({ 事件组id: 'memory-group' })
-    expect(日志列表.map((日志) => 日志.类型)).toEqual(['流程开始', '记忆提交', '流程结束'])
-    expect(日志列表[1]?.内容).toMatchObject({ 消息: '添加记忆' })
+    expect(日志列表.map((日志) => 日志.事件类型)).toEqual(['流程开始', '记忆提交', '流程结束'])
+    expect(日志列表[1]?.事件内容).toMatchObject({ 消息: '添加记忆' })
   })
 
   it('支持按事件类型筛选并严格按序号返回', async (): Promise<void> => {
@@ -60,9 +64,9 @@ describe('交互事件日志', () => {
 
     let 全部 = await 智能体实例.查询交互日志({ 事件组id: 'ordered-group' })
     let 结束 = await 智能体实例.查询交互日志({ 事件组id: 'ordered-group', 类型: '流程结束' })
-    expect(全部.map((日志) => 日志.内容)).toEqual([{ 次序: 1 }, { 次序: 2 }])
+    expect(全部.map((日志) => 日志.事件内容)).toEqual([{ 次序: 1 }, { 次序: 2 }])
     expect(结束).toHaveLength(1)
-    expect(结束[0]?.类型).toBe('流程结束')
+    expect(结束[0]?.事件类型).toBe('流程结束')
   })
 
   it('支持分页并拒绝无效的查询条件', async (): Promise<void> => {
@@ -73,7 +77,7 @@ describe('交互事件日志', () => {
     await 智能体实例.记录交互日志({ 类型: '自定义', 开始时间, 内容: { 次序: 3 } }, 'page-group')
 
     let 第二页 = await 智能体实例.查询交互日志({ 事件组id: 'page-group', 偏移: 1, 数量: 1 })
-    expect(第二页.map((日志) => 日志.内容)).toEqual([{ 次序: 2 }])
+    expect(第二页.map((日志) => 日志.事件内容)).toEqual([{ 次序: 2 }])
     await expect(智能体实例.查询交互日志({ 偏移: -1 })).rejects.toThrow()
     await expect(智能体实例.查询交互日志({ 数量: 1001 })).rejects.toThrow()
     await expect(智能体实例.查询交互日志({ 事件组id: '   ' })).rejects.toThrow()
@@ -96,8 +100,8 @@ describe('交互事件日志', () => {
     expect(await 智能体实例.切换记忆提交(基线提交id, 'branch-group')).toBe(true)
 
     let 日志列表 = await 智能体实例.查询交互日志({ 事件组id: 'branch-group' })
-    expect(日志列表.map((日志) => 日志.类型)).toEqual(['流程开始', '记忆分支切换', '流程结束'])
-    expect(日志列表[1]?.内容).toEqual({ 请求: { 目标提交id: 基线提交id }, 结果: true, 当前提交id: 基线提交id })
+    expect(日志列表.map((日志) => 日志.事件类型)).toEqual(['流程开始', '记忆分支切换', '流程结束'])
+    expect(日志列表[1]?.事件内容).toEqual({ 请求: { 目标提交id: 基线提交id }, 结果: true, 当前提交id: 基线提交id })
   })
 
   it('编程调用动态工具时记录同组的开始和结果事件', async (): Promise<void> => {
@@ -117,9 +121,9 @@ describe('交互事件日志', () => {
     let 调用结果 = await 智能体实例.调用动态工具('telemetry_echo', '{"value":7}', undefined, 'tool-group')
     expect(调用结果.结果).toBe('成功')
     let 日志列表 = await 智能体实例.查询交互日志({ 事件组id: 'tool-group' })
-    expect(日志列表.map((日志) => 日志.类型)).toEqual(['工具调用开始', '工具调用结果'])
-    expect(日志列表[0]?.内容).toEqual({ 工具名称: 'telemetry_echo' })
-    expect(日志列表[1]?.内容).toEqual({ 工具名称: 'telemetry_echo', 状态: '成功' })
+    expect(日志列表.map((日志) => 日志.事件类型)).toEqual(['工具调用开始', '工具调用结果'])
+    expect(日志列表[0]?.事件内容).toEqual({ 工具名称: 'telemetry_echo' })
+    expect(日志列表[1]?.事件内容).toEqual({ 工具名称: 'telemetry_echo', 状态: '成功' })
   })
 
   it('记忆操作失败时同一事务里的日志也会回滚', async (): Promise<void> => {
@@ -154,8 +158,8 @@ describe('交互日志按开始时间过滤', () => {
     await 实例.记录交互日志({ 类型: '自定义', 开始时间: 零点(3), 内容: { 标记: 'd3-0点' } }, 事件组id)
   }
 
-  function 标记(日志列表: { 内容: unknown }[]): unknown[] {
-    return 日志列表.map((日志) => 标记Schema.parse(日志.内容).标记)
+  function 标记(日志列表: { 事件内容: unknown }[]): unknown[] {
+    return 日志列表.map((日志) => 标记Schema.parse(日志.事件内容).标记)
   }
 
   it('起包含、止不包含，起止组合按天切分', async (): Promise<void> => {
@@ -221,7 +225,7 @@ describe('交互日志开始时间过滤在外部存储模式下', { timeout: 60
 
   async function 索引数量(schema: string): Promise<number> {
     let 结果 = await pglite.query(
-      `SELECT 1 FROM pg_indexes WHERE schemaname = $1 AND tablename = '交互日志表' AND indexname = '交互日志表_开始时间_idx'`,
+      `SELECT 1 FROM pg_indexes WHERE schemaname = $1 AND tablename = '日志表' AND indexname = '日志表_开始时间_idx'`,
       [schema],
     )
     return 结果.rows.length
@@ -234,8 +238,8 @@ describe('交互日志开始时间过滤在外部存储模式下', { timeout: 60
     await 甲.记录交互日志({ 类型: '自定义', 开始时间: 时间, 内容: { 来自: '甲' } })
     await 乙.记录交互日志({ 类型: '自定义', 开始时间: 时间, 内容: { 来自: '乙' } })
     let 区间 = { 开始时间起: new Date('2026-01-01T00:00:00.000Z'), 开始时间止: new Date('2026-01-02T00:00:00.000Z') }
-    expect((await 甲.查询交互日志(区间)).map((日志) => 日志.内容)).toEqual([{ 来自: '甲' }])
-    expect((await 乙.查询交互日志(区间)).map((日志) => 日志.内容)).toEqual([{ 来自: '乙' }])
+    expect((await 甲.查询交互日志(区间)).map((日志) => 日志.事件内容)).toEqual([{ 来自: '甲' }])
+    expect((await 乙.查询交互日志(区间)).map((日志) => 日志.事件内容)).toEqual([{ 来自: '乙' }])
   })
 
   it('开始时间索引存在，删掉后重新打开实例会补回', async (): Promise<void> => {
@@ -244,7 +248,7 @@ describe('交互日志开始时间过滤在外部存储模式下', { timeout: 60
     expect(await 索引数量('log_idx')).toBe(1)
     await 实例.销毁()
     实例列表 = []
-    await pglite.exec(`DROP INDEX "log_idx"."交互日志表_开始时间_idx"`)
+    await pglite.exec(`DROP INDEX "log_idx"."日志表_开始时间_idx"`)
     expect(await 索引数量('log_idx')).toBe(0)
     await 创建实例('log_idx').初始化()
     expect(await 索引数量('log_idx')).toBe(1)

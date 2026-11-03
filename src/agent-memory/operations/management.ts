@@ -27,7 +27,7 @@ let 查询记忆选项Schema = z.object({
 export async function 查询记忆(数据库查询器: Kysely<记忆数据库>, 选项: 查询记忆选项 = {}): Promise<公开记忆[]> {
   let 已校验选项 = 查询记忆选项Schema.parse(选项)
   let 记忆列表 = await 数据库查询器
-    .selectFrom('记忆表')
+    .selectFrom('当前记忆表')
     .select(['id', '等级', '评分', '内容', '关键词', '标签', '创建时间'])
     .orderBy('创建序号')
     .execute()
@@ -50,7 +50,7 @@ export async function 更新记忆(上下文: 记忆操作上下文, id: string,
   let 已校验id = z.string().trim().min(1).parse(id)
   let 已校验选项 = 更新记忆选项Schema.parse(选项)
   let { 数据库查询器, 配置, 获取向量, 检查并降级一级记忆, 检查并清理二级记忆, 回调 } = 上下文
-  let 原记忆 = await 数据库查询器.selectFrom('记忆表').selectAll().where('id', '=', 已校验id).executeTakeFirst()
+  let 原记忆 = await 数据库查询器.selectFrom('当前记忆表').selectAll().where('id', '=', 已校验id).executeTakeFirst()
   if (原记忆 === undefined) return false
   let 新内容 = 已校验选项.内容 ?? 原记忆.内容
   let 新关键词 = 已校验选项.关键词 ?? 原记忆.关键词
@@ -62,7 +62,7 @@ export async function 更新记忆(上下文: 记忆操作上下文, id: string,
     向量维度 = 向量结果.类型 === '成功' ? 向量结果.向量.length : null
   }
   await 数据库查询器
-    .updateTable('记忆表')
+    .updateTable('当前记忆表')
     .set({
       内容: 新内容,
       关键词: 新关键词,
@@ -84,7 +84,7 @@ export async function 更新记忆(上下文: 记忆操作上下文, id: string,
 }
 
 export async function 查询记忆关联(数据库查询器: Kysely<记忆数据库>, id?: string): Promise<公开记忆关联[]> {
-  let 查询 = 数据库查询器.selectFrom('记忆关联表').selectAll().orderBy('关联度', 'desc')
+  let 查询 = 数据库查询器.selectFrom('当前记忆关联表').selectAll().orderBy('关联度', 'desc')
   if (id !== undefined) {
     let 已校验id = z.string().trim().min(1).parse(id)
     查询 = 查询.where((eb) => eb.or([eb('起点id', '=', 已校验id), eb('终点id', '=', 已校验id)]))
@@ -94,7 +94,7 @@ export async function 查询记忆关联(数据库查询器: Kysely<记忆数据
 
 export async function 查询动态工具(数据库查询器: Kysely<记忆数据库>): Promise<公开动态工具[]> {
   return await 数据库查询器
-    .selectFrom('动态工具表')
+    .selectFrom('当前动态工具表')
     .select(['id', '名称', '描述', '代码', '创建时间'])
     .orderBy('创建时间', 'asc')
     .execute()
@@ -110,10 +110,10 @@ export async function 查询记忆提交(数据库查询器: Kysely<记忆数据
     .execute()
   if (提交列表.length === 0) return []
   let 变更列表 = await 数据库查询器
-    .selectFrom('记忆变更表')
+    .selectFrom('记忆提交变更表')
     .selectAll()
     .where(
-      '提交id',
+      '记忆提交id',
       'in',
       提交列表.map((提交) => 提交.id),
     )
@@ -121,7 +121,7 @@ export async function 查询记忆提交(数据库查询器: Kysely<记忆数据
   return 提交列表.map((提交): 公开记忆提交 => ({
     ...提交,
     变更列表: 变更列表
-      .filter((变更) => 变更.提交id === 提交.id)
-      .map(({ 提交id: _提交id, 序号: _序号, ...变更 }) => 变更),
+      .filter((变更) => 变更.记忆提交id === 提交.id)
+      .map(({ 记忆提交id: _提交id, 序号: _序号, ...变更 }) => 变更),
   }))
 }

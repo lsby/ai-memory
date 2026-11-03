@@ -17,7 +17,7 @@ function 创建数据库帮助器(
   }
 }
 
-/** 创建只增不减的实体身份层，并为早期 v9 数据补齐已有身份。 */
+/** 创建只增不减的实体身份层，并登记当前状态中已有的实体身份。 */
 export async function 初始化永久实体表(数据库查询器: Kysely<记忆数据库>, schema: string): Promise<void> {
   let { 名, 执行 } = 创建数据库帮助器(数据库查询器, schema)
   await 执行(`CREATE TABLE IF NOT EXISTS ${名('记忆实体表')} (id TEXT PRIMARY KEY);`)
@@ -31,21 +31,21 @@ export async function 初始化永久实体表(数据库查询器: Kysely<记忆
   `)
   await 执行(`
     INSERT INTO ${名('记忆实体表')} (id)
-    SELECT id FROM ${名('记忆表')}
-    UNION SELECT 记忆id FROM ${名('记忆变更表')} WHERE 记忆id IS NOT NULL
+    SELECT id FROM ${名('当前记忆表')}
+    UNION SELECT 记忆实体id FROM ${名('记忆提交变更表')} WHERE 记忆实体id IS NOT NULL
     ON CONFLICT (id) DO NOTHING;
   `)
   await 执行(`
     INSERT INTO ${名('动态工具实体表')} (id)
-    SELECT id FROM ${名('动态工具表')}
-    UNION SELECT 动态工具id FROM ${名('记忆变更表')} WHERE 动态工具id IS NOT NULL
+    SELECT id FROM ${名('当前动态工具表')}
+    UNION SELECT 动态工具实体id FROM ${名('记忆提交变更表')} WHERE 动态工具实体id IS NOT NULL
     ON CONFLICT (id) DO NOTHING;
   `)
   await 执行(`
     INSERT INTO ${名('记忆关联实体表')} (起点id, 终点id)
-    SELECT 起点id, 终点id FROM ${名('记忆关联表')}
-    UNION SELECT 关联起点id, 关联终点id FROM ${名('记忆变更表')}
-      WHERE 关联起点id IS NOT NULL AND 关联终点id IS NOT NULL
+    SELECT 起点id, 终点id FROM ${名('当前记忆关联表')}
+    UNION SELECT 起点记忆实体id, 终点记忆实体id FROM ${名('记忆提交变更表')}
+      WHERE 起点记忆实体id IS NOT NULL AND 终点记忆实体id IS NOT NULL
     ON CONFLICT (起点id, 终点id) DO NOTHING;
   `)
 }
@@ -57,12 +57,12 @@ export async function 初始化永久实体登记触发器(数据库查询器: K
     CREATE OR REPLACE FUNCTION ${名('登记永久实体_触发器')}()
     RETURNS TRIGGER AS $$
     BEGIN
-      IF TG_TABLE_NAME = '记忆表' THEN
+      IF TG_TABLE_NAME = '当前记忆表' THEN
         INSERT INTO ${名('记忆实体表')} (id) VALUES (NEW.id) ON CONFLICT (id) DO NOTHING;
-      ELSIF TG_TABLE_NAME = '记忆关联表' THEN
+      ELSIF TG_TABLE_NAME = '当前记忆关联表' THEN
         INSERT INTO ${名('记忆关联实体表')} (起点id, 终点id)
         VALUES (NEW.起点id, NEW.终点id) ON CONFLICT (起点id, 终点id) DO NOTHING;
-      ELSIF TG_TABLE_NAME = '动态工具表' THEN
+      ELSIF TG_TABLE_NAME = '当前动态工具表' THEN
         INSERT INTO ${名('动态工具实体表')} (id) VALUES (NEW.id) ON CONFLICT (id) DO NOTHING;
       ELSE
         RAISE EXCEPTION '不支持的状态投影表: %', TG_TABLE_NAME;
@@ -71,7 +71,7 @@ export async function 初始化永久实体登记触发器(数据库查询器: K
     END;
     $$ LANGUAGE plpgsql;
   `)
-  for (let 表名 of ['记忆表', '记忆关联表', '动态工具表']) {
+  for (let 表名 of ['当前记忆表', '当前记忆关联表', '当前动态工具表']) {
     await 执行(`DROP TRIGGER IF EXISTS trg_登记永久实体 ON ${名(表名)};`)
     await 执行(`
       CREATE TRIGGER trg_登记永久实体 BEFORE INSERT ON ${名(表名)}

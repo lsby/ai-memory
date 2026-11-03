@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { 智能体事件, 智能体工具 } from '../../agent/types'
 import { 读取当前会话谱系消息 } from '../operations/conversation-lineage'
 import { 查询记忆新增相关消息, type 记忆相关消息 } from '../operations/memory-message-origin'
-import { 内部带记忆的智能体配置, 格式化为本地时间字符串, 记忆数据库, 记忆表 } from '../types'
+import { 内部带记忆的智能体配置, 当前记忆表, 格式化为本地时间字符串, 记忆数据库 } from '../types'
 import { 获取混合关联排序 } from './common'
 import { 构建检索关键词 } from './search-keywords'
 
@@ -148,7 +148,11 @@ export function 回忆延伸工具(上下文: 图谱检索上下文): 智能体�
           let 已访问 = new Set<string>(当前层)
 
           if (回调 !== undefined) {
-            let 起点记忆 = await 数据库查询器.selectFrom('记忆表').selectAll().where('id', 'in', 起点ID列表).execute()
+            let 起点记忆 = await 数据库查询器
+              .selectFrom('当前记忆表')
+              .selectAll()
+              .where('id', 'in', 起点ID列表)
+              .execute()
             起点记忆.sort((a, b) => 起点ID列表.indexOf(a.id) - 起点ID列表.indexOf(b.id))
             let 起点详情 = 起点记忆
               .map((项): string => {
@@ -169,7 +173,7 @@ export function 回忆延伸工具(上下文: 图谱检索上下文): 智能体�
           for (let d = 0; d < 参数.最大扩展跳数; d++) {
             if (当前层.length === 0) break
             let 关联结果 = await 数据库查询器
-              .selectFrom('记忆关联表')
+              .selectFrom('当前记忆关联表')
               .select(['起点id', '终点id'])
               .where((eb) => eb.or([eb('起点id', 'in', 当前层), eb('终点id', 'in', 当前层)]))
               .where('关联度', '>=', 参数.最小关联阈值)
@@ -189,7 +193,7 @@ export function 回忆延伸工具(上下文: 图谱检索上下文): 智能体�
             if (回调 !== undefined && 下一层.size > 0) {
               let 下一层列表 = Array.from(下一层)
               let 下一层记忆 = await 数据库查询器
-                .selectFrom('记忆表')
+                .selectFrom('当前记忆表')
                 .selectAll()
                 .where('id', 'in', 下一层列表)
                 .execute()
@@ -214,12 +218,12 @@ export function 回忆延伸工具(上下文: 图谱检索上下文): 智能体�
 
         let 所有涉及ID = Array.from(new Set([...直接返回的记忆集合, ...扩展标签记忆集合]))
 
-        let 最终记忆: 记忆表[] = []
+        let 最终记忆: 当前记忆表[] = []
         if (所有涉及ID.length > 0) {
-          最终记忆 = await 数据库查询器.selectFrom('记忆表').selectAll().where('id', 'in', 所有涉及ID).execute()
+          最终记忆 = await 数据库查询器.selectFrom('当前记忆表').selectAll().where('id', 'in', 所有涉及ID).execute()
         }
 
-        let 最终直接内容: 记忆表[] = []
+        let 最终直接内容: 当前记忆表[] = []
         let 最终扩展标签 = new Set<string>()
 
         for (let 记忆 of 最终记忆) {
@@ -255,9 +259,9 @@ export function 回忆延伸工具(上下文: 图谱检索上下文): 智能体�
         let 命中的IDs = 最终直接内容.map((x) => x.id)
         if (命中的IDs.length > 0) {
           await 数据库查询器
-            .updateTable('记忆表')
+            .updateTable('当前记忆表')
             .set({
-              最后访问序号: sql<number>`(SELECT COALESCE(MAX(创建序号), 0) FROM 记忆表)`,
+              最后访问序号: sql<number>`(SELECT COALESCE(MAX(创建序号), 0) FROM 当前记忆表)`,
               访问次数: sql`访问次数 + 1`,
             })
             .where('id', 'in', 命中的IDs)

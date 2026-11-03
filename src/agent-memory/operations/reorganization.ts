@@ -24,10 +24,10 @@ export async function 执行记忆重组(
   if (选项.种子关键词 !== undefined && 选项.种子关键词.length > 0) {
     随机词 = 选项.种子关键词
   } else {
-    // 从记忆表中随机捞取几个关键词
+    // 从当前记忆表中随机捞取几个关键词
     let 结果 = await sql<{ 关键词: string }>`
       SELECT unnest(关键词) as 关键词
-      FROM 记忆表
+      FROM 当前记忆表
       ORDER BY RANDOM()
       LIMIT 15
     `.execute(数据库查询器)

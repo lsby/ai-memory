@@ -29,7 +29,7 @@ export async function 执行带日志的记忆变更<R>(
   数据库查询器: Kysely<记忆数据库>,
   配置: 内部带记忆的智能体配置,
   消息: string,
-  操作: (trx: Kysely<记忆数据库>, 父提交id: string | null) => Promise<R>,
+  操作: (trx: Kysely<记忆数据库>, 父记忆提交id: string | null) => Promise<R>,
   缓存: 向量缓存,
   回调?: (事件: 智能体事件) => Promise<void>,
   事件组id?: string,
@@ -277,19 +277,19 @@ export async function 记录交互日志(
   let 已校验事件组id = 创建事件组id(事件组id)
   let id = randomUUID()
   let 结果 = await 数据库查询器
-    .insertInto('交互日志表')
+    .insertInto('日志表')
     .values({
       id,
       事件组id: 已校验事件组id,
-      类型: 已校验事件.类型,
+      事件类型: 已校验事件.类型,
       开始时间: 已校验事件.开始时间,
       耗时ms: 已校验事件.耗时ms ?? null,
-      内容: JSON.stringify(已校验事件.内容),
-      上下文消息id: 已校验事件.上下文消息id ?? null,
-      消息id: 已校验事件.消息id ?? null,
+      事件内容: JSON.stringify(已校验事件.内容),
+      上下文头消息id: 已校验事件.上下文消息id ?? null,
+      关联消息id: 已校验事件.消息id ?? null,
       模型请求id: 已校验事件.模型请求id ?? null,
-      记忆提交id: 已校验事件.记忆提交id ?? null,
-      前缀id: 已校验事件.前缀id ?? null,
+      当时记忆提交id: 已校验事件.记忆提交id ?? null,
+      前缀快照id: 已校验事件.前缀id ?? null,
     })
     .returningAll()
     .executeTakeFirstOrThrow()
@@ -297,15 +297,15 @@ export async function 记录交互日志(
     id: 结果.id,
     序号: 结果.序号 ?? 0,
     事件组id: 结果.事件组id,
-    类型: 结果.类型,
+    事件类型: 结果.事件类型,
     开始时间: 结果.开始时间,
     ...(结果.耗时ms !== null ? { 耗时ms: 结果.耗时ms } : {}),
-    内容: 结果.内容,
-    ...(结果.上下文消息id !== null ? { 上下文消息id: 结果.上下文消息id } : {}),
-    ...(结果.消息id !== null ? { 消息id: 结果.消息id } : {}),
+    事件内容: 结果.事件内容,
+    ...(结果.上下文头消息id !== null ? { 上下文头消息id: 结果.上下文头消息id } : {}),
+    ...(结果.关联消息id !== null ? { 关联消息id: 结果.关联消息id } : {}),
     ...(结果.模型请求id !== null ? { 模型请求id: 结果.模型请求id } : {}),
-    ...(结果.记忆提交id !== null ? { 记忆提交id: 结果.记忆提交id } : {}),
-    ...(结果.前缀id !== null ? { 前缀id: 结果.前缀id } : {}),
+    ...(结果.当时记忆提交id !== null ? { 当时记忆提交id: 结果.当时记忆提交id } : {}),
+    ...(结果.前缀快照id !== null ? { 前缀快照id: 结果.前缀快照id } : {}),
   }
 }
 
@@ -328,9 +328,9 @@ export async function 查询交互日志(
       { message: '开始时间起必须早于开始时间止', path: ['开始时间起'] },
     )
     .parse(选项)
-  let 查询 = 数据库查询器.selectFrom('交互日志表').selectAll()
+  let 查询 = 数据库查询器.selectFrom('日志表').selectAll()
   if (已校验选项.事件组id !== undefined) 查询 = 查询.where('事件组id', '=', 已校验选项.事件组id)
-  if (已校验选项.类型 !== undefined) 查询 = 查询.where('类型', '=', 已校验选项.类型)
+  if (已校验选项.类型 !== undefined) 查询 = 查询.where('事件类型', '=', 已校验选项.类型)
   if (已校验选项.开始时间起 !== undefined) 查询 = 查询.where('开始时间', '>=', 已校验选项.开始时间起)
   if (已校验选项.开始时间止 !== undefined) 查询 = 查询.where('开始时间', '<', 已校验选项.开始时间止)
   let 结果列表 = await 查询
@@ -342,14 +342,14 @@ export async function 查询交互日志(
     id: 结果.id,
     序号: 结果.序号 ?? 0,
     事件组id: 结果.事件组id,
-    类型: 结果.类型,
+    事件类型: 结果.事件类型,
     开始时间: 结果.开始时间,
     ...(结果.耗时ms !== null ? { 耗时ms: 结果.耗时ms } : {}),
-    内容: 结果.内容,
-    ...(结果.上下文消息id !== null ? { 上下文消息id: 结果.上下文消息id } : {}),
-    ...(结果.消息id !== null ? { 消息id: 结果.消息id } : {}),
+    事件内容: 结果.事件内容,
+    ...(结果.上下文头消息id !== null ? { 上下文头消息id: 结果.上下文头消息id } : {}),
+    ...(结果.关联消息id !== null ? { 关联消息id: 结果.关联消息id } : {}),
     ...(结果.模型请求id !== null ? { 模型请求id: 结果.模型请求id } : {}),
-    ...(结果.记忆提交id !== null ? { 记忆提交id: 结果.记忆提交id } : {}),
-    ...(结果.前缀id !== null ? { 前缀id: 结果.前缀id } : {}),
+    ...(结果.当时记忆提交id !== null ? { 当时记忆提交id: 结果.当时记忆提交id } : {}),
+    ...(结果.前缀快照id !== null ? { 前缀快照id: 结果.前缀快照id } : {}),
   }))
 }

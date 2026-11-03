@@ -9,85 +9,102 @@ export async function 初始化不可变约束(数据库查询器: Kysely<记忆
   let 执行 = async (语句: string): Promise<void> => {
     await sql.raw(语句).execute(数据库查询器)
   }
-  await 执行(`ALTER TABLE ${名('记忆关联表')} DROP CONSTRAINT IF EXISTS 记忆关联表_起点id_fkey;`)
-  await 执行(`ALTER TABLE ${名('记忆关联表')} DROP CONSTRAINT IF EXISTS 记忆关联表_终点id_fkey;`)
+  await 执行(`ALTER TABLE ${名('当前记忆关联表')} DROP CONSTRAINT IF EXISTS 当前记忆关联表_起点id_fkey;`)
+  await 执行(`ALTER TABLE ${名('当前记忆关联表')} DROP CONSTRAINT IF EXISTS 当前记忆关联表_终点id_fkey;`)
   await 执行(
-    `ALTER TABLE ${名('记忆关联表')} ADD CONSTRAINT 记忆关联表_起点id_fkey FOREIGN KEY (起点id) REFERENCES ${名('记忆表')}(id) ON DELETE RESTRICT;`,
+    `ALTER TABLE ${名('当前记忆关联表')} ADD CONSTRAINT 当前记忆关联表_起点id_fkey FOREIGN KEY (起点id) REFERENCES ${名('当前记忆表')}(id) ON DELETE RESTRICT;`,
   )
   await 执行(
-    `ALTER TABLE ${名('记忆关联表')} ADD CONSTRAINT 记忆关联表_终点id_fkey FOREIGN KEY (终点id) REFERENCES ${名('记忆表')}(id) ON DELETE RESTRICT;`,
+    `ALTER TABLE ${名('当前记忆关联表')} ADD CONSTRAINT 当前记忆关联表_终点id_fkey FOREIGN KEY (终点id) REFERENCES ${名('当前记忆表')}(id) ON DELETE RESTRICT;`,
   )
-  await 执行(`ALTER TABLE ${名('记忆变更表')} DROP CONSTRAINT IF EXISTS 记忆变更表_提交id_fkey;`)
+  await 执行(`ALTER TABLE ${名('记忆提交变更表')} DROP CONSTRAINT IF EXISTS 记忆提交变更表_记忆提交id_fkey;`)
   await 执行(
-    `ALTER TABLE ${名('记忆变更表')} ADD CONSTRAINT 记忆变更表_提交id_fkey FOREIGN KEY (提交id) REFERENCES ${名('记忆提交表')}(id) ON DELETE RESTRICT;`,
+    `ALTER TABLE ${名('记忆提交变更表')} ADD CONSTRAINT 记忆提交变更表_记忆提交id_fkey FOREIGN KEY (记忆提交id) REFERENCES ${名('记忆提交表')}(id) ON DELETE RESTRICT;`,
   )
-  await 执行(`ALTER TABLE ${名('记忆变更表')} DROP CONSTRAINT IF EXISTS 记忆变更表_记忆id_fkey;`)
+  await 执行(`ALTER TABLE ${名('记忆提交变更表')} DROP CONSTRAINT IF EXISTS 记忆提交变更表_记忆实体id_fkey;`)
   await 执行(
-    `ALTER TABLE ${名('记忆变更表')} ADD CONSTRAINT 记忆变更表_记忆id_fkey FOREIGN KEY (记忆id) REFERENCES ${名('记忆实体表')}(id) ON DELETE RESTRICT;`,
+    `ALTER TABLE ${名('记忆提交变更表')} ADD CONSTRAINT 记忆提交变更表_记忆实体id_fkey FOREIGN KEY (记忆实体id) REFERENCES ${名('记忆实体表')}(id) ON DELETE RESTRICT;`,
   )
-  await 执行(`ALTER TABLE ${名('记忆变更表')} DROP CONSTRAINT IF EXISTS 记忆变更表_动态工具id_fkey;`)
+  await 执行(`ALTER TABLE ${名('记忆提交变更表')} DROP CONSTRAINT IF EXISTS 记忆提交变更表_动态工具实体id_fkey;`)
   await 执行(
-    `ALTER TABLE ${名('记忆变更表')} ADD CONSTRAINT 记忆变更表_动态工具id_fkey FOREIGN KEY (动态工具id) REFERENCES ${名('动态工具实体表')}(id) ON DELETE RESTRICT;`,
+    `ALTER TABLE ${名('记忆提交变更表')} ADD CONSTRAINT 记忆提交变更表_动态工具实体id_fkey FOREIGN KEY (动态工具实体id) REFERENCES ${名('动态工具实体表')}(id) ON DELETE RESTRICT;`,
   )
-  await 执行(`ALTER TABLE ${名('记忆变更表')} DROP CONSTRAINT IF EXISTS 记忆变更表_关联实体_fkey;`)
+  await 执行(`ALTER TABLE ${名('记忆提交变更表')} DROP CONSTRAINT IF EXISTS 记忆提交变更表_关联实体_fkey;`)
   await 执行(
-    `ALTER TABLE ${名('记忆变更表')} ADD CONSTRAINT 记忆变更表_关联实体_fkey FOREIGN KEY (关联起点id, 关联终点id) REFERENCES ${名('记忆关联实体表')}(起点id, 终点id) ON DELETE RESTRICT;`,
+    `ALTER TABLE ${名('记忆提交变更表')} ADD CONSTRAINT 记忆提交变更表_关联实体_fkey FOREIGN KEY (起点记忆实体id, 终点记忆实体id) REFERENCES ${名('记忆关联实体表')}(起点id, 终点id) ON DELETE RESTRICT;`,
   )
-  await 执行(`ALTER TABLE ${名('记忆提交表')} DROP CONSTRAINT IF EXISTS 记忆提交表_父提交id_fkey;`)
+  await 执行(`ALTER TABLE ${名('记忆提交表')} DROP CONSTRAINT IF EXISTS 记忆提交表_父记忆提交id_fkey;`)
   await 执行(
-    `ALTER TABLE ${名('记忆提交表')} ADD CONSTRAINT 记忆提交表_父提交id_fkey FOREIGN KEY (父提交id) REFERENCES ${名('记忆提交表')}(id) ON DELETE RESTRICT;`,
+    `ALTER TABLE ${名('记忆提交表')} ADD CONSTRAINT 记忆提交表_父记忆提交id_fkey FOREIGN KEY (父记忆提交id) REFERENCES ${名('记忆提交表')}(id) ON DELETE RESTRICT;`,
   )
+  await 执行(`ALTER TABLE ${名('_记忆提交上下文表')} DROP CONSTRAINT IF EXISTS _记忆提交上下文表_活动记忆提交id_fkey;`)
   await 执行(
-    `ALTER TABLE ${名('_agent_session_commit')} DROP CONSTRAINT IF EXISTS _agent_session_commit_commit_id_fkey;`,
-  )
-  await 执行(
-    `ALTER TABLE ${名('_agent_session_commit')} ADD CONSTRAINT _agent_session_commit_commit_id_fkey FOREIGN KEY (commit_id) REFERENCES ${名('记忆提交表')}(id) ON DELETE RESTRICT;`,
+    `ALTER TABLE ${名('_记忆提交上下文表')} ADD CONSTRAINT _记忆提交上下文表_活动记忆提交id_fkey FOREIGN KEY (活动记忆提交id) REFERENCES ${名('记忆提交表')}(id) ON DELETE RESTRICT;`,
   )
   await 执行(`ALTER TABLE ${名('记忆提交表')} DROP CONSTRAINT IF EXISTS 记忆提交表_禁止自引用_check;`)
   await 执行(
-    `ALTER TABLE ${名('记忆提交表')} ADD CONSTRAINT 记忆提交表_禁止自引用_check CHECK (父提交id IS NULL OR 父提交id <> id);`,
+    `ALTER TABLE ${名('记忆提交表')} ADD CONSTRAINT 记忆提交表_禁止自引用_check CHECK (父记忆提交id IS NULL OR 父记忆提交id <> id);`,
   )
-  await 执行(`ALTER TABLE ${名('记忆提交表')} DROP CONSTRAINT IF EXISTS 记忆提交表_消息非空_check;`)
+  await 执行(`ALTER TABLE ${名('记忆提交表')} DROP CONSTRAINT IF EXISTS 记忆提交表_提交说明非空_check;`)
   await 执行(
-    `ALTER TABLE ${名('记忆提交表')} ADD CONSTRAINT 记忆提交表_消息非空_check CHECK (length(btrim(消息)) > 0);`,
+    `ALTER TABLE ${名('记忆提交表')} ADD CONSTRAINT 记忆提交表_提交说明非空_check CHECK (length(btrim(提交说明)) > 0);`,
   )
-  await 执行(`ALTER TABLE ${名('记忆变更表')} DROP CONSTRAINT IF EXISTS 记忆变更表_操作类型_check;`)
+  await 执行(`ALTER TABLE ${名('记忆提交变更表')} DROP CONSTRAINT IF EXISTS 记忆提交变更表_变更类型_check;`)
   await 执行(
-    `ALTER TABLE ${名('记忆变更表')} ADD CONSTRAINT 记忆变更表_操作类型_check CHECK (操作类型 IN ('add', 'update', 'delete', 'init'));`,
+    `ALTER TABLE ${名('记忆提交变更表')} ADD CONSTRAINT 记忆提交变更表_变更类型_check CHECK (变更类型 IN ('add', 'update', 'remove'));`,
   )
-  await 执行(`ALTER TABLE ${名('记忆变更表')} DROP CONSTRAINT IF EXISTS 记忆变更表_目标类型_check;`)
+  await 执行(`ALTER TABLE ${名('记忆提交变更表')} DROP CONSTRAINT IF EXISTS 记忆提交变更表_目标实体类型_check;`)
   await 执行(
-    `ALTER TABLE ${名('记忆变更表')} ADD CONSTRAINT 记忆变更表_目标类型_check CHECK (目标类型 IN ('node', 'link', 'tool'));`,
+    `ALTER TABLE ${名('记忆提交变更表')} ADD CONSTRAINT 记忆提交变更表_目标实体类型_check CHECK (目标实体类型 IN ('memory', 'memory_relation', 'dynamic_tool'));`,
   )
-  await 执行(`ALTER TABLE ${名('记忆变更表')} DROP CONSTRAINT IF EXISTS 记忆变更表_目标形状_check;`)
+  await 执行(`ALTER TABLE ${名('记忆提交变更表')} DROP CONSTRAINT IF EXISTS 记忆提交变更表_目标形状_check;`)
   await 执行(`
-    ALTER TABLE ${名('记忆变更表')} ADD CONSTRAINT 记忆变更表_目标形状_check CHECK (
-      (目标类型 = 'node' AND 记忆id IS NOT NULL AND 关联起点id IS NULL AND 关联终点id IS NULL AND 动态工具id IS NULL)
-      OR (目标类型 = 'link' AND 记忆id IS NULL AND 关联起点id IS NOT NULL AND 关联终点id IS NOT NULL AND 动态工具id IS NULL)
-      OR (目标类型 = 'tool' AND 记忆id IS NULL AND 关联起点id IS NULL AND 关联终点id IS NULL AND 动态工具id IS NOT NULL)
+    ALTER TABLE ${名('记忆提交变更表')} ADD CONSTRAINT 记忆提交变更表_目标形状_check CHECK (
+      (目标实体类型 = 'memory' AND 记忆实体id IS NOT NULL AND 起点记忆实体id IS NULL AND 终点记忆实体id IS NULL AND 动态工具实体id IS NULL)
+      OR (目标实体类型 = 'memory_relation' AND 记忆实体id IS NULL AND 起点记忆实体id IS NOT NULL AND 终点记忆实体id IS NOT NULL AND 动态工具实体id IS NULL)
+      OR (目标实体类型 = 'dynamic_tool' AND 记忆实体id IS NULL AND 起点记忆实体id IS NULL AND 终点记忆实体id IS NULL AND 动态工具实体id IS NOT NULL)
     );
   `)
-  await 执行(`ALTER TABLE ${名('记忆变更表')} DROP CONSTRAINT IF EXISTS 记忆变更表_值形状_check;`)
+  await 执行(`ALTER TABLE ${名('记忆提交变更表')} DROP CONSTRAINT IF EXISTS 记忆提交变更表_数据形状_check;`)
   await 执行(`
-    ALTER TABLE ${名('记忆变更表')} ADD CONSTRAINT 记忆变更表_值形状_check CHECK (
-      (操作类型 IN ('add', 'init') AND 旧值 IS NULL AND 新值 IS NOT NULL)
-      OR (操作类型 = 'update' AND 旧值 IS NOT NULL AND 新值 IS NOT NULL)
-      OR (操作类型 = 'delete' AND 旧值 IS NOT NULL AND 新值 IS NULL)
+    ALTER TABLE ${名('记忆提交变更表')} ADD CONSTRAINT 记忆提交变更表_数据形状_check CHECK (
+      (变更类型 = 'add' AND 变更前数据 IS NULL AND 变更后数据 IS NOT NULL)
+      OR (变更类型 = 'update' AND 变更前数据 IS NOT NULL AND 变更后数据 IS NOT NULL)
+      OR (变更类型 = 'remove' AND 变更前数据 IS NOT NULL AND 变更后数据 IS NULL)
+    );
+  `)
+  await 执行(`ALTER TABLE ${名('记忆提交变更表')} DROP CONSTRAINT IF EXISTS 记忆提交变更表_实体数据一致_check;`)
+  await 执行(`
+    ALTER TABLE ${名('记忆提交变更表')} ADD CONSTRAINT 记忆提交变更表_实体数据一致_check CHECK (
+      (变更前数据 IS NULL OR jsonb_typeof(变更前数据) = 'object')
+      AND (变更后数据 IS NULL OR jsonb_typeof(变更后数据) = 'object')
+      AND CASE 目标实体类型
+        WHEN 'memory' THEN
+          (变更前数据 IS NULL OR 变更前数据->>'id' = 记忆实体id)
+          AND (变更后数据 IS NULL OR 变更后数据->>'id' = 记忆实体id)
+        WHEN 'memory_relation' THEN
+          (变更前数据 IS NULL OR (变更前数据->>'起点id' = 起点记忆实体id AND 变更前数据->>'终点id' = 终点记忆实体id))
+          AND (变更后数据 IS NULL OR (变更后数据->>'起点id' = 起点记忆实体id AND 变更后数据->>'终点id' = 终点记忆实体id))
+        WHEN 'dynamic_tool' THEN
+          (变更前数据 IS NULL OR 变更前数据->>'id' = 动态工具实体id)
+          AND (变更后数据 IS NULL OR 变更后数据->>'id' = 动态工具实体id)
+        ELSE FALSE
+      END
     );
   `)
 
   await 执行(`
-    CREATE OR REPLACE FUNCTION ${名('拒绝记忆变更修改_触发器')}()
+    CREATE OR REPLACE FUNCTION ${名('拒绝记忆提交变更修改_触发器')}()
     RETURNS TRIGGER AS $$
     BEGIN
       RAISE EXCEPTION '记忆变更记录不可修改或删除';
     END;
     $$ LANGUAGE plpgsql;
   `)
-  await 执行(`DROP TRIGGER IF EXISTS trg_拒绝记忆变更修改 ON ${名('记忆变更表')};`)
+  await 执行(`DROP TRIGGER IF EXISTS trg_拒绝记忆提交变更修改 ON ${名('记忆提交变更表')};`)
   await 执行(`
-    CREATE TRIGGER trg_拒绝记忆变更修改 BEFORE UPDATE OR DELETE ON ${名('记忆变更表')}
-    FOR EACH ROW EXECUTE FUNCTION ${名('拒绝记忆变更修改_触发器')}();
+    CREATE TRIGGER trg_拒绝记忆提交变更修改 BEFORE UPDATE OR DELETE ON ${名('记忆提交变更表')}
+    FOR EACH ROW EXECUTE FUNCTION ${名('拒绝记忆提交变更修改_触发器')}();
   `)
   await 执行(`
     CREATE OR REPLACE FUNCTION ${名('拒绝永久实体修改_触发器')}()
@@ -111,8 +128,8 @@ export async function 初始化不可变约束(数据库查询器: Kysely<记忆
       IF TG_OP = 'UPDATE' THEN
         RAISE EXCEPTION '记忆提交不可修改';
       END IF;
-      IF EXISTS (SELECT 1 FROM ${名('记忆变更表')} WHERE 提交id = OLD.id)
-        OR EXISTS (SELECT 1 FROM ${名('记忆提交表')} WHERE 父提交id = OLD.id) THEN
+      IF EXISTS (SELECT 1 FROM ${名('记忆提交变更表')} WHERE 记忆提交id = OLD.id)
+        OR EXISTS (SELECT 1 FROM ${名('记忆提交表')} WHERE 父记忆提交id = OLD.id) THEN
         RAISE EXCEPTION '已完成或被引用的记忆提交不可删除';
       END IF;
       RETURN OLD;
@@ -193,9 +210,9 @@ export async function 初始化不可变约束(数据库查询器: Kysely<记忆
     END;
     $$ LANGUAGE plpgsql;
   `)
-  await 执行(`DROP TRIGGER IF EXISTS trg_拒绝交互日志修改 ON ${名('交互日志表')};`)
+  await 执行(`DROP TRIGGER IF EXISTS trg_拒绝交互日志修改 ON ${名('日志表')};`)
   await 执行(`
-    CREATE TRIGGER trg_拒绝交互日志修改 BEFORE UPDATE OR DELETE ON ${名('交互日志表')}
+    CREATE TRIGGER trg_拒绝交互日志修改 BEFORE UPDATE OR DELETE ON ${名('日志表')}
     FOR EACH ROW EXECUTE FUNCTION ${名('拒绝交互日志修改_触发器')}();
   `)
   await 执行(`

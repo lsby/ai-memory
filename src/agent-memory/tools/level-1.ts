@@ -47,7 +47,7 @@ export function 添加一级记忆工具(上下文: 一级记忆上下文): 智�
         let 最终标签 = 应用受保护标签([], 参数.标签, 配置.受保护标签)
         let 向量 = await 获取向量(参数.内容)
         let 插入结果 = await 数据库查询器
-          .insertInto('记忆表')
+          .insertInto('当前记忆表')
           .values({
             id,
             等级: 记忆等级.一级,
@@ -64,7 +64,7 @@ export function 添加一级记忆工具(上下文: 一级记忆上下文): 智�
           .executeTakeFirst()
         if (插入结果?.创建序号 !== undefined) {
           await 数据库查询器
-            .updateTable('记忆表')
+            .updateTable('当前记忆表')
             .set({ 最后访问序号: 插入结果.创建序号 })
             .where('id', '=', id)
             .execute()
@@ -147,7 +147,7 @@ export function 修改一级记忆工具(上下文: 一级记忆上下文): 智�
           标签: 最终标签,
         }
         await 数据库查询器
-          .updateTable('记忆表')
+          .updateTable('当前记忆表')
           .set(updateData)
           .where('id', '=', 参数.id)
           .where('等级', '=', 记忆等级.一级)
@@ -195,11 +195,15 @@ export function 移除一级记忆工具(上下文: 一级记忆上下文): 智�
     实现: async (参数: { id: string }): Promise<{ 结果: '成功' | '失败'; 错误信息?: string; 最新状态?: string }> => {
       try {
         await 数据库查询器
-          .deleteFrom('记忆关联表')
+          .deleteFrom('当前记忆关联表')
           .where((eb) => eb.or([eb('起点id', '=', 参数.id), eb('终点id', '=', 参数.id)]))
           .execute()
 
-        await 数据库查询器.deleteFrom('记忆表').where('id', '=', 参数.id).where('等级', '=', 记忆等级.一级).execute()
+        await 数据库查询器
+          .deleteFrom('当前记忆表')
+          .where('id', '=', 参数.id)
+          .where('等级', '=', 记忆等级.一级)
+          .execute()
         if (回调 !== undefined) {
           await 回调({ 类型: '流程信息', 内容: `[数据库更新] 已从当前状态移除一级记忆 (ID: ${参数.id})` })
         }

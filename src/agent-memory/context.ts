@@ -15,7 +15,7 @@ export type 上下文依赖 = {
   /** 开一个事务执行记忆变更（互斥、提交记录、向量未预取时回滚重试都在里面）。 */
   执行记忆变更任务: <R>(
     消息: string,
-    操作: (trx: Kysely<记忆数据库>, 父提交id: string | null) => Promise<R>,
+    操作: (trx: Kysely<记忆数据库>, 父记忆提交id: string | null) => Promise<R>,
     缓存: 向量缓存,
     回调?: (事件: 智能体事件) => Promise<void>,
     事件组id?: string,

@@ -33,7 +33,7 @@ async function 摘要成功(): Promise<unknown> {
 
 function 日志内容(日志: 公开交互日志 | undefined): Record<string, unknown> {
   if (日志 === undefined) throw new Error('缺少预期的交互日志')
-  return z.record(z.unknown()).parse(日志.内容)
+  return z.record(z.unknown()).parse(日志.事件内容)
 }
 
 describe('自动压缩遥测、超时与冷却', () => {
@@ -95,24 +95,24 @@ describe('自动压缩遥测、超时与冷却', () => {
     let 派生会话 = await 智能体.读取当前会话()
     expect(派生会话.前驱会话id).toBe(压缩前会话.id)
     let 日志列表 = await 读取事件组(智能体, '事件组-压缩成功')
-    let 开始 = 日志列表.find((日志) => 日志.类型 === '流程开始' && 日志内容(日志)['入口'] === '自动压缩')
+    let 开始 = 日志列表.find((日志) => 日志.事件类型 === '流程开始' && 日志内容(日志)['入口'] === '自动压缩')
     expect(开始).toBeDefined()
-    expect(开始?.上下文消息id).toBe(压缩前会话.当前消息id)
+    expect(开始?.上下文头消息id).toBe(压缩前会话.当前消息id)
     expect(日志内容(开始)).toMatchObject({ 会话id: 压缩前会话.id })
     expect(typeof 日志内容(开始)['历史字符数']).toBe('number')
-    let 审计 = 日志列表.find((日志) => 日志.类型 === '模型请求审计' && 日志内容(日志)['用途'] === '会话压缩')
+    let 审计 = 日志列表.find((日志) => 日志.事件类型 === '模型请求审计' && 日志内容(日志)['用途'] === '会话压缩')
     expect(审计?.耗时ms).toBeGreaterThanOrEqual(0)
     let 压缩记录 = 日志内容(审计)['记录']
     expect(压缩记录).toMatchObject({ 返回字符数: 2, 用量: { 输入token数: 120, 输出token数: 7 } })
     expect(压缩记录).not.toMatchObject({ 发出字符数: 120 })
-    let 结束 = 日志列表.find((日志) => 日志.类型 === '流程结束' && 日志内容(日志)['结果'] === '已压缩')
+    let 结束 = 日志列表.find((日志) => 日志.事件类型 === '流程结束' && 日志内容(日志)['结果'] === '已压缩')
     expect(日志内容(结束)).toMatchObject({
       前驱会话id: 压缩前会话.id,
       派生会话id: 派生会话.id,
       摘要字符数: 2,
     })
-    expect(日志列表.some((日志) => 日志.类型 === '流程开始' && 日志内容(日志)['执行模式'] === '对话')).toBe(true)
-    expect(日志列表.some((日志) => 日志.类型 === '流程异常')).toBe(false)
+    expect(日志列表.some((日志) => 日志.事件类型 === '流程开始' && 日志内容(日志)['执行模式'] === '对话')).toBe(true)
+    expect(日志列表.some((日志) => 日志.事件类型 === '流程异常')).toBe(false)
   })
 
   it('没传事件组id时压缩和正式那轮自动共用同一个事件组；没有 usage 时审计记录没有 用量', async (): Promise<void> => {
@@ -125,8 +125,8 @@ describe('自动压缩遥测、超时与冷却', () => {
     let 压缩结束 = 结束列表.find((日志) => 日志内容(日志)['结果'] === '已压缩')
     if (压缩结束 === undefined) throw new Error('缺少压缩结束日志')
     let 日志列表 = await 读取事件组(智能体, 压缩结束.事件组id)
-    expect(日志列表.some((日志) => 日志.类型 === '流程开始' && 日志内容(日志)['执行模式'] === '对话')).toBe(true)
-    let 审计 = 日志列表.find((日志) => 日志.类型 === '模型请求审计' && 日志内容(日志)['用途'] === '会话压缩')
+    expect(日志列表.some((日志) => 日志.事件类型 === '流程开始' && 日志内容(日志)['执行模式'] === '对话')).toBe(true)
+    let 审计 = 日志列表.find((日志) => 日志.事件类型 === '模型请求审计' && 日志内容(日志)['用途'] === '会话压缩')
     let 记录 = 日志内容(审计)['记录']
     expect(记录).toMatchObject({ 返回字符数: 2 })
     expect(记录).not.toHaveProperty('用量')
@@ -146,10 +146,10 @@ describe('自动压缩遥测、超时与冷却', () => {
     expect(结果.结束原因).toBeUndefined()
     expect((await 智能体.读取当前会话()).id).toBe(原会话.id)
     let 日志列表 = await 读取事件组(智能体, '事件组-超时')
-    let 异常 = 日志列表.find((日志) => 日志.类型 === '流程异常' && 日志内容(日志)['入口'] === '自动压缩')
+    let 异常 = 日志列表.find((日志) => 日志.事件类型 === '流程异常' && 日志内容(日志)['入口'] === '自动压缩')
     expect(日志内容(异常)).toMatchObject({ 原因: '超时', 会话id: 原会话.id })
     expect(typeof 日志内容(异常)['错误消息']).toBe('string')
-    expect(日志列表.some((日志) => 日志.类型 === '流程结束' && 日志内容(日志)['结束原因'] === undefined)).toBe(true)
+    expect(日志列表.some((日志) => 日志.事件类型 === '流程结束' && 日志内容(日志)['结束原因'] === undefined)).toBe(true)
   })
 
   it('调用方中断信号先到：压缩停止，正式那轮返回中断', async (): Promise<void> => {
@@ -165,7 +165,7 @@ describe('自动压缩遥测、超时与冷却', () => {
     expect(结果.结束原因).toBe('中断')
     expect(流式请求AI模拟).toHaveBeenCalledTimes(1)
     let 日志列表 = await 读取事件组(智能体, '事件组-中断')
-    let 异常 = 日志列表.find((日志) => 日志.类型 === '流程异常' && 日志内容(日志)['入口'] === '自动压缩')
+    let 异常 = 日志列表.find((日志) => 日志.事件类型 === '流程异常' && 日志内容(日志)['入口'] === '自动压缩')
     expect(日志内容(异常)).toMatchObject({ 原因: '中断' })
   })
 
@@ -183,8 +183,10 @@ describe('自动压缩遥测、超时与冷却', () => {
 
     expect(失败.创建).toHaveBeenCalledTimes(1)
     let 日志列表 = await 读取事件组(智能体, '事件组-冷却')
-    expect(日志列表.some((日志) => 日志.类型 === '流程信息' && JSON.stringify(日志.内容).includes('冷却'))).toBe(true)
-    expect(日志列表.some((日志) => 日志.类型 === '流程开始' && 日志内容(日志)['入口'] === '自动压缩')).toBe(false)
+    expect(
+      日志列表.some((日志) => 日志.事件类型 === '流程信息' && JSON.stringify(日志.事件内容).includes('冷却')),
+    ).toBe(true)
+    expect(日志列表.some((日志) => 日志.事件类型 === '流程开始' && 日志内容(日志)['入口'] === '自动压缩')).toBe(false)
   })
 
   it('调用方中断造成的压缩失败不触发冷却，下一轮仍会请求摘要', async (): Promise<void> => {
@@ -287,7 +289,7 @@ describe('自动压缩遥测、超时与冷却', () => {
     })
     expect(成功.创建.mock.calls[0]?.[0]).toMatchObject({ thinking: { type: 'disabled' }, model: 'summary-model' })
     let 成功日志 = await 读取事件组(智能体, '事件组-手动成功')
-    expect(成功日志.map((日志) => 日志.类型)).toEqual(['流程开始', '模型请求审计', '流程结束'])
+    expect(成功日志.map((日志) => 日志.事件类型)).toEqual(['流程开始', '模型请求审计', '流程结束'])
     expect(日志内容(成功日志[2])).toMatchObject({ 前驱会话id: 原会话.id, 派生会话id: 派生会话.id })
 
     let 已中断 = new AbortController()
@@ -304,7 +306,7 @@ describe('自动压缩遥测、超时与冷却', () => {
     ).rejects.toThrow()
     expect(不会调用.创建).not.toHaveBeenCalled()
     let 失败日志 = await 读取事件组(智能体, '事件组-手动中断')
-    expect(失败日志.map((日志) => 日志.类型)).toEqual(['流程开始', '流程异常'])
+    expect(失败日志.map((日志) => 日志.事件类型)).toEqual(['流程开始', '流程异常'])
     expect(日志内容(失败日志[1])).toMatchObject({ 入口: '手动压缩', 原因: '中断' })
   })
 

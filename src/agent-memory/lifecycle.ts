@@ -19,7 +19,7 @@ export async function 检查并降级一级记忆(
   回调?: (事件: 智能体事件) => Promise<void>,
 ): Promise<void> {
   let 上限 = 配置.一级记忆容量
-  let 现有一级 = await 数据库查询器.selectFrom('记忆表').selectAll().where('等级', '=', 记忆等级.一级).execute()
+  let 现有一级 = await 数据库查询器.selectFrom('当前记忆表').selectAll().where('等级', '=', 记忆等级.一级).execute()
   if (现有一级.length > 上限) {
     现有一级.sort((a, b) => {
       if (a.评分 !== b.评分) return a.评分 - b.评分
@@ -28,7 +28,7 @@ export async function 检查并降级一级记忆(
     let 要降级的数量 = 现有一级.length - 上限
     let 要降级的 = 现有一级.slice(0, 要降级的数量)
     let 要降级的IDs = 要降级的.map((x) => x.id)
-    await 数据库查询器.updateTable('记忆表').set({ 等级: 记忆等级.二级 }).where('id', 'in', 要降级的IDs).execute()
+    await 数据库查询器.updateTable('当前记忆表').set({ 等级: 记忆等级.二级 }).where('id', 'in', 要降级的IDs).execute()
 
     if (回调 !== undefined) {
       await 回调({
@@ -50,7 +50,7 @@ export async function 检查并清理二级记忆(
   let 兜底上限 = 配置.二级记忆数量上限
 
   let 现有二级数量结果 = await 数据库查询器
-    .selectFrom('记忆表')
+    .selectFrom('当前记忆表')
     .select((eb) => eb.fn.count<number>('id').as('数量'))
     .where('等级', '=', 记忆等级.二级)
     .executeTakeFirst()
@@ -58,7 +58,7 @@ export async function 检查并清理二级记忆(
   let 现有数量 = Number(现有二级数量结果?.数量 ?? 0)
 
   let 最大序号结果 = await 数据库查询器
-    .selectFrom('记忆表')
+    .selectFrom('当前记忆表')
     .select((eb) => eb.fn.max<number>('创建序号').as('最大序号'))
     .executeTakeFirst()
   let 当前最大序号 = Number(最大序号结果?.最大序号 ?? 0)
@@ -75,15 +75,15 @@ export async function 检查并清理二级记忆(
       SELECT
         m.id,
         COALESCE(SUM(r.关联度), 0) AS 总关联度
-      FROM 记忆表 m
-      LEFT JOIN 记忆关联表 r ON (r.起点id = m.id OR r.终点id = m.id)
+      FROM 当前记忆表 m
+      LEFT JOIN 当前记忆关联表 r ON (r.起点id = m.id OR r.终点id = m.id)
       WHERE m.等级 = '二级'
       GROUP BY m.id
     )
     SELECT
       m.id,
       (m.评分 + c.总关联度) * EXP(- (${衰减常数k}::float8 * GREATEST(0, ${当前最大序号}::int - m.最后访问序号)) / (1.0 + LN(1.0 + LEAST(m.访问次数, ${访问次数上限}::int)))) AS 保留指数
-    FROM 记忆表 m
+    FROM 当前记忆表 m
     JOIN 关联度汇总 c ON m.id = c.id
     WHERE m.等级 = '二级'
   `.execute(数据库查询器)
@@ -93,7 +93,7 @@ export async function 检查并清理二级记忆(
   let 筛出可淘汰ID = async (候选IDs: string[]): Promise<string[]> => {
     if (候选IDs.length === 0) return []
     let 记忆列表 = await 数据库查询器
-      .selectFrom('记忆表')
+      .selectFrom('当前记忆表')
       .select(['id', '等级', '评分', '内容', '关键词', '标签', '创建时间'])
       .where('id', 'in', 候选IDs)
       .execute()
@@ -132,12 +132,12 @@ export async function 检查并清理二级记忆(
     await 确保在事务中执行(数据库查询器, async (trx) => {
       // 先删除关联的边
       await trx
-        .deleteFrom('记忆关联表')
+        .deleteFrom('当前记忆关联表')
         .where((eb) => eb.or([eb('起点id', 'in', 要淘汰的IDs), eb('终点id', 'in', 要淘汰的IDs)]))
         .execute()
 
       // 再删除记忆
-      await trx.deleteFrom('记忆表').where('id', 'in', 要淘汰的IDs).execute()
+      await trx.deleteFrom('当前记忆表').where('id', 'in', 要淘汰的IDs).execute()
     })
 
     if (回调 !== undefined) {
@@ -166,7 +166,7 @@ export async function 批量注入记忆(上下文: 记忆操作上下文, 记�
     }
     await 确保在事务中执行(数据库查询器, async (trx) => {
       let 插入结果 = await trx
-        .insertInto('记忆表')
+        .insertInto('当前记忆表')
         .values({
           id,
           等级: 项.等级,
@@ -182,7 +182,7 @@ export async function 批量注入记忆(上下文: 记忆操作上下文, 记�
         .returning('创建序号')
         .executeTakeFirst()
       if (插入结果?.创建序号 !== undefined) {
-        await trx.updateTable('记忆表').set({ 最后访问序号: 插入结果.创建序号 }).where('id', '=', id).execute()
+        await trx.updateTable('当前记忆表').set({ 最后访问序号: 插入结果.创建序号 }).where('id', '=', id).execute()
       }
       await 刷新记忆关联网络(trx, id, 项.关键词, 配置, 回调)
       await 增量排版(trx, id)

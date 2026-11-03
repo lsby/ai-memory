@@ -36,7 +36,7 @@ export async function 获取混合关联排序(
                  INTERSECT
                  SELECT UNNEST(${参数.查询关键词}::TEXT[])
              )) AS 重叠度
-      FROM 记忆表
+      FROM 当前记忆表
       WHERE cardinality(ARRAY(
                  SELECT UNNEST(关键词)
                  INTERSECT
@@ -50,7 +50,7 @@ export async function 获取混合关联排序(
 
     // 使用 && 运算符在数据库层面上过滤出至少有一个重叠关键词的行，避免全表扫描
     let 带有条件的查询 = 数据库查询器
-      .selectFrom('记忆表')
+      .selectFrom('当前记忆表')
       .select(['id', '关键词'])
       .where(sql<boolean>`关键词 && ${参数.查询关键词}::TEXT[]`)
 
@@ -85,7 +85,7 @@ export async function 获取混合关联排序(
     let simExpr = sql<number>`1 - (向量 <=> ${targetVecStr}::vector)`
 
     let 查询 = 数据库查询器
-      .selectFrom('记忆表')
+      .selectFrom('当前记忆表')
       .select(['id', simExpr.as('相似度')])
       .where('向量', 'is not', null)
       .where('向量维度', '=', 当前维度)
@@ -132,7 +132,7 @@ export async function 获取混合关联排序(
 
 export async function 刷新记忆关联网络(
   数据库查询器: Kysely<记忆数据库>,
-  记忆id: string,
+  记忆实体id: string,
   关键词: string[],
   配置: 内部带记忆的智能体配置,
   回调?: (事件: 智能体事件) => Promise<void>,
@@ -140,11 +140,11 @@ export async function 刷新记忆关联网络(
   await 确保在事务中执行(数据库查询器, async (trx) => {
     // 先删除与该记忆相关的所有边
     await trx
-      .deleteFrom('记忆关联表')
-      .where((eb) => eb.or([eb('起点id', '=', 记忆id), eb('终点id', '=', 记忆id)]))
+      .deleteFrom('当前记忆关联表')
+      .where((eb) => eb.or([eb('起点id', '=', 记忆实体id), eb('终点id', '=', 记忆实体id)]))
       .execute()
 
-    let 当前记忆 = await trx.selectFrom('记忆表').select('向量').where('id', '=', 记忆id).executeTakeFirst()
+    let 当前记忆 = await trx.selectFrom('当前记忆表').select('向量').where('id', '=', 记忆实体id).executeTakeFirst()
     let 目标向量: number[] | null = null
     if (当前记忆 !== undefined && 当前记忆.向量 !== null) {
       目标向量 = typeof 当前记忆.向量 === 'string' ? (JSON.parse(当前记忆.向量) as number[]) : (当前记忆.向量 ?? null)
@@ -154,14 +154,14 @@ export async function 刷新记忆关联网络(
       查询关键词: 关键词,
       查询向量: 目标向量,
       向量阈值: 配置.向量相似度关联阈值,
-      排除的记忆ID: 记忆id,
+      排除的记忆ID: 记忆实体id,
     })
 
     if (需要计算的边.length > 0) {
       for (let 行 of 需要计算的边) {
-        let [左id, 右id] = 记忆id < 行.id ? [记忆id, 行.id] : [行.id, 记忆id]
+        let [左id, 右id] = 记忆实体id < 行.id ? [记忆实体id, 行.id] : [行.id, 记忆实体id]
         await sql`
-          INSERT INTO 记忆关联表 (起点id, 终点id, 关联度) VALUES (${左id}, ${右id}, ${行.综合得分})
+          INSERT INTO 当前记忆关联表 (起点id, 终点id, 关联度) VALUES (${左id}, ${右id}, ${行.综合得分})
           ON CONFLICT (起点id, 终点id) DO UPDATE SET 关联度 = EXCLUDED.关联度
         `.execute(trx)
       }
@@ -169,7 +169,7 @@ export async function 刷新记忆关联网络(
       if (回调 !== undefined) {
         await 回调({
           类型: '流程信息',
-          内容: `[数据库更新] 自动建立了 ${String(需要计算的边.length)} 个节点对的记忆关联网络 (中心节点ID: ${记忆id})`,
+          内容: `[数据库更新] 自动建立了 ${String(需要计算的边.length)} 个节点对的记忆关联网络 (中心节点ID: ${记忆实体id})`,
         })
       }
     }
@@ -198,6 +198,6 @@ export async function 读取旧标签用于保护(
   受保护标签: ((标签: string) => boolean) | undefined,
 ): Promise<string[]> {
   if (受保护标签 === undefined) return []
-  let 记忆 = await 数据库查询器.selectFrom('记忆表').select(['标签']).where('id', '=', id).executeTakeFirst()
+  let 记忆 = await 数据库查询器.selectFrom('当前记忆表').select(['标签']).where('id', '=', id).executeTakeFirst()
   return 记忆?.标签 ?? []
 }

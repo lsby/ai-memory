@@ -31,7 +31,7 @@ export function 追加记忆关键词工具(上下文: 关键词管理上下文)
     }): Promise<{ 结果: '成功' | '失败'; 错误信息?: string; 最新状态?: string }> => {
       try {
         let 记忆 = await 数据库查询器
-          .selectFrom('记忆表')
+          .selectFrom('当前记忆表')
           .select(['关键词'])
           .where('id', '=', 参数.id)
           .executeTakeFirst()
@@ -41,7 +41,7 @@ export function 追加记忆关键词工具(上下文: 关键词管理上下文)
         let 旧关键词 = 记忆.关键词
         let 新关键词 = Array.from(new Set([...旧关键词, ...参数.关键词列表]))
 
-        await 数据库查询器.updateTable('记忆表').set({ 关键词: 新关键词 }).where('id', '=', 参数.id).execute()
+        await 数据库查询器.updateTable('当前记忆表').set({ 关键词: 新关键词 }).where('id', '=', 参数.id).execute()
 
         await 刷新记忆关联网络(数据库查询器, 参数.id, 新关键词, 配置, 回调)
 
@@ -80,7 +80,7 @@ export function 移除记忆关键词工具(上下文: 关键词管理上下文)
     }): Promise<{ 结果: '成功' | '失败'; 错误信息?: string; 最新状态?: string }> => {
       try {
         let 记忆 = await 数据库查询器
-          .selectFrom('记忆表')
+          .selectFrom('当前记忆表')
           .select(['关键词'])
           .where('id', '=', 参数.id)
           .executeTakeFirst()
@@ -93,7 +93,7 @@ export function 移除记忆关键词工具(上下文: 关键词管理上下文)
           return 包含 === false
         })
 
-        await 数据库查询器.updateTable('记忆表').set({ 关键词: 新关键词 }).where('id', '=', 参数.id).execute()
+        await 数据库查询器.updateTable('当前记忆表').set({ 关键词: 新关键词 }).where('id', '=', 参数.id).execute()
 
         await 刷新记忆关联网络(数据库查询器, 参数.id, 新关键词, 配置, 回调)
 
@@ -131,13 +131,17 @@ export function 覆盖记忆关键词工具(上下文: 关键词管理上下文)
       关键词列表: string[]
     }): Promise<{ 结果: '成功' | '失败'; 错误信息?: string; 最新状态?: string }> => {
       try {
-        let 记忆 = await 数据库查询器.selectFrom('记忆表').select(['id']).where('id', '=', 参数.id).executeTakeFirst()
+        let 记忆 = await 数据库查询器
+          .selectFrom('当前记忆表')
+          .select(['id'])
+          .where('id', '=', 参数.id)
+          .executeTakeFirst()
         if (记忆 === undefined) {
           return { 结果: '失败', 错误信息: 配置.模型语言包.找不到记忆(参数.id) }
         }
         let 新关键词 = 参数.关键词列表
 
-        await 数据库查询器.updateTable('记忆表').set({ 关键词: 新关键词 }).where('id', '=', 参数.id).execute()
+        await 数据库查询器.updateTable('当前记忆表').set({ 关键词: 新关键词 }).where('id', '=', 参数.id).execute()
 
         await 刷新记忆关联网络(数据库查询器, 参数.id, 新关键词, 配置, 回调)
 

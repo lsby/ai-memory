@@ -27,7 +27,7 @@ describe('公共 API', () => {
   })
 
   it('不导出数据库 schema 或底层查询能力', () => {
-    expect(公共API).not.toHaveProperty('记忆表Schema')
-    expect(公共API).not.toHaveProperty('记忆关联表Schema')
+    expect(公共API).not.toHaveProperty('当前记忆表Schema')
+    expect(公共API).not.toHaveProperty('当前记忆关联表Schema')
   })
 })

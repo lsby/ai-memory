@@ -54,7 +54,7 @@ describe('文件存储生命周期', () => {
     await expect(智能体实例.初始化()).rejects.toThrow('已销毁')
   })
 
-  it('初始化数据库会创建 v9 版本、永久实体、强外键指针和关键索引', async (): Promise<void> => {
+  it('初始化数据库会创建 v10 版本、永久实体、强外键指针和关键索引', async (): Promise<void> => {
     let pglite = new PGlite({ extensions: { vector } })
     let 数据库查询器 = new Kysely<记忆数据库>({ dialect: new PGliteDialect({ pglite }) })
     try {
@@ -67,75 +67,84 @@ describe('文件存储生命周期', () => {
       let 指针 = await 数据库查询器.selectFrom('记忆指针表').selectAll().where('id', '=', 1).executeTakeFirst()
       let 索引结果 = await sql<{ indexname: string }>`
         SELECT indexname FROM pg_indexes
-        WHERE tablename IN ('记忆表', '记忆关联表', '记忆变更表', '记忆提交表', '交互日志表')
+        WHERE tablename IN ('当前记忆表', '当前记忆关联表', '记忆提交变更表', '记忆提交表', '日志表')
       `.execute(数据库查询器)
       let 索引名称 = 索引结果.rows.map((行) => 行.indexname)
       let 日志内容列 = await sql<{ data_type: string }>`
         SELECT data_type FROM information_schema.columns
-        WHERE table_schema = 'public' AND table_name = '交互日志表' AND column_name = '内容'
+        WHERE table_schema = 'public' AND table_name = '日志表' AND column_name = '事件内容'
       `.execute(数据库查询器)
 
       let 表结果 = await sql<{ table_name: string }>`
         SELECT table_name FROM information_schema.tables
         WHERE table_schema = 'public' AND table_name IN (
           '系统版本表', '记忆指针表', '记忆元数据表',
-          '记忆实体表', '记忆关联实体表', '动态工具实体表'
+          '记忆实体表', '记忆关联实体表', '动态工具实体表',
+          '当前记忆表', '当前记忆关联表', '当前动态工具表', '记忆提交表', '记忆提交变更表', '日志表',
+          '_记忆提交上下文表', '记忆表', '记忆关联表', '动态工具表', '记忆变更表', '交互日志表', '_agent_session_commit'
         )
+      `.execute(数据库查询器)
+      let 上下文列结果 = await sql<{ column_name: string }>`
+        SELECT column_name FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = '_记忆提交上下文表'
+        ORDER BY ordinal_position
       `.execute(数据库查询器)
       let 外键结果 = await sql<{ delete_rule: string }>`
         SELECT rc.delete_rule
         FROM information_schema.referential_constraints rc
-        WHERE rc.constraint_schema = 'public' AND rc.constraint_name = '记忆指针表_head_commit_id_fkey'
+        WHERE rc.constraint_schema = 'public' AND rc.constraint_name = '记忆指针表_当前记忆提交id_fkey'
       `.execute(数据库查询器)
       let 变更目标外键 = await sql<{ constraint_name: string; delete_rule: string }>`
         SELECT rc.constraint_name, rc.delete_rule
         FROM information_schema.referential_constraints rc
         WHERE rc.constraint_schema = 'public' AND rc.constraint_name IN (
-          '记忆变更表_记忆id_fkey', '记忆变更表_关联实体_fkey', '记忆变更表_动态工具id_fkey'
+          '记忆提交变更表_记忆实体id_fkey', '记忆提交变更表_关联实体_fkey', '记忆提交变更表_动态工具实体id_fkey'
         )
         ORDER BY rc.constraint_name
       `.execute(数据库查询器)
 
-      expect(版本?.内核架构版本).toBe(9)
-      expect(指针).toEqual({ id: 1, head_commit_id: null })
+      expect(版本?.内核架构版本).toBe(10)
+      expect(指针).toEqual({ id: 1, 当前记忆提交id: null })
       expect(表结果.rows.map((记录) => 记录.table_name).sort()).toEqual(
-        ['动态工具实体表', '系统版本表', '记忆关联实体表', '记忆实体表', '记忆指针表'].sort(),
+        [
+          '_记忆提交上下文表',
+          '动态工具实体表',
+          '当前动态工具表',
+          '当前记忆表',
+          '当前记忆关联表',
+          '记忆关联实体表',
+          '记忆实体表',
+          '记忆提交表',
+          '记忆提交变更表',
+          '记忆指针表',
+          '日志表',
+          '系统版本表',
+        ].sort(),
       )
+      expect(上下文列结果.rows).toEqual([
+        { column_name: 'id' },
+        { column_name: '活动记忆提交id' },
+        { column_name: '回放中' },
+      ])
       expect(外键结果.rows).toEqual([{ delete_rule: 'RESTRICT' }])
       expect(变更目标外键.rows).toEqual([
-        { constraint_name: '记忆变更表_关联实体_fkey', delete_rule: 'RESTRICT' },
-        { constraint_name: '记忆变更表_动态工具id_fkey', delete_rule: 'RESTRICT' },
-        { constraint_name: '记忆变更表_记忆id_fkey', delete_rule: 'RESTRICT' },
+        { constraint_name: '记忆提交变更表_关联实体_fkey', delete_rule: 'RESTRICT' },
+        { constraint_name: '记忆提交变更表_动态工具实体id_fkey', delete_rule: 'RESTRICT' },
+        { constraint_name: '记忆提交变更表_记忆实体id_fkey', delete_rule: 'RESTRICT' },
       ])
-      expect(日志内容列.rows).toEqual([{ data_type: 'json' }])
+      expect(日志内容列.rows).toEqual([{ data_type: 'jsonb' }])
       expect(索引名称).toEqual(
         expect.arrayContaining([
-          '记忆表_等级_创建序号_idx',
-          '记忆表_关键词_idx',
-          '记忆表_标签_idx',
-          '记忆关联表_终点_idx',
-          '记忆变更表_提交_idx',
-          '记忆提交表_父提交_idx',
+          '当前记忆表_等级_创建序号_idx',
+          '当前记忆表_关键词_idx',
+          '当前记忆表_标签_idx',
+          '当前记忆关联表_终点_idx',
+          '记忆提交变更表_记忆提交_idx',
+          '记忆提交表_父记忆提交_idx',
           '记忆提交表_唯一根_idx',
-          '交互日志表_事件组_idx',
+          '日志表_事件组_idx',
         ]),
       )
-    } finally {
-      await 数据库查询器.destroy()
-    }
-  })
-
-  it('v9 拒绝把旧元数据库当作新库自动迁移', async (): Promise<void> => {
-    let pglite = new PGlite({ extensions: { vector } })
-    let 数据库查询器 = new Kysely<记忆数据库>({ dialect: new PGliteDialect({ pglite }) })
-    try {
-      await pglite.exec('CREATE TABLE 记忆元数据表 (键 TEXT PRIMARY KEY, 值 TEXT NOT NULL)')
-      await expect(初始化数据库(数据库查询器)).rejects.toThrow('v9 不支持自动迁移')
-      let 新表 = await pglite.query<{ table_name: string }>(`
-        SELECT table_name FROM information_schema.tables
-        WHERE table_schema = 'public' AND table_name IN ('系统版本表', '记忆指针表')
-      `)
-      expect(新表.rows).toEqual([])
     } finally {
       await 数据库查询器.destroy()
     }
@@ -146,17 +155,19 @@ describe('文件存储生命周期', () => {
     let 数据库查询器 = new Kysely<记忆数据库>({ dialect: new PGliteDialect({ pglite }) })
     try {
       await 初始化数据库(数据库查询器)
-      await pglite.query(`INSERT INTO 记忆提交表 (id, 父提交id, 消息, 创建时间) VALUES ('root', NULL, '根提交', now())`)
-      await pglite.query(`UPDATE 记忆指针表 SET head_commit_id = 'root' WHERE id = 1`)
+      await pglite.query(
+        `INSERT INTO 记忆提交表 (id, 父记忆提交id, 提交说明, 创建时间) VALUES ('root', NULL, '根提交', now())`,
+      )
+      await pglite.query(`UPDATE 记忆指针表 SET 当前记忆提交id = 'root' WHERE id = 1`)
 
       await expect(
         pglite.query(
-          `INSERT INTO 记忆提交表 (id, 父提交id, 消息, 创建时间) VALUES ('root-2', NULL, '第二个根', now())`,
+          `INSERT INTO 记忆提交表 (id, 父记忆提交id, 提交说明, 创建时间) VALUES ('root-2', NULL, '第二个根', now())`,
         ),
       ).rejects.toThrow()
       await expect(pglite.query(`DELETE FROM 记忆提交表 WHERE id = 'root'`)).rejects.toThrow()
-      expect(await 数据库查询器.selectFrom('记忆指针表').select('head_commit_id').executeTakeFirst()).toEqual({
-        head_commit_id: 'root',
+      expect(await 数据库查询器.selectFrom('记忆指针表').select('当前记忆提交id').executeTakeFirst()).toEqual({
+        当前记忆提交id: 'root',
       })
     } finally {
       await 数据库查询器.destroy()
@@ -193,7 +204,7 @@ describe('文件存储生命周期', () => {
         ),
       ).rejects.toThrow()
       await expect(
-        pglite.query(`UPDATE _agent_session_commit SET commit_id = 'missing-commit' WHERE id = 1`),
+        pglite.query(`UPDATE _记忆提交上下文表 SET 活动记忆提交id = 'missing-commit' WHERE id = 1`),
       ).rejects.toThrow()
     } finally {
       await 数据库查询器.destroy()

@@ -167,7 +167,7 @@ export class 带记忆的智能体 extends 持久化会话智能体 {
    */
   private async 执行记忆变更任务<R>(
     消息: string,
-    操作: (trx: Kysely<记忆数据库>, 父提交id: string | null) => Promise<R>,
+    操作: (trx: Kysely<记忆数据库>, 父记忆提交id: string | null) => Promise<R>,
     缓存: 向量缓存 = 新向量缓存(),
     回调?: (事件: 智能体事件) => Promise<void>,
     事件组id?: string,
@@ -179,7 +179,7 @@ export class 带记忆的智能体 extends 持久化会话智能体 {
 
   private async 执行无向量记忆变更任务<R>(
     消息: string,
-    操作: (trx: Kysely<记忆数据库>, 父提交id: string | null) => Promise<R>,
+    操作: (trx: Kysely<记忆数据库>, 父记忆提交id: string | null) => Promise<R>,
     事件组id?: string,
     回调?: (事件: 智能体事件) => Promise<void>,
   ): Promise<R> {
@@ -258,10 +258,10 @@ export class 带记忆的智能体 extends 持久化会话智能体 {
       '从当前状态移除记忆',
       async (trx): Promise<boolean> => {
         await trx
-          .deleteFrom('记忆关联表')
+          .deleteFrom('当前记忆关联表')
           .where((eb) => eb.or([eb('起点id', '=', 已校验id), eb('终点id', '=', 已校验id)]))
           .execute()
-        let 结果 = await trx.deleteFrom('记忆表').where('id', '=', 已校验id).executeTakeFirst()
+        let 结果 = await trx.deleteFrom('当前记忆表').where('id', '=', 已校验id).executeTakeFirst()
         return Number(结果.numDeletedRows) > 0
       },
       事件组id,
@@ -329,8 +329,8 @@ export class 带记忆的智能体 extends 持久化会话智能体 {
   }
 
   /** 切换到指定提交的完整状态；已有提交不会被删除，之后的新提交将从该提交产生分支。 */
-  public async 切换记忆提交(提交id: string, 事件组id?: string): Promise<boolean> {
-    let 已校验提交id = z.string().trim().min(1).parse(提交id)
+  public async 切换记忆提交(记忆提交id: string, 事件组id?: string): Promise<boolean> {
+    let 已校验提交id = z.string().trim().min(1).parse(记忆提交id)
     await this.确保已初始化()
     return await 执行带日志的分支切换(
       this.数据库查询器,

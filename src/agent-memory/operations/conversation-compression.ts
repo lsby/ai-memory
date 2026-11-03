@@ -183,17 +183,17 @@ let 失败记录内容Schema = z.object({ 历史字符数: z.number() })
 /** 从交互日志推出该会话最近一次(且之后没有压缩成功过的)自动压缩失败时的历史字符数; 没有则返回 null。 */
 async function 读取最近自动压缩失败字符数(控制器: 会话控制器, 会话id: string): Promise<number | null> {
   let 数据库 = await 控制器.取数据库查询器()
-  let 结果 = await sql<{ 内容: unknown }>`
-    SELECT f.内容 FROM 交互日志表 f
-    WHERE f.类型 = '流程异常'
-      AND f.内容::jsonb ->> '入口' = '自动压缩'
-      AND f.内容::jsonb ->> '会话id' = ${会话id}
-      AND f.内容::jsonb ->> '原因' <> '中断'
+  let 结果 = await sql<{ 事件内容: unknown }>`
+    SELECT f.事件内容 FROM 日志表 f
+    WHERE f.事件类型 = '流程异常'
+      AND f.事件内容 ->> '入口' = '自动压缩'
+      AND f.事件内容 ->> '会话id' = ${会话id}
+      AND f.事件内容 ->> '原因' <> '中断'
       AND NOT EXISTS (
-        SELECT 1 FROM 交互日志表 s
-        WHERE s.类型 = '流程结束'
-          AND s.内容::jsonb ->> '结果' = '已压缩'
-          AND s.内容::jsonb ->> '前驱会话id' = ${会话id}
+        SELECT 1 FROM 日志表 s
+        WHERE s.事件类型 = '流程结束'
+          AND s.事件内容 ->> '结果' = '已压缩'
+          AND s.事件内容 ->> '前驱会话id' = ${会话id}
           AND s.序号 > f.序号
       )
     ORDER BY f.序号 DESC
@@ -201,7 +201,7 @@ async function 读取最近自动压缩失败字符数(控制器: 会话控制�
   `.execute(数据库)
   let 行 = 结果.rows[0]
   if (行 === undefined) return null
-  let 内容: unknown = typeof 行.内容 === 'string' ? JSON.parse(行.内容) : 行.内容
+  let 内容: unknown = 行.事件内容
   let 解析 = 失败记录内容Schema.safeParse(内容)
   return 解析.success === true ? 解析.data.历史字符数 : null
 }

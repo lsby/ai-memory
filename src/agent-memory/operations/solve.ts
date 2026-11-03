@@ -27,13 +27,13 @@ import { 修改一级记忆工具, 添加一级记忆工具, 移除一级记忆�
 import { 捞起记忆到一级工具, 添加二级记忆工具, 降级记忆为二级工具 } from '../tools/level-2'
 import { 移除记忆标签工具, 覆盖记忆标签工具, 追加记忆标签工具 } from '../tools/tag'
 import {
+  当前记忆表Schema,
   格式化为本地时间字符串,
   记忆等级,
-  记忆表Schema,
   type 内部带记忆的解决问题选项,
   type 带记忆的解决问题选项,
+  type 当前记忆表,
   type 记忆操作上下文,
-  type 记忆表,
 } from '../types'
 
 export function 格式化相对时间(记忆时间: Date, 当前时间: Date, 模型语言包: 模型语言包 = 中文模型语言包): string {
@@ -140,7 +140,7 @@ export async function 解决问题<T extends z.ZodType>(
   if (时区 !== undefined) 校验时区(时区)
 
   let 记忆列表 = await 数据库查询器
-    .selectFrom('记忆表')
+    .selectFrom('当前记忆表')
     .selectAll()
     .where('等级', 'in', [记忆等级.零级, 记忆等级.一级])
     .orderBy('创建时间', 'asc') // 较早的在前
@@ -222,8 +222,8 @@ export async function 解决问题<T extends z.ZodType>(
   }
 
   let 本轮召回内容片段: string[] = []
-  let 自动召回记忆id列表: string[] = []
-  let 自动召回动态工具id列表: string[] = []
+  let 自动召回记忆实体id列表: string[] = []
+  let 自动召回动态工具实体id列表: string[] = []
   let 自动召回关键词数量 = 0
   let 记忆状态文本 = `${零级记忆文本}\n${模型语言包.当前一级记忆标题()}\n`
 
@@ -277,18 +277,18 @@ export async function 解决问题<T extends z.ZodType>(
 
       if (解析结果.success) {
         let 数据 = 解析结果.data
-        let 记忆片段: 记忆表[] = []
+        let 记忆片段: 当前记忆表[] = []
         let 关键词片段: string[] = []
 
         if (数据.搜索结果_完整记忆 !== undefined) {
-          记忆片段 = z.array(记忆表Schema).parse(JSON.parse(数据.搜索结果_完整记忆))
+          记忆片段 = z.array(当前记忆表Schema).parse(JSON.parse(数据.搜索结果_完整记忆))
         }
         if (数据.搜索结果_发散关键词 !== undefined) {
           关键词片段 = z.array(z.string()).parse(JSON.parse(数据.搜索结果_发散关键词))
         }
 
         let 二级记忆片段 = 记忆片段.filter((m) => m.等级 === 记忆等级.二级)
-        自动召回记忆id列表.push(...二级记忆片段.map((记忆) => 记忆.id))
+        自动召回记忆实体id列表.push(...二级记忆片段.map((记忆) => 记忆.id))
         自动召回关键词数量 += 关键词片段.length
 
         if (二级记忆片段.length > 0 || 关键词片段.length > 0) {
@@ -319,7 +319,7 @@ export async function 解决问题<T extends z.ZodType>(
       let 向量字符串 = JSON.stringify(查询向量)
       let 相似度表达式 = sql<number>`1 - (向量 <=> ${向量字符串}::vector)`
       let 召回的工具 = await 数据库查询器
-        .selectFrom('动态工具表')
+        .selectFrom('当前动态工具表')
         .select(['id', '名称', '描述', '代码', 相似度表达式.as('相似度')])
         .where('向量', 'is not', null)
         .where('向量维度', '=', 当前维度)
@@ -329,7 +329,7 @@ export async function 解决问题<T extends z.ZodType>(
         .execute()
 
       if (召回的工具.length > 0) {
-        自动召回动态工具id列表.push(...召回的工具.map((工具) => 工具.id))
+        自动召回动态工具实体id列表.push(...召回的工具.map((工具) => 工具.id))
         let 动态工具提示文本 = `${模型语言包.自动召回动态工具标题()}\n${模型语言包.自动召回动态工具说明()}\n`
         for (let 工具 of 召回的工具) {
           let 加载结果 = await 加载并校验动态工具(工具.代码, 模型语言包)
@@ -381,8 +381,8 @@ export async function 解决问题<T extends z.ZodType>(
     开始时间: 召回开始时间,
     耗时ms: Date.now() - 召回开始时间.getTime(),
     内容: 转为JSON值({
-      记忆id列表: 自动召回记忆id列表,
-      动态工具id列表: 自动召回动态工具id列表,
+      记忆实体id列表: 自动召回记忆实体id列表,
+      动态工具实体id列表: 自动召回动态工具实体id列表,
       发散关键词数量: 自动召回关键词数量,
     }),
   })

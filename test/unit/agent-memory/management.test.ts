@@ -48,8 +48,13 @@ describe('记忆应用管理接口', () => {
     expect(await 智能体实例.查询记忆关联(第一条.id)).toEqual([{ 起点id, 终点id, 关联度: 1 }])
     let 关联变更 = (await 智能体实例.查询记忆提交())
       .flatMap((提交) => 提交.变更列表)
-      .find((变更) => 变更.目标类型 === 'link')
-    expect(关联变更).toMatchObject({ 关联起点id: 起点id, 关联终点id: 终点id, 记忆id: null, 动态工具id: null })
+      .find((变更) => 变更.目标实体类型 === 'memory_relation')
+    expect(关联变更).toMatchObject({
+      起点记忆实体id: 起点id,
+      终点记忆实体id: 终点id,
+      记忆实体id: null,
+      动态工具实体id: null,
+    })
 
     let 更新后 = await 智能体实例.更新记忆(第一条.id, { 内容: '更新后的苹果记忆', 标签: ['已更新'], 评分: 88 })
     expect(更新后).toMatchObject({ 内容: '更新后的苹果记忆', 标签: ['已更新'], 评分: 88 })
@@ -134,16 +139,16 @@ describe('记忆应用管理接口', () => {
     })
     await 智能体实例.更新记忆(记忆.id, { 内容: '回退后内容' })
 
-    let 更新提交 = (await 智能体实例.查询记忆提交()).find((提交) => 提交.消息 === '更新记忆')
+    let 更新提交 = (await 智能体实例.查询记忆提交()).find((提交) => 提交.提交说明 === '更新记忆')
     expect(更新提交?.变更列表).toHaveLength(1)
-    expect(更新提交?.变更列表[0]).toMatchObject({ 操作类型: 'update', 目标类型: 'node', 记忆id: 记忆.id })
-    expect(更新提交?.变更列表[0]?.旧值).toContain('回退前内容')
-    expect(更新提交?.变更列表[0]?.新值).toContain('回退后内容')
+    expect(更新提交?.变更列表[0]).toMatchObject({ 变更类型: 'update', 目标实体类型: 'memory', 记忆实体id: 记忆.id })
+    expect(更新提交?.变更列表[0]?.变更前数据).toMatchObject({ 内容: '回退前内容' })
+    expect(更新提交?.变更列表[0]?.变更后数据).toMatchObject({ 内容: '回退后内容' })
     let 回退前提交数 = (await 智能体实例.查询记忆提交()).length
 
     expect(await 智能体实例.回退最近记忆提交()).toBe(true)
     expect(await 智能体实例.查找记忆(记忆.id)).toMatchObject({ 内容: '回退前内容' })
-    expect(await 智能体实例.查询当前记忆提交id()).toBe(更新提交?.父提交id)
+    expect(await 智能体实例.查询当前记忆提交id()).toBe(更新提交?.父记忆提交id)
     expect(await 智能体实例.查询记忆提交()).toHaveLength(回退前提交数)
   })
 
@@ -159,9 +164,9 @@ describe('记忆应用管理接口', () => {
     })
     expect((await 智能体实例.注册动态工具(动态工具代码, '{"value":3}')).结果).toBe('成功')
 
-    let 注册提交 = (await 智能体实例.查询记忆提交()).find((提交) => 提交.消息 === '编程接入: 注册动态工具')
+    let 注册提交 = (await 智能体实例.查询记忆提交()).find((提交) => 提交.提交说明 === '编程接入: 注册动态工具')
     expect(注册提交?.变更列表).toHaveLength(1)
-    expect(注册提交?.变更列表[0]).toMatchObject({ 操作类型: 'add', 目标类型: 'tool' })
+    expect(注册提交?.变更列表[0]).toMatchObject({ 变更类型: 'add', 目标实体类型: 'dynamic_tool' })
 
     expect(await 智能体实例.回退最近记忆提交()).toBe(true)
     expect(await 智能体实例.查询动态工具()).toEqual([])
@@ -188,8 +193,8 @@ describe('记忆应用管理接口', () => {
     await 智能体实例.更新记忆(记忆.id, { 内容: '新分支' })
     let 新分支提交id = await 智能体实例.查询当前记忆提交id()
     let 提交列表 = await 智能体实例.查询记忆提交()
-    expect(提交列表.find((提交) => 提交.id === 原分支提交id)?.父提交id).toBe(祖先提交id)
-    expect(提交列表.find((提交) => 提交.id === 新分支提交id)?.父提交id).toBe(祖先提交id)
+    expect(提交列表.find((提交) => 提交.id === 原分支提交id)?.父记忆提交id).toBe(祖先提交id)
+    expect(提交列表.find((提交) => 提交.id === 新分支提交id)?.父记忆提交id).toBe(祖先提交id)
 
     if (原分支提交id === null || 新分支提交id === null) throw new Error('测试提交未生成')
     expect(await 智能体实例.切换记忆提交(原分支提交id)).toBe(true)

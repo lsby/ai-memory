@@ -65,7 +65,7 @@ describe('记忆工具工作流', () => {
       等级: 记忆等级.一级,
       评分: 88,
     })
-    expect((await 智能体实例.查询记忆提交())[0]?.消息).toBe('这条信息会影响后续回答，值得长期记忆')
+    expect((await 智能体实例.查询记忆提交())[0]?.提交说明).toBe('这条信息会影响后续回答，值得长期记忆')
   })
 
   it('模型写工具缺少提交消息时快速失败且不产生记忆提交', async (): Promise<void> => {
@@ -167,23 +167,29 @@ describe('记忆工具工作流', () => {
     expect(本轮用户消息.父消息id).toBe(基线上下文消息id)
 
     let 提交列表 = await 智能体实例.查询记忆提交()
-    let 追加关键词提交 = 提交列表.find((提交) => 提交.消息 === '补充便于检索的新关键词')
-    let 覆盖标签提交 = 提交列表.find((提交) => 提交.消息 === '重新归类这条记忆')
+    let 追加关键词提交 = 提交列表.find((提交) => 提交.提交说明 === '补充便于检索的新关键词')
+    let 覆盖标签提交 = 提交列表.find((提交) => 提交.提交说明 === '重新归类这条记忆')
     if (追加关键词提交 === undefined || 覆盖标签提交 === undefined) throw new Error('未找到模型工具产生的记忆提交')
     let 工具日志 = (await 智能体实例.查询交互日志()).filter(
-      (日志) => 日志.类型 === '工具调用开始' || 日志.类型 === '工具调用结果',
+      (日志) => 日志.事件类型 === '工具调用开始' || 日志.事件类型 === '工具调用结果',
     )
     let 查询调用日志 = (调用id: string): typeof 工具日志 =>
       工具日志.filter(
         (日志) =>
-          typeof 日志.内容 === 'object' &&
-          日志.内容 !== null &&
-          Array.isArray(日志.内容) === false &&
-          日志.内容['id'] === 调用id,
+          typeof 日志.事件内容 === 'object' &&
+          日志.事件内容 !== null &&
+          Array.isArray(日志.事件内容) === false &&
+          日志.事件内容['id'] === 调用id,
       )
-    expect(查询调用日志('append_keyword').map((日志) => 日志.记忆提交id)).toEqual([基线提交id, 追加关键词提交.id])
-    expect(查询调用日志('overwrite_tag').map((日志) => 日志.记忆提交id)).toEqual([追加关键词提交.id, 覆盖标签提交.id])
-    expect(查询调用日志('append_keyword').map((日志) => 日志.上下文消息id)).toEqual([本轮用户消息.id, 本轮用户消息.id])
-    expect(查询调用日志('overwrite_tag').map((日志) => 日志.上下文消息id)).toEqual([本轮用户消息.id, 本轮用户消息.id])
+    expect(查询调用日志('append_keyword').map((日志) => 日志.当时记忆提交id)).toEqual([基线提交id, 追加关键词提交.id])
+    expect(查询调用日志('overwrite_tag').map((日志) => 日志.当时记忆提交id)).toEqual([
+      追加关键词提交.id,
+      覆盖标签提交.id,
+    ])
+    expect(查询调用日志('append_keyword').map((日志) => 日志.上下文头消息id)).toEqual([
+      本轮用户消息.id,
+      本轮用户消息.id,
+    ])
+    expect(查询调用日志('overwrite_tag').map((日志) => 日志.上下文头消息id)).toEqual([本轮用户消息.id, 本轮用户消息.id])
   })
 })

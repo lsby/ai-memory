@@ -32,7 +32,7 @@ export function 降级记忆为二级工具(上下文: 二级记忆上下文): �
     }): Promise<{ 结果: '成功' | '失败'; 错误信息?: string; 最新状态?: string }> => {
       try {
         await 数据库查询器
-          .updateTable('记忆表')
+          .updateTable('当前记忆表')
           .set({ 等级: 记忆等级.二级, 评分: 参数.新评分 })
           .where('id', '=', 参数.id)
           .where('等级', '=', 记忆等级.一级)
@@ -72,11 +72,11 @@ export function 捞起记忆到一级工具(上下文: 二级记忆上下文): �
     }): Promise<{ 结果: '成功' | '失败'; 错误信息?: string; 最新状态?: string }> => {
       try {
         await 数据库查询器
-          .updateTable('记忆表')
+          .updateTable('当前记忆表')
           .set({
             等级: 记忆等级.一级,
             评分: 参数.新评分,
-            最后访问序号: sql<number>`(SELECT COALESCE(MAX(创建序号), 0) FROM 记忆表)`,
+            最后访问序号: sql<number>`(SELECT COALESCE(MAX(创建序号), 0) FROM 当前记忆表)`,
             访问次数: sql`访问次数 + 1`,
           })
           .where('id', '=', 参数.id)
@@ -133,7 +133,7 @@ export function 添加二级记忆工具(上下文: 二级记忆上下文): 智�
         let 最终标签 = 应用受保护标签([], 参数.标签, 配置.受保护标签)
         let 向量 = await 获取向量(参数.内容)
         let 插入结果 = await 数据库查询器
-          .insertInto('记忆表')
+          .insertInto('当前记忆表')
           .values({
             id,
             等级: 记忆等级.二级,
@@ -150,7 +150,7 @@ export function 添加二级记忆工具(上下文: 二级记忆上下文): 智�
           .executeTakeFirst()
         if (插入结果?.创建序号 !== undefined) {
           await 数据库查询器
-            .updateTable('记忆表')
+            .updateTable('当前记忆表')
             .set({ 最后访问序号: 插入结果.创建序号 })
             .where('id', '=', id)
             .execute()

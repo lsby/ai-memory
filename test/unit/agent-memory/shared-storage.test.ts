@@ -165,7 +165,7 @@ describe('共用一个 PGlite 的多 schema 并发', { timeout: 90000 }, () => {
 
     for (let schema of ['forget_a', 'forget_b']) {
       let 表 = await pglite.query<{ 表名: string }>(
-        `SELECT table_name AS 表名 FROM information_schema.tables WHERE table_schema = $1 AND table_name = '记忆表'`,
+        `SELECT table_name AS 表名 FROM information_schema.tables WHERE table_schema = $1 AND table_name = '当前记忆表'`,
         [schema],
       )
       expect(表.rows).toHaveLength(1)
@@ -176,7 +176,7 @@ describe('共用一个 PGlite 的多 schema 并发', { timeout: 90000 }, () => {
       expect(枚举.rows).toHaveLength(1)
     }
     let public中的表 = await pglite.query(
-      `SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = '记忆表'`,
+      `SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = '当前记忆表'`,
     )
     expect(public中的表.rows).toHaveLength(0)
 
@@ -187,7 +187,7 @@ describe('共用一个 PGlite 的多 schema 并发', { timeout: 90000 }, () => {
     expect(await 严格实例.查询记忆()).toHaveLength(1)
     expect(await 宽松实例.查询记忆()).toHaveLength(3)
     // 遗忘用的自增序号是各 schema 各自的
-    expect(await 统计行数(pglite, 'forget_b', '记忆表')).toBe(3)
+    expect(await 统计行数(pglite, 'forget_b', '当前记忆表')).toBe(3)
   })
 
   it('删除记忆空间只删本 schema，不影响别的 schema 和 vector 扩展', async (): Promise<void> => {
@@ -266,7 +266,7 @@ describe('共用一个 PGlite 的多 schema 并发', { timeout: 90000 }, () => {
     expect(记录.length).toBeGreaterThanOrEqual(2)
     expect(记录.filter((项) => 项.句柄被占用)).toEqual([])
 
-    let 向量维度 = await pglite.query<{ 维度: number | null }>(`SELECT 向量维度 AS 维度 FROM "slow_a"."记忆表"`)
+    let 向量维度 = await pglite.query<{ 维度: number | null }>(`SELECT 向量维度 AS 维度 FROM "slow_a"."当前记忆表"`)
     expect(向量维度.rows[0]?.维度).toBe(4)
   })
 
@@ -308,7 +308,7 @@ describe('共用一个 PGlite 的多 schema 并发', { timeout: 90000 }, () => {
 
     expect(记录.map((项) => 项.文本)).toContain('工具写入的二级记忆')
     expect(记录.filter((项) => 项.句柄被占用)).toEqual([])
-    let 行 = await pglite.query<{ 维度: number | null }>(`SELECT 向量维度 AS 维度 FROM "tool_vec"."记忆表"`)
+    let 行 = await pglite.query<{ 维度: number | null }>(`SELECT 向量维度 AS 维度 FROM "tool_vec"."当前记忆表"`)
     expect(行.rows.map((项) => 项.维度)).toEqual([4])
   })
 })
@@ -335,7 +335,7 @@ describe('导出的连接锁', { timeout: 60000 }, () => {
 
       let 锁内任务 = 在互斥锁内执行(pglite, async (): Promise<number> => {
         状态.锁内已执行 = true
-        let 结果 = await pglite.query<{ 数量: number }>(`SELECT count(*)::int AS 数量 FROM "lock_case"."记忆表"`)
+        let 结果 = await pglite.query<{ 数量: number }>(`SELECT count(*)::int AS 数量 FROM "lock_case"."当前记忆表"`)
         return 结果.rows[0]?.数量 ?? -1
       })
       await 等待(300)

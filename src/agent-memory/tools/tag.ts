@@ -30,14 +30,18 @@ export function 追加记忆标签工具(上下文: 标签管理上下文): 智�
       标签列表: string[]
     }): Promise<{ 结果: '成功' | '失败'; 错误信息?: string; 最新状态?: string }> => {
       try {
-        let 记忆 = await 数据库查询器.selectFrom('记忆表').select(['标签']).where('id', '=', 参数.id).executeTakeFirst()
+        let 记忆 = await 数据库查询器
+          .selectFrom('当前记忆表')
+          .select(['标签'])
+          .where('id', '=', 参数.id)
+          .executeTakeFirst()
         if (记忆 === undefined) {
           return { 结果: '失败', 错误信息: 配置.模型语言包.找不到记忆(参数.id) }
         }
         let 旧标签 = 记忆.标签
         let 新标签 = Array.from(new Set(应用受保护标签(旧标签, [...旧标签, ...参数.标签列表], 配置.受保护标签)))
 
-        await 数据库查询器.updateTable('记忆表').set({ 标签: 新标签 }).where('id', '=', 参数.id).execute()
+        await 数据库查询器.updateTable('当前记忆表').set({ 标签: 新标签 }).where('id', '=', 参数.id).execute()
 
         if (回调 !== undefined) {
           await 回调({
@@ -73,7 +77,11 @@ export function 移除记忆标签工具(上下文: 标签管理上下文): 智�
       标签列表: string[]
     }): Promise<{ 结果: '成功' | '失败'; 错误信息?: string; 最新状态?: string }> => {
       try {
-        let 记忆 = await 数据库查询器.selectFrom('记忆表').select(['标签']).where('id', '=', 参数.id).executeTakeFirst()
+        let 记忆 = await 数据库查询器
+          .selectFrom('当前记忆表')
+          .select(['标签'])
+          .where('id', '=', 参数.id)
+          .executeTakeFirst()
         if (记忆 === undefined) {
           return { 结果: '失败', 错误信息: 配置.模型语言包.找不到记忆(参数.id) }
         }
@@ -83,7 +91,7 @@ export function 移除记忆标签工具(上下文: 标签管理上下文): 智�
           return 包含 === false || 配置.受保护标签?.(k) === true
         })
 
-        await 数据库查询器.updateTable('记忆表').set({ 标签: 新标签 }).where('id', '=', 参数.id).execute()
+        await 数据库查询器.updateTable('当前记忆表').set({ 标签: 新标签 }).where('id', '=', 参数.id).execute()
 
         if (回调 !== undefined) {
           await 回调({
@@ -119,13 +127,17 @@ export function 覆盖记忆标签工具(上下文: 标签管理上下文): 智�
       标签列表: string[]
     }): Promise<{ 结果: '成功' | '失败'; 错误信息?: string; 最新状态?: string }> => {
       try {
-        let 记忆 = await 数据库查询器.selectFrom('记忆表').select(['标签']).where('id', '=', 参数.id).executeTakeFirst()
+        let 记忆 = await 数据库查询器
+          .selectFrom('当前记忆表')
+          .select(['标签'])
+          .where('id', '=', 参数.id)
+          .executeTakeFirst()
         if (记忆 === undefined) {
           return { 结果: '失败', 错误信息: 配置.模型语言包.找不到记忆(参数.id) }
         }
         let 新标签 = 应用受保护标签(记忆.标签, 参数.标签列表, 配置.受保护标签)
 
-        await 数据库查询器.updateTable('记忆表').set({ 标签: 新标签 }).where('id', '=', 参数.id).execute()
+        await 数据库查询器.updateTable('当前记忆表').set({ 标签: 新标签 }).where('id', '=', 参数.id).execute()
 
         if (回调 !== undefined) {
           await 回调({

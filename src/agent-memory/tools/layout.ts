@@ -9,7 +9,7 @@ type 布局连接 = d3.SimulationLinkDatum<布局节点> & { 关联度: number }
 export async function 增量排版(数据库查询器: Kysely<记忆数据库>, 中心节点id: string): Promise<void> {
   // 1. 获取所有跟中心节点直接相连的边
   let 相关边 = await 数据库查询器
-    .selectFrom('记忆关联表')
+    .selectFrom('当前记忆关联表')
     .selectAll()
     .where((eb) => eb.or([eb('起点id', '=', 中心节点id), eb('终点id', '=', 中心节点id)]))
     .execute()
@@ -25,7 +25,7 @@ export async function 增量排版(数据库查询器: Kysely<记忆数据库>, 
   // 2. 查出这些节点的 x, y, 以及它们的“基础半径”（这里用类似前端的逻辑，关联数量）
   // 为了简单，我们只查询出 x, y
   let 涉及节点 = await 数据库查询器
-    .selectFrom('记忆表')
+    .selectFrom('当前记忆表')
     .select(['id', 'x', 'y'])
     .where('id', 'in', Array.from(节点id集合))
     .execute()
@@ -96,15 +96,15 @@ export async function 增量排版(数据库查询器: Kysely<记忆数据库>, 
       node.id === 中心节点id ||
       (原始 !== undefined && (Math.abs(node.x - 原始.x) > 1 || Math.abs(node.y - 原始.y) > 1))
     ) {
-      await 数据库查询器.updateTable('记忆表').set({ x: node.x, y: node.y }).where('id', '=', node.id).execute()
+      await 数据库查询器.updateTable('当前记忆表').set({ x: node.x, y: node.y }).where('id', '=', node.id).execute()
     }
   }
 }
 
 export async function 全局排版(数据库查询器: Kysely<记忆数据库>): Promise<void> {
   // 1. 读取所有节点和边
-  let 所有节点 = await 数据库查询器.selectFrom('记忆表').select(['id', 'x', 'y']).execute()
-  let 所有边 = await 数据库查询器.selectFrom('记忆关联表').selectAll().execute()
+  let 所有节点 = await 数据库查询器.selectFrom('当前记忆表').select(['id', 'x', 'y']).execute()
+  let 所有边 = await 数据库查询器.selectFrom('当前记忆关联表').selectAll().execute()
 
   let nodes = 所有节点.map((n) => ({
     id: n.id,
@@ -138,7 +138,7 @@ export async function 全局排版(数据库查询器: Kysely<记忆数据库>):
   // 使用事务进行批量更新
   await 确保在事务中执行(数据库查询器, async (trx) => {
     for (let node of nodes) {
-      await trx.updateTable('记忆表').set({ x: node.x, y: node.y }).where('id', '=', node.id).execute()
+      await trx.updateTable('当前记忆表').set({ x: node.x, y: node.y }).where('id', '=', node.id).execute()
     }
   })
 }
