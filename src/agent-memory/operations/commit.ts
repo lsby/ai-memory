@@ -10,17 +10,18 @@ import {
 } from '../types'
 
 export async function 获取当前提交ID(数据库查询器: Kysely<记忆数据库>): Promise<string | null> {
-  let res = await 数据库查询器.selectFrom('记忆元数据表').selectAll().where('键', '=', 'HEAD_COMMIT').executeTakeFirst()
-  return res !== undefined ? res.值 : null
+  let 指针 = await 数据库查询器.selectFrom('记忆指针表').select('head_commit_id').where('id', '=', 1).executeTakeFirst()
+  if (指针 === undefined) throw new Error('记忆指针表缺少单例记录')
+  return 指针.head_commit_id
 }
 
-export async function 设置当前提交ID(数据库查询器: Kysely<记忆数据库>, id: string): Promise<void> {
-  let existing = await 获取当前提交ID(数据库查询器)
-  if (existing !== null) {
-    await 数据库查询器.updateTable('记忆元数据表').set({ 值: id }).where('键', '=', 'HEAD_COMMIT').execute()
-  } else {
-    await 数据库查询器.insertInto('记忆元数据表').values({ 键: 'HEAD_COMMIT', 值: id }).execute()
-  }
+export async function 设置当前提交ID(数据库查询器: Kysely<记忆数据库>, id: string | null): Promise<void> {
+  let 结果 = await 数据库查询器
+    .updateTable('记忆指针表')
+    .set({ head_commit_id: id })
+    .where('id', '=', 1)
+    .executeTakeFirst()
+  if (结果.numUpdatedRows !== 1n) throw new Error('记忆指针表缺少单例记录')
 }
 
 export async function 创建记忆提交(
@@ -28,7 +29,14 @@ export async function 创建记忆提交(
   消息: string,
 ): Promise<{ commitId: string; parentCommitId: string | null }> {
   if (消息.trim() === '') throw new Error('记忆提交消息不能为空')
-  let parentCommitId = await 获取当前提交ID(数据库查询器)
+  let 指针 = await 数据库查询器
+    .selectFrom('记忆指针表')
+    .select('head_commit_id')
+    .where('id', '=', 1)
+    .forUpdate()
+    .executeTakeFirst()
+  if (指针 === undefined) throw new Error('记忆指针表缺少单例记录')
+  let parentCommitId = 指针.head_commit_id
   let commitId = randomUUID()
 
   await 数据库查询器
@@ -54,11 +62,7 @@ export async function 尝试清理空提交(
     .execute()
 
   if (变更记录.length === 0) {
-    if (旧HEAD !== null) {
-      await 设置当前提交ID(数据库查询器, 旧HEAD)
-    } else {
-      await 数据库查询器.deleteFrom('记忆元数据表').where('键', '=', 'HEAD_COMMIT').execute()
-    }
+    await 设置当前提交ID(数据库查询器, 旧HEAD)
     await 数据库查询器.deleteFrom('记忆提交表').where('id', '=', commitId).execute()
   }
 }
@@ -143,6 +147,41 @@ async function 应用变更(数据库查询器: Kysely<记忆数据库>, 变更:
   }
 }
 
+export async function 校验记忆提交拓扑(数据库查询器: Kysely<记忆数据库>): Promise<void> {
+  let 提交列表 = await 数据库查询器.selectFrom('记忆提交表').select(['id', '父提交id']).execute()
+  let 当前提交id = await 获取当前提交ID(数据库查询器)
+  if (提交列表.length === 0) {
+    if (当前提交id !== null) throw new Error(`空记忆库的 HEAD 必须为 null，当前为: ${当前提交id}`)
+    return
+  }
+
+  let 提交映射 = new Map(提交列表.map((提交) => [提交.id, 提交]))
+  let 根提交列表 = 提交列表.filter((提交) => 提交.父提交id === null)
+  if (根提交列表.length !== 1) throw new Error(`记忆提交图必须恰好有一个根，当前为 ${String(根提交列表.length)} 个`)
+  let 根提交 = 根提交列表[0]
+  if (根提交 === undefined) throw new Error('记忆提交图缺少根提交')
+  if (当前提交id === null) throw new Error('存在记忆提交时 HEAD 不能为 null')
+  if (提交映射.has(当前提交id) === false) throw new Error(`HEAD 指向不存在的记忆提交: ${当前提交id}`)
+
+  let 已验证 = new Set<string>([根提交.id])
+  for (let 起点 of 提交列表) {
+    if (已验证.has(起点.id)) continue
+    let 路径: string[] = []
+    let 路径集合 = new Set<string>()
+    let 当前id: string | null = 起点.id
+    while (当前id !== null && 已验证.has(当前id) === false) {
+      if (路径集合.has(当前id)) throw new Error(`记忆提交链存在循环: ${当前id}`)
+      路径集合.add(当前id)
+      路径.push(当前id)
+      let 提交 = 提交映射.get(当前id)
+      if (提交 === undefined) throw new Error(`记忆提交链缺少提交: ${当前id}`)
+      当前id = 提交.父提交id
+    }
+    if (当前id === null) throw new Error(`记忆提交 ${起点.id} 未连接到唯一根提交 ${根提交.id}`)
+    for (let id of 路径) 已验证.add(id)
+  }
+}
+
 async function 获取可靠提交链(数据库查询器: Kysely<记忆数据库>, 目标提交id: string): Promise<记忆提交表[] | null> {
   let 提交链: 记忆提交表[] = []
   let 已访问 = new Set<string>()
@@ -159,12 +198,14 @@ async function 获取可靠提交链(数据库查询器: Kysely<记忆数据库>
     当前id = 提交.父提交id
   }
 
-  let 可靠根 = await 数据库查询器
-    .selectFrom('记忆元数据表')
-    .select('值')
-    .where('键', '=', 'RELIABLE_ROOT_COMMIT')
-    .executeTakeFirst()
-  if (可靠根 !== undefined && 提交链[0]?.id !== 可靠根.值) return null
+  let 根提交列表 = await 数据库查询器
+    .selectFrom('记忆提交表')
+    .select('id')
+    .where('父提交id', 'is', null)
+    .limit(2)
+    .execute()
+  if (根提交列表.length !== 1) throw new Error(`记忆提交图必须恰好有一个根，当前为 ${String(根提交列表.length)} 个`)
+  if (提交链[0]?.id !== 根提交列表[0]?.id) throw new Error(`记忆提交 ${目标提交id} 未连接到唯一根提交`)
   return 提交链
 }
 

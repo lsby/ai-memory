@@ -25,6 +25,10 @@ export async function 初始化不可变约束(数据库查询器: Kysely<记忆
   await 执行(
     `ALTER TABLE ${名('记忆提交表')} ADD CONSTRAINT 记忆提交表_父提交id_fkey FOREIGN KEY (父提交id) REFERENCES ${名('记忆提交表')}(id) ON DELETE RESTRICT;`,
   )
+  await 执行(`ALTER TABLE ${名('记忆提交表')} DROP CONSTRAINT IF EXISTS 记忆提交表_禁止自引用_check;`)
+  await 执行(
+    `ALTER TABLE ${名('记忆提交表')} ADD CONSTRAINT 记忆提交表_禁止自引用_check CHECK (父提交id IS NULL OR 父提交id <> id);`,
+  )
   await 执行(`ALTER TABLE ${名('记忆提交表')} DROP CONSTRAINT IF EXISTS 记忆提交表_消息非空_check;`)
   await 执行(
     `ALTER TABLE ${名('记忆提交表')} ADD CONSTRAINT 记忆提交表_消息非空_check CHECK (length(btrim(消息)) > 0);`,
@@ -67,8 +71,7 @@ export async function 初始化不可变约束(数据库查询器: Kysely<记忆
         RAISE EXCEPTION '记忆提交不可修改';
       END IF;
       IF EXISTS (SELECT 1 FROM ${名('记忆变更表')} WHERE 提交id = OLD.id)
-        OR EXISTS (SELECT 1 FROM ${名('记忆提交表')} WHERE 父提交id = OLD.id)
-        OR EXISTS (SELECT 1 FROM ${名('记忆元数据表')} WHERE 键 = 'HEAD_COMMIT' AND 值 = OLD.id) THEN
+        OR EXISTS (SELECT 1 FROM ${名('记忆提交表')} WHERE 父提交id = OLD.id) THEN
         RAISE EXCEPTION '已完成或被引用的记忆提交不可删除';
       END IF;
       RETURN OLD;

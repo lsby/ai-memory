@@ -62,8 +62,15 @@ export let 记忆变更表Schema = z.object({
 })
 export type 记忆变更表 = z.infer<typeof 记忆变更表Schema>
 
-export let 记忆元数据表Schema = z.object({ 键: z.string(), 值: z.string() })
-export type 记忆元数据表 = z.infer<typeof 记忆元数据表Schema>
+export type 系统版本表 = {
+  id: number
+  内核架构版本: number
+}
+
+export type 记忆指针表 = {
+  id: number
+  head_commit_id: string | null
+}
 
 export let 动态工具表Schema = z.object({
   id: z.string(),
@@ -186,7 +193,8 @@ export type 记忆数据库 = {
   记忆关联表: 记忆关联表
   记忆提交表: 记忆提交表
   记忆变更表: 记忆变更表
-  记忆元数据表: 记忆元数据表
+  系统版本表: 系统版本表
+  记忆指针表: 记忆指针表
   动态工具表: 动态工具表
   前缀快照表: 前缀快照表
   交互日志表: 交互日志表

@@ -1,5 +1,5 @@
 import { Kysely, sql } from 'kysely'
-import { randomUUID } from 'node:crypto'
+import { 校验记忆提交拓扑 } from '../operations/commit'
 import { 校验schema名, 转义标识符, 默认schema } from '../storage/connection'
 import { 记忆数据库 } from '../types'
 import { 确保在事务中执行 } from './common'
@@ -22,6 +22,25 @@ async function 在事务中初始化数据库(数据库查询器: Kysely<记忆�
 
   if (schema !== 默认schema) await 执行(`CREATE SCHEMA IF NOT EXISTS ${转义标识符(schema)}`)
   await 执行(`CREATE EXTENSION IF NOT EXISTS vector WITH SCHEMA public`)
+
+  let 现有表结果 = await sql<{ table_name: string }>`
+    SELECT table_name FROM information_schema.tables
+    WHERE table_schema = ${schema}
+      AND table_name IN ('记忆元数据表', '系统版本表', '记忆表', '记忆提交表')
+  `.execute(数据库查询器)
+  let 现有表 = new Set(现有表结果.rows.map((记录) => 记录.table_name))
+  if (现有表.has('记忆元数据表')) throw new Error('检测到 v8 或更旧的记忆数据库；v9 不支持自动迁移，请使用全新 schema')
+  let 全新数据库 = 现有表.has('系统版本表') === false
+  if (全新数据库 && (现有表.has('记忆表') || 现有表.has('记忆提交表'))) {
+    throw new Error('检测到没有系统版本的记忆数据表，拒绝将其当作全新 v9 数据库')
+  }
+  if (全新数据库 === false) {
+    let 版本结果 = await sql<{ 内核架构版本: number }>`
+      SELECT 内核架构版本 FROM ${sql.raw(名('系统版本表'))} WHERE id = 1
+    `.execute(数据库查询器)
+    let 版本 = 版本结果.rows[0]?.内核架构版本
+    if (版本 !== 9 || 版本结果.rows.length !== 1) throw new Error(`不支持的记忆数据库版本: ${String(版本)}`)
+  }
 
   let enumCheck = await sql`
     SELECT 1 FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace
@@ -84,18 +103,23 @@ async function 在事务中初始化数据库(数据库查询器: Kysely<记忆�
   await 执行(`ALTER TABLE ${名('记忆变更表')} ADD COLUMN IF NOT EXISTS 序号 BIGSERIAL;`)
 
   await 执行(`
-          CREATE TABLE IF NOT EXISTS ${名('记忆元数据表')} (
-            键 TEXT PRIMARY KEY,
-            值 TEXT NOT NULL
+          CREATE TABLE IF NOT EXISTS ${名('系统版本表')} (
+            id SMALLINT PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+            内核架构版本 INTEGER NOT NULL CHECK (内核架构版本 > 0)
           )
         `)
 
-  let 原内核版本结果 = await 数据库查询器
-    .selectFrom('记忆元数据表')
-    .select('值')
-    .where('键', '=', 'KERNEL_SCHEMA_VERSION')
-    .executeTakeFirst()
-  let 原内核版本 = 原内核版本结果?.值
+  await 执行(`
+          CREATE TABLE IF NOT EXISTS ${名('记忆指针表')} (
+            id SMALLINT PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+            head_commit_id TEXT REFERENCES ${名('记忆提交表')}(id) ON DELETE RESTRICT
+          )
+        `)
+  if (全新数据库) {
+    await 数据库查询器.insertInto('系统版本表').values({ id: 1, 内核架构版本: 9 }).execute()
+    await 数据库查询器.insertInto('记忆指针表').values({ id: 1, head_commit_id: null }).execute()
+  }
+  await 校验记忆提交拓扑(数据库查询器)
 
   await 执行(`
           CREATE TABLE IF NOT EXISTS ${名('动态工具表')} (
@@ -225,6 +249,9 @@ async function 在事务中初始化数据库(数据库查询器: Kysely<记忆�
   await 执行(`CREATE INDEX IF NOT EXISTS 记忆变更表_提交_idx ON ${名('记忆变更表')} (提交id);`)
   await 执行(`CREATE INDEX IF NOT EXISTS 记忆提交表_创建时间_idx ON ${名('记忆提交表')} (创建时间 DESC);`)
   await 执行(`CREATE INDEX IF NOT EXISTS 记忆提交表_父提交_idx ON ${名('记忆提交表')} (父提交id);`)
+  await 执行(
+    `CREATE UNIQUE INDEX IF NOT EXISTS 记忆提交表_唯一根_idx ON ${名('记忆提交表')} ((1)) WHERE 父提交id IS NULL;`,
+  )
   await 执行(`CREATE INDEX IF NOT EXISTS 交互日志表_事件组_idx ON ${名('交互日志表')} (事件组id, 序号);`)
   await 执行(`CREATE INDEX IF NOT EXISTS 交互日志表_开始时间_idx ON ${名('交互日志表')} (开始时间 DESC);`)
   await 执行(`CREATE INDEX IF NOT EXISTS 会话表_更新时间_idx ON ${名('会话表')} (更新时间 DESC, id);`)
@@ -267,7 +294,7 @@ async function 在事务中初始化数据库(数据库查询器: Kysely<记忆�
         RAISE EXCEPTION '活动记忆提交不存在或消息为空: %', v_commit_id;
       END IF;
 
-      SELECT 值 INTO v_head_id FROM ${名('记忆元数据表')} WHERE 键 = 'HEAD_COMMIT';
+      SELECT head_commit_id INTO v_head_id FROM ${名('记忆指针表')} WHERE id = 1;
       IF v_head_id IS DISTINCT FROM v_commit_id THEN
         RAISE EXCEPTION '活动记忆提交必须是当前 HEAD: 活动提交 %, HEAD %', v_commit_id, v_head_id;
       END IF;
@@ -496,43 +523,4 @@ async function 在事务中初始化数据库(数据库查询器: Kysely<记忆�
     AFTER INSERT OR UPDATE OR DELETE ON ${名('动态工具表')}
     FOR EACH ROW EXECUTE FUNCTION ${名('记录动态工具表变更_触发器')}();
   `)
-
-  if (原内核版本 !== undefined && Number(原内核版本) < 4) {
-    let 基线id = randomUUID()
-    await 数据库查询器
-      .insertInto('记忆提交表')
-      .values({ id: 基线id, 父提交id: null, 消息: '升级后完整状态基线', 创建时间: new Date() })
-      .execute()
-    await sql`
-      INSERT INTO ${sql.raw(名('记忆变更表'))} (id, 提交id, 操作类型, 目标表, 目标id, 旧值, 新值)
-      SELECT gen_random_uuid()::TEXT, ${基线id}, 'init', 'node', id, NULL, row_to_json(记录)::TEXT
-      FROM ${sql.raw(名('记忆表'))} AS 记录
-    `.execute(数据库查询器)
-    await sql`
-      INSERT INTO ${sql.raw(名('记忆变更表'))} (id, 提交id, 操作类型, 目标表, 目标id, 旧值, 新值)
-      SELECT gen_random_uuid()::TEXT, ${基线id}, 'init', 'link', 起点id || '_' || 终点id, NULL, row_to_json(记录)::TEXT
-      FROM ${sql.raw(名('记忆关联表'))} AS 记录
-    `.execute(数据库查询器)
-    await sql`
-      INSERT INTO ${sql.raw(名('记忆变更表'))} (id, 提交id, 操作类型, 目标表, 目标id, 旧值, 新值)
-      SELECT gen_random_uuid()::TEXT, ${基线id}, 'init', 'tool', id, NULL, row_to_json(记录)::TEXT
-      FROM ${sql.raw(名('动态工具表'))} AS 记录
-    `.execute(数据库查询器)
-    await 数据库查询器
-      .insertInto('记忆元数据表')
-      .values({ 键: 'HEAD_COMMIT', 值: 基线id })
-      .onConflict((冲突) => 冲突.column('键').doUpdateSet({ 值: 基线id }))
-      .execute()
-    await 数据库查询器
-      .insertInto('记忆元数据表')
-      .values({ 键: 'RELIABLE_ROOT_COMMIT', 值: 基线id })
-      .onConflict((冲突) => 冲突.column('键').doUpdateSet({ 值: 基线id }))
-      .execute()
-  }
-
-  await 数据库查询器
-    .insertInto('记忆元数据表')
-    .values({ 键: 'KERNEL_SCHEMA_VERSION', 值: '8' })
-    .onConflict((冲突) => 冲突.column('键').doUpdateSet({ 值: '8' }))
-    .execute()
 }
