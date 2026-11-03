@@ -58,6 +58,7 @@ function 解包向量结果(
 }
 
 type 记忆工具上下文 = Omit<记忆操作上下文, '获取向量' | '执行记忆变更' | '带向量缓存'> & {
+  当前会话id?: string | undefined
   获取向量: (内容: string) => Promise<number[] | null>
   带向量缓存: (内容列表: string[]) => Promise<记忆工具上下文>
   执行记忆变更: <R>(消息: string, 操作: (上下文: 记忆工具上下文) => Promise<R>) => Promise<R>
@@ -65,14 +66,15 @@ type 记忆工具上下文 = Omit<记忆操作上下文, '获取向量' | '执�
 
 type 记忆工具工厂 = (上下文: 记忆工具上下文) => 智能体工具
 
-function 构建记忆工具上下文(上下文: 记忆操作上下文): 记忆工具上下文 {
+function 构建记忆工具上下文(上下文: 记忆操作上下文, 当前会话id?: string): 记忆工具上下文 {
   return {
     ...上下文,
+    ...(当前会话id !== undefined ? { 当前会话id } : {}),
     获取向量: async (内容: string): Promise<number[] | null> => 解包向量结果(await 上下文.获取向量(内容)),
     带向量缓存: async (内容列表: string[]): Promise<记忆工具上下文> =>
-      构建记忆工具上下文(await 上下文.带向量缓存(内容列表)),
+      构建记忆工具上下文(await 上下文.带向量缓存(内容列表), 当前会话id),
     执行记忆变更: async <R>(消息: string, 操作: (上下文: 记忆工具上下文) => Promise<R>): Promise<R> =>
-      await 上下文.执行记忆变更(消息, async (事务上下文) => await 操作(构建记忆工具上下文(事务上下文))),
+      await 上下文.执行记忆变更(消息, async (事务上下文) => await 操作(构建记忆工具上下文(事务上下文, 当前会话id))),
   }
 }
 
@@ -125,7 +127,7 @@ function 创建事务化记忆工具(上下文: 记忆工具上下文, 工厂: �
 
 export async function 解决问题<T extends z.ZodType>(
   上下文: 记忆操作上下文,
-  选项: 带记忆的解决问题选项<T>,
+  选项: 内部带记忆的解决问题选项<T>,
   执行器: (选项: 内部带记忆的解决问题选项<T>) => Promise<回合结果<T>>,
   执行模式: 智能体执行模式,
   检查前缀: (选项: 带记忆的解决问题选项<T>) => string,
@@ -147,7 +149,7 @@ export async function 解决问题<T extends z.ZodType>(
   let 零级记忆列表 = 记忆列表.filter((项) => 项.等级 === 记忆等级.零级)
   let 一级记忆列表 = 记忆列表.filter((项) => 项.等级 === 记忆等级.一级)
 
-  let 记忆工具上下文 = 构建记忆工具上下文(上下文)
+  let 记忆工具上下文 = 构建记忆工具上下文(上下文, 选项.当前会话id)
   // 工具名用常量写在这里, 先按 记忆工具筛选 的结果筛掉再创建; 顺序就是挂给模型的顺序
   let 启用的工具名 = new Set(配置.启用的记忆工具名)
   let 候选工具: Array<[string, () => 智能体工具]> = [
@@ -363,6 +365,7 @@ export async function 解决问题<T extends z.ZodType>(
     .update(时区 !== undefined ? `\n${时区}` : '')
     .digest('hex')
   let 本轮注入消息列表: 内部注入消息[] = [
+    ...(选项.内部注入消息 ?? []),
     {
       类型: 'memory-state',
       内容: 模型语言包.当前记忆状态(记忆状态文本),

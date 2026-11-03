@@ -66,7 +66,7 @@ describe('P1 记忆工具筛选', () => {
   it('不传筛选时全部记忆工具都挂上', async (): Promise<void> => {
     let { 假 } = await 跑一轮(创建记忆实例())
     let 工具名 = 取工具名列表(假.请求列表[0])
-    expect([...工具名].sort()).toEqual([...全部记忆工具名, '__submit_result__', 'read_conversation_history'].sort())
+    expect([...工具名].sort()).toEqual([...全部记忆工具名, '__submit_result__'].sort())
   })
 
   it('常量导出了全部记忆工具名且没有重复', () => {
@@ -107,7 +107,7 @@ describe('P1 记忆工具筛选', () => {
   it('只保留回忆延伸时, 不写需要修改记忆的几段, 也不写动态工具', async (): Promise<void> => {
     let { 假 } = await 跑一轮(创建记忆实例({ 记忆工具筛选: (名称) => 名称 === 记忆工具名.回忆延伸 }))
     let 请求 = 假.请求列表[0]
-    expect(取工具名列表(请求).sort()).toEqual(['__submit_result__', 'extend_memory', 'read_conversation_history'])
+    expect(取工具名列表(请求).sort()).toEqual(['__submit_result__', 'extend_memory'])
     let 系统提示词 = 取系统提示词(请求)
     expect(系统提示词).not.toContain('认知进化范式')
     expect(系统提示词).not.toContain('经验沉淀')
@@ -153,6 +153,40 @@ describe('P1 记忆工具筛选', () => {
     let 假2 = 创建假客户端([提交(2)])
     let 第三轮 = await 丙.执行回合({ ...创建选项(假2, '第二轮'), 消息历史: 结果.消息列表 })
     expect(第三轮.结束原因).toBeUndefined()
+  })
+})
+
+describe('博闻强记配置', () => {
+  it('类型要求开启时必须带搜索数量，关闭时不能带', (): void => {
+    let 类型检查 = (): void => {
+      // @ts-expect-error 开启时缺少消息搜索数量
+      new 带记忆的智能体({ 博闻强记模式: true })
+      // @ts-expect-error 关闭时不得配置消息搜索数量
+      new 带记忆的智能体({ 博闻强记模式: false, 博闻强记消息搜索数量: 20 })
+    }
+    expect(类型检查).toBeTypeOf('function')
+  })
+
+  it('对 JavaScript 调用方也会快速拒绝不完整配置', (): void => {
+    expect(() => Reflect.construct(带记忆的智能体, [{ 博闻强记模式: true }])).toThrow(/必须提供/)
+    expect(() => Reflect.construct(带记忆的智能体, [{ 博闻强记模式: false, 博闻强记消息搜索数量: 20 }])).toThrow(
+      /不能提供/,
+    )
+  })
+
+  it('省略或显式 false 时不暴露消息搜索工具', async (): Promise<void> => {
+    let 默认轮 = await 跑一轮(创建记忆实例())
+    let 关闭轮 = await 跑一轮(创建记忆实例({ 博闻强记模式: false }))
+    expect(取工具名列表(默认轮.假.请求列表[0])).not.toContain('search_conversation_messages')
+    expect(取工具名列表(关闭轮.假.请求列表[0])).not.toContain('search_conversation_messages')
+  })
+
+  it('开启时暴露消息搜索工具并适配内置提示词', async (): Promise<void> => {
+    let { 假 } = await 跑一轮(创建记忆实例({ 博闻强记模式: true, 博闻强记消息搜索数量: 20 }))
+    let 请求 = 假.请求列表[0]
+    expect(取工具名列表(请求)).toContain('search_conversation_messages')
+    expect(取工具名列表(请求)).not.toContain('read_conversation_history')
+    expect(取系统提示词(请求)).toContain('## 博闻强记模式')
   })
 })
 

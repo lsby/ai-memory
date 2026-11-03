@@ -1,6 +1,8 @@
 import { Kysely, sql } from 'kysely'
 import { z } from 'zod'
 import { 智能体事件, 智能体工具 } from '../../agent/types'
+import { 读取当前会话谱系消息 } from '../operations/conversation-lineage'
+import { 查询记忆新增相关消息, type 记忆相关消息 } from '../operations/memory-message-origin'
 import { 内部带记忆的智能体配置, 格式化为本地时间字符串, 记忆数据库, 记忆表 } from '../types'
 import { 获取混合关联排序 } from './common'
 
@@ -8,11 +10,13 @@ type 图谱检索上下文 = {
   配置: 内部带记忆的智能体配置
   数据库查询器: Kysely<记忆数据库>
   获取向量: (内容: string) => Promise<number[] | null>
+  当前会话id?: string | undefined
+  读取当前会话id: () => string | null
   回调?: ((事件: 智能体事件) => Promise<void>) | undefined
 }
 
 export function 回忆延伸工具(上下文: 图谱检索上下文): 智能体工具 {
-  let { 配置, 数据库查询器, 获取向量, 回调 } = 上下文
+  let { 配置, 数据库查询器, 获取向量, 当前会话id, 读取当前会话id, 回调 } = 上下文
 
   return 智能体工具.创建({
     名称: 'extend_memory',
@@ -271,6 +275,16 @@ export function 回忆延伸工具(上下文: 图谱检索上下文): 智能体�
             .execute()
         }
 
+        let 相关消息映射 = new Map<string, 记忆相关消息[]>()
+        let 实际当前会话id = 当前会话id ?? 读取当前会话id() ?? undefined
+        if (配置.博闻强记模式 === true && 实际当前会话id !== undefined) {
+          let 谱系消息 = await 读取当前会话谱系消息(数据库查询器, 实际当前会话id)
+          let 允许消息id = new Set(谱系消息.map((消息) => 消息.id))
+          for (let 记忆 of 最终直接内容) {
+            相关消息映射.set(记忆.id, await 查询记忆新增相关消息(数据库查询器, 记忆.id, 允许消息id))
+          }
+        }
+
         return {
           结果: '成功',
           搜索结果_完整记忆: JSON.stringify(
@@ -284,6 +298,7 @@ export function 回忆延伸工具(上下文: 图谱检索上下文): 智能体�
                 标签: m.标签,
                 相关度: 度量映射.get(m.id) ?? '未知',
                 创建时间: 格式化为本地时间字符串(m.创建时间, 配置.时区),
+                ...(配置.博闻强记模式 === true ? { 相关消息: 相关消息映射.get(m.id) ?? [] } : {}),
               }
             }),
           ),

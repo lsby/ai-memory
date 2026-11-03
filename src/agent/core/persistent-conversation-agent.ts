@@ -12,12 +12,13 @@ export abstract class 持久化会话智能体 extends 智能体 {
     super(选项)
   }
 
-  protected 初始化会话控制器(控制器: 会话控制器): void {
-    if (this.工具列表.some((工具) => 工具.名称 === 'read_conversation_history')) {
-      throw new Error('工具名称 read_conversation_history 是持久化会话的保留名称')
-    }
+  protected 初始化会话控制器(控制器: 会话控制器, 博闻强记消息搜索数量?: number): void {
     this.会话控制器值 = 控制器
-    this.工具列表.push(控制器.创建历史阅读工具())
+    if (博闻强记消息搜索数量 === undefined) return
+    if (this.工具列表.some((工具) => 工具.名称 === 'search_conversation_messages')) {
+      throw new Error('工具名称 search_conversation_messages 是博闻强记模式的保留名称')
+    }
+    this.工具列表.push(控制器.创建消息搜索工具(博闻强记消息搜索数量))
   }
 
   protected 会话控制器(): 会话控制器 {

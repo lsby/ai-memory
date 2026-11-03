@@ -24,6 +24,7 @@ import {
 import { 尝试自动压缩, 确定对话事件组 } from './operations/conversation-compression'
 import { 会话控制器 } from './operations/conversation-controller'
 import * as 动态工具管理 from './operations/dynamic-management'
+import { 准备博闻强记选项 } from './operations/funes-mode'
 import {
   更新记忆 as 外部更新记忆,
   查询动态工具 as 外部查询动态工具,
@@ -84,7 +85,11 @@ export class 带记忆的智能体 extends 持久化会话智能体 {
     this.记忆提示词文本 = 记忆提示词文本
     let 存储 = 配置.存储
     this.schema名 = 存储.schema ?? 默认schema
-    this.上下文依赖 = { 配置: this.配置, 执行记忆变更任务: this.执行记忆变更任务.bind(this) }
+    this.上下文依赖 = {
+      配置: this.配置,
+      读取当前会话id: (): string | null => this.会话控制器().当前会话id(),
+      执行记忆变更任务: this.执行记忆变更任务.bind(this),
+    }
     let pglite选项: PGliteOptions = { extensions: { vector } }
     switch (存储.模式) {
       case '内存':
@@ -110,6 +115,7 @@ export class 带记忆的智能体 extends 持久化会话智能体 {
         载入内存历史: (消息列表, 会话id): void => super.载入对话历史(消息列表, 会话id),
         模型语言包: this.模型语言包,
       }),
+      this.配置.博闻强记模式 === true ? this.配置.博闻强记消息搜索数量 : undefined,
     )
   }
 
@@ -428,12 +434,14 @@ export class 带记忆的智能体 extends 持久化会话智能体 {
     let 标题 = 选项.标题 ?? `对话: ${简短命令.slice(0, 20)}`
     if (更新当前会话审计状态 === true) this.会话控制器().设置待创建会话标题(标题)
     let 原回调 = 选项.回调
+    let 内部选项 =
+      this.配置.博闻强记模式 === true ? await 准备博闻强记选项(this.会话控制器(), this.模型语言包, 选项) : 选项
     return await 执行带日志的推理流程(
       this.数据库查询器,
       转为JSON值({ 执行模式 }),
       原回调,
       async (日志回调, 事件组id): Promise<回合结果<T>> => {
-        let 带日志选项 = { ...选项, 标题, 回调: 日志回调, 事件组id }
+        let 带日志选项 = { ...内部选项, 标题, 回调: 日志回调, 事件组id }
         let 上下文 = 外部构建操作上下文(this.上下文依赖, this.数据库查询器, 原回调, undefined, 事件组id)
         return await 外部解决问题(
           上下文,

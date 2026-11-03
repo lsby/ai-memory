@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import { type 智能体事件, 智能体工具 } from '../../agent/types'
 import { 带记忆的智能体 } from '../agent-memory'
-import type { 内部带记忆的智能体配置, 带记忆的解决问题选项, 批量注入记忆项 } from '../types'
+import type { 内部带记忆的智能体配置, 带记忆的智能体选项, 带记忆的解决问题选项, 批量注入记忆项 } from '../types'
 import { 记忆等级 } from '../types'
 
 type 深度推演上下文 = {
@@ -41,7 +41,13 @@ export function 深度推演工具(上下文: 深度推演上下文): 智能体�
       纯净模式?: boolean | undefined
     }): Promise<{ 结果: '成功' | '失败'; 推演结论?: string; 错误信息?: string }> => {
       try {
-        let 新配置 = { ...上下文.配置 }
+        let 新配置: 带记忆的智能体选项
+        if (上下文.配置.博闻强记模式 === true) {
+          新配置 = { ...上下文.配置 }
+        } else {
+          let { 博闻强记消息搜索数量: _搜索数量, ...关闭模式配置 } = 上下文.配置
+          新配置 = 关闭模式配置
+        }
         新配置.存储 = { 模式: '内存' }
         新配置.禁用深度推演 = true
         let 开启纯净模式 = 参数.纯净模式 !== false // 默认为 true

@@ -56,6 +56,9 @@ export type 模型语言包 = {
   会话反思: (内容: string) => string
   压缩要求: (目标字符数: number) => string
   压缩会话标题: () => string
+  博闻强记提示词?: (() => string) | undefined
+  博闻强记消息搜索工具描述?: (() => string) | undefined
+  博闻强记上游会话?: ((会话id: string) => string) | undefined
   历史工具描述: () => string
   无当前会话: () => string
   无可读历史: () => string
@@ -274,6 +277,11 @@ export let 中文模型语言包: 模型语言包 = {
   压缩要求: (数量): string =>
     `将下面的对话压缩为不超过 ${String(数量)} 个字符的摘要。保留决定、约束、未完成事项、精确标识符和重要事实。只返回摘要。`,
   压缩会话标题: (): string => '压缩会话',
+  博闻强记提示词: (): string =>
+    '## 博闻强记模式\n你可以使用 `search_conversation_messages` 搜索当前会话及其压缩前驱链的原始消息，但不能访问其他会话或分支。`extend_memory` 直接命中的记忆可能附带与新增记忆相关的消息 ID，可用消息搜索工具查看原文。',
+  博闻强记消息搜索工具描述: (): string =>
+    '按会话、消息、记忆、文本、正则、角色或时间搜索当前会话谱系中的原始消息。可通过 context_count 附带每条命中消息的前后上下文。命中数由系统配置限制。',
+  博闻强记上游会话: (会话id): string => `[博闻强记] 当前会话由上游会话 ${会话id} 压缩而来。`,
   历史工具描述: (): string =>
     '读取当前会话谱系中的原始消息。摘要代替早期上下文后，使用 previous_conversation 查看准确原文。',
   无当前会话: (): string => '当前没有持久化会话',
@@ -402,6 +410,12 @@ export let 英文模型语言包: 模型语言包 = {
   压缩要求: (数量): string =>
     `Summarize the conversation below in at most ${String(数量)} characters. Preserve decisions, constraints, unresolved work, exact identifiers, and important facts. Return only the summary.`,
   压缩会话标题: (): string => 'Compressed conversation',
+  博闻强记提示词: (): string =>
+    '## Funes mode\nYou may use `search_conversation_messages` to search exact original messages from the current conversation and its compressed ancestor lineage, but never from unrelated conversations or sibling branches. Direct hits returned by `extend_memory` may include message IDs related to the creation of that memory; use the message-search tool to inspect the original text.',
+  博闻强记消息搜索工具描述: (): string =>
+    'Search exact original messages in the current conversation lineage by conversation, message, memory, text, regex, role, or time. Use context_count to include messages before and after each hit. The system-configured hit limit cannot be raised by the model.',
+  博闻强记上游会话: (会话id): string =>
+    `[Funes mode] The current conversation was compressed from upstream conversation ${会话id}.`,
   历史工具描述: (): string =>
     'Read exact original messages from the current conversation lineage. Use previous_conversation after a summary has replaced earlier context.',
   无当前会话: (): string => 'There is no current persisted conversation.',
