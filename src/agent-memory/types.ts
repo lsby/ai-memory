@@ -75,6 +75,11 @@ export type 记忆指针表 = {
   head_commit_id: string | null
 }
 
+/** 永久实体只保留身份；当前内容由 HEAD 对应的状态投影表提供。 */
+export type 记忆实体表 = { id: string }
+export type 动态工具实体表 = { id: string }
+export type 记忆关联实体表 = { 起点id: string; 终点id: string }
+
 export let 动态工具表Schema = z.object({
   id: z.string(),
   名称: z.string(),
@@ -194,11 +199,14 @@ export type 消息表 = {
 export type 记忆数据库 = {
   记忆表: 记忆表
   记忆关联表: 记忆关联表
+  记忆实体表: 记忆实体表
+  记忆关联实体表: 记忆关联实体表
   记忆提交表: 记忆提交表
   记忆变更表: 记忆变更表
   系统版本表: 系统版本表
   记忆指针表: 记忆指针表
   动态工具表: 动态工具表
+  动态工具实体表: 动态工具实体表
   前缀快照表: 前缀快照表
   交互日志表: 交互日志表
   会话表: 会话表

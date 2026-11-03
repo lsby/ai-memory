@@ -4,6 +4,7 @@ import { 校验schema名, 转义标识符, 默认schema } from '../storage/conne
 import { 记忆数据库 } from '../types'
 import { 确保在事务中执行 } from './common'
 import { 初始化不可变约束 } from './db-immutable-schema'
+import { 初始化永久实体登记触发器, 初始化永久实体表 } from './db-permanent-entities'
 
 /**
  * 在指定 schema 里建表（默认 public，和旧版本的数据布局一致）。
@@ -136,6 +137,8 @@ async function 在事务中初始化数据库(数据库查询器: Kysely<记忆�
           )
         `)
 
+  await 初始化永久实体表(数据库查询器, schema)
+
   await 执行(`
           CREATE TABLE IF NOT EXISTS ${名('会话表')} (
             id TEXT PRIMARY KEY,
@@ -256,6 +259,8 @@ async function 在事务中初始化数据库(数据库查询器: Kysely<记忆�
   await 执行(`CREATE INDEX IF NOT EXISTS 交互日志表_前缀_idx ON ${名('交互日志表')} (前缀id);`)
 
   await 初始化不可变约束(数据库查询器, schema)
+
+  await 初始化永久实体登记触发器(数据库查询器, schema)
 
   // 所有业务写入必须先创建提交并把它设为 HEAD。BEFORE 触发器负责在改动发生前快速失败，
   // AFTER 触发器只负责把已经通过校验的行级 Diff 记入当前提交。

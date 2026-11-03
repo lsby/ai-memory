@@ -3,7 +3,7 @@ import { sql } from 'kysely'
 import { 转义标识符 } from '../storage/connection'
 import type { 记忆数据库 } from '../types'
 
-/** 把所有历史关系改为显式删除，并在数据库层保护会话、消息和日志。 */
+/** 保护永久历史和实体身份，并为当前状态投影建立完整的数据库约束。 */
 export async function 初始化不可变约束(数据库查询器: Kysely<记忆数据库>, schema: string): Promise<void> {
   let 名 = (对象名: string): string => `${转义标识符(schema)}.${转义标识符(对象名)}`
   let 执行 = async (语句: string): Promise<void> => {
@@ -20,6 +20,18 @@ export async function 初始化不可变约束(数据库查询器: Kysely<记忆
   await 执行(`ALTER TABLE ${名('记忆变更表')} DROP CONSTRAINT IF EXISTS 记忆变更表_提交id_fkey;`)
   await 执行(
     `ALTER TABLE ${名('记忆变更表')} ADD CONSTRAINT 记忆变更表_提交id_fkey FOREIGN KEY (提交id) REFERENCES ${名('记忆提交表')}(id) ON DELETE RESTRICT;`,
+  )
+  await 执行(`ALTER TABLE ${名('记忆变更表')} DROP CONSTRAINT IF EXISTS 记忆变更表_记忆id_fkey;`)
+  await 执行(
+    `ALTER TABLE ${名('记忆变更表')} ADD CONSTRAINT 记忆变更表_记忆id_fkey FOREIGN KEY (记忆id) REFERENCES ${名('记忆实体表')}(id) ON DELETE RESTRICT;`,
+  )
+  await 执行(`ALTER TABLE ${名('记忆变更表')} DROP CONSTRAINT IF EXISTS 记忆变更表_动态工具id_fkey;`)
+  await 执行(
+    `ALTER TABLE ${名('记忆变更表')} ADD CONSTRAINT 记忆变更表_动态工具id_fkey FOREIGN KEY (动态工具id) REFERENCES ${名('动态工具实体表')}(id) ON DELETE RESTRICT;`,
+  )
+  await 执行(`ALTER TABLE ${名('记忆变更表')} DROP CONSTRAINT IF EXISTS 记忆变更表_关联实体_fkey;`)
+  await 执行(
+    `ALTER TABLE ${名('记忆变更表')} ADD CONSTRAINT 记忆变更表_关联实体_fkey FOREIGN KEY (关联起点id, 关联终点id) REFERENCES ${名('记忆关联实体表')}(起点id, 终点id) ON DELETE RESTRICT;`,
   )
   await 执行(`ALTER TABLE ${名('记忆提交表')} DROP CONSTRAINT IF EXISTS 记忆提交表_父提交id_fkey;`)
   await 执行(
@@ -77,6 +89,21 @@ export async function 初始化不可变约束(数据库查询器: Kysely<记忆
     CREATE TRIGGER trg_拒绝记忆变更修改 BEFORE UPDATE OR DELETE ON ${名('记忆变更表')}
     FOR EACH ROW EXECUTE FUNCTION ${名('拒绝记忆变更修改_触发器')}();
   `)
+  await 执行(`
+    CREATE OR REPLACE FUNCTION ${名('拒绝永久实体修改_触发器')}()
+    RETURNS TRIGGER AS $$
+    BEGIN
+      RAISE EXCEPTION '永久实体身份不可修改或删除';
+    END;
+    $$ LANGUAGE plpgsql;
+  `)
+  for (let 表名 of ['记忆实体表', '记忆关联实体表', '动态工具实体表']) {
+    await 执行(`DROP TRIGGER IF EXISTS trg_拒绝永久实体修改 ON ${名(表名)};`)
+    await 执行(`
+      CREATE TRIGGER trg_拒绝永久实体修改 BEFORE UPDATE OR DELETE ON ${名(表名)}
+      FOR EACH ROW EXECUTE FUNCTION ${名('拒绝永久实体修改_触发器')}();
+    `)
+  }
   await 执行(`
     CREATE OR REPLACE FUNCTION ${名('限制记忆提交修改_触发器')}()
     RETURNS TRIGGER AS $$

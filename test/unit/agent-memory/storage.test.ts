@@ -54,7 +54,7 @@ describe('文件存储生命周期', () => {
     await expect(智能体实例.初始化()).rejects.toThrow('已销毁')
   })
 
-  it('初始化数据库会创建 v9 版本与强外键指针、会话消息表和关键查询索引', async (): Promise<void> => {
+  it('初始化数据库会创建 v9 版本、永久实体、强外键指针和关键索引', async (): Promise<void> => {
     let pglite = new PGlite({ extensions: { vector } })
     let 数据库查询器 = new Kysely<记忆数据库>({ dialect: new PGliteDialect({ pglite }) })
     try {
@@ -77,18 +77,36 @@ describe('文件存储生命周期', () => {
 
       let 表结果 = await sql<{ table_name: string }>`
         SELECT table_name FROM information_schema.tables
-        WHERE table_schema = 'public' AND table_name IN ('系统版本表', '记忆指针表', '记忆元数据表')
+        WHERE table_schema = 'public' AND table_name IN (
+          '系统版本表', '记忆指针表', '记忆元数据表',
+          '记忆实体表', '记忆关联实体表', '动态工具实体表'
+        )
       `.execute(数据库查询器)
       let 外键结果 = await sql<{ delete_rule: string }>`
         SELECT rc.delete_rule
         FROM information_schema.referential_constraints rc
         WHERE rc.constraint_schema = 'public' AND rc.constraint_name = '记忆指针表_head_commit_id_fkey'
       `.execute(数据库查询器)
+      let 变更目标外键 = await sql<{ constraint_name: string; delete_rule: string }>`
+        SELECT rc.constraint_name, rc.delete_rule
+        FROM information_schema.referential_constraints rc
+        WHERE rc.constraint_schema = 'public' AND rc.constraint_name IN (
+          '记忆变更表_记忆id_fkey', '记忆变更表_关联实体_fkey', '记忆变更表_动态工具id_fkey'
+        )
+        ORDER BY rc.constraint_name
+      `.execute(数据库查询器)
 
       expect(版本?.内核架构版本).toBe(9)
       expect(指针).toEqual({ id: 1, head_commit_id: null })
-      expect(表结果.rows.map((记录) => 记录.table_name).sort()).toEqual(['系统版本表', '记忆指针表'])
+      expect(表结果.rows.map((记录) => 记录.table_name).sort()).toEqual(
+        ['动态工具实体表', '系统版本表', '记忆关联实体表', '记忆实体表', '记忆指针表'].sort(),
+      )
       expect(外键结果.rows).toEqual([{ delete_rule: 'RESTRICT' }])
+      expect(变更目标外键.rows).toEqual([
+        { constraint_name: '记忆变更表_关联实体_fkey', delete_rule: 'RESTRICT' },
+        { constraint_name: '记忆变更表_动态工具id_fkey', delete_rule: 'RESTRICT' },
+        { constraint_name: '记忆变更表_记忆id_fkey', delete_rule: 'RESTRICT' },
+      ])
       expect(日志内容列.rows).toEqual([{ data_type: 'json' }])
       expect(索引名称).toEqual(
         expect.arrayContaining([

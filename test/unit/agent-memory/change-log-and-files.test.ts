@@ -50,6 +50,45 @@ describe('变更记录', { timeout: 90000 }, () => {
     expect(await 实例.查找记忆(记忆.id)).toMatchObject({ 内容: '不会从历史消失' })
   })
 
+  it('删除只移除 HEAD 投影，永久实体和变更外键始终保留', async (): Promise<void> => {
+    let pglite = new PGlite({ extensions: { vector } })
+    try {
+      let 实例 = 创建实例({ 存储: { 模式: '外部', pglite } })
+      let 记忆 = await 实例.添加记忆(记忆项('永久实体记忆'))
+      expect(await 实例.移除记忆(记忆.id)).toBe(true)
+
+      let 当前投影 = await pglite.query(`SELECT id FROM 记忆表 WHERE id = $1`, [记忆.id])
+      let 永久实体 = await pglite.query(`SELECT id FROM 记忆实体表 WHERE id = $1`, [记忆.id])
+      let 删除变更 = await pglite.query<{ 数量: number }>(
+        `SELECT count(*)::int AS 数量 FROM 记忆变更表 WHERE 记忆id = $1 AND 操作类型 = 'delete'`,
+        [记忆.id],
+      )
+      expect(当前投影.rows).toEqual([])
+      expect(永久实体.rows).toEqual([{ id: 记忆.id }])
+      expect(删除变更.rows).toEqual([{ 数量: 1 }])
+      await expect(pglite.query(`DELETE FROM 记忆实体表 WHERE id = $1`, [记忆.id])).rejects.toThrow(
+        '永久实体身份不可修改或删除',
+      )
+
+      let 提交 = (await 实例.查询记忆提交())[0]
+      if (提交 === undefined) throw new Error('缺少用于外键测试的提交')
+      await expect(
+        pglite.query(
+          `INSERT INTO 记忆变更表 (id, 提交id, 操作类型, 目标类型, 记忆id, 旧值, 新值)
+           VALUES ('missing-memory-change', $1, 'delete', 'node', 'missing-memory', '{}', NULL)`,
+          [提交.id],
+        ),
+      ).rejects.toThrow()
+
+      expect(await 实例.回退最近记忆提交()).toBe(true)
+      expect(await 实例.查找记忆(记忆.id)).toMatchObject({ 内容: '永久实体记忆' })
+    } finally {
+      for (let 实例 of 智能体列表) await 实例.销毁()
+      智能体列表 = []
+      await pglite.close()
+    }
+  })
+
   it('数据库拒绝绕过提交并保护已形成的提交、消息、前缀和日志', async (): Promise<void> => {
     let pglite = new PGlite({ extensions: { vector } })
     try {
