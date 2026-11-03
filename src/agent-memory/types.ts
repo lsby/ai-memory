@@ -46,24 +46,27 @@ export let 记忆提交表Schema = z.object({
   id: z.string(),
   父记忆提交id: z.string().nullable(),
   提交说明: z.string(),
+  状态名称: z.string().nullable(),
   创建时间: z.union([z.string(), z.date()]).transform((val) => new Date(val)),
 })
 export type 记忆提交表 = z.infer<typeof 记忆提交表Schema>
 
-export let 记忆提交变更表Schema = z.object({
+export let 记忆变更目标表Schema = z.enum(['memory', 'memory_relation', 'dynamic_tool'])
+export type 记忆变更目标表 = z.infer<typeof 记忆变更目标表Schema>
+
+export let 记忆行操作类型Schema = z.enum(['insert', 'update', 'delete'])
+export type 记忆行操作类型 = z.infer<typeof 记忆行操作类型Schema>
+
+export let 记忆行变更表Schema = z.object({
   id: z.string(),
-  序号: z.number().optional(),
   记忆提交id: z.string(),
-  变更类型: z.enum(['add', 'update', 'remove']),
-  目标实体类型: z.enum(['memory', 'memory_relation', 'dynamic_tool']),
-  记忆实体id: z.string().nullable(),
-  起点记忆实体id: z.string().nullable(),
-  终点记忆实体id: z.string().nullable(),
-  动态工具实体id: z.string().nullable(),
-  变更前数据: z.record(z.unknown()).nullable(),
-  变更后数据: z.record(z.unknown()).nullable(),
+  提交内序号: z.number(),
+  目标表: 记忆变更目标表Schema,
+  操作类型: 记忆行操作类型Schema,
+  主键: z.record(z.unknown()),
+  行数据: z.record(z.unknown()).nullable(),
 })
-export type 记忆提交变更表 = z.infer<typeof 记忆提交变更表Schema>
+export type 记忆行变更表 = z.infer<typeof 记忆行变更表Schema>
 
 export type 系统版本表 = {
   id: number
@@ -74,11 +77,6 @@ export type 记忆指针表 = {
   id: number
   当前记忆提交id: string | null
 }
-
-/** 永久实体只保留身份；当前内容由 HEAD 对应的状态投影表提供。 */
-export type 记忆实体表 = { id: string }
-export type 动态工具实体表 = { id: string }
-export type 记忆关联实体表 = { 起点id: string; 终点id: string }
 
 export let 当前动态工具表Schema = z.object({
   id: z.string(),
@@ -180,7 +178,6 @@ export type 会话表 = {
   id: string
   标题: string
   当前消息id: string | null
-  前驱会话id: string | null
   前驱消息id: string | null
   创建时间: Date
   更新时间: Date
@@ -199,14 +196,11 @@ export type 消息表 = {
 export type 记忆数据库 = {
   当前记忆表: 当前记忆表
   当前记忆关联表: 当前记忆关联表
-  记忆实体表: 记忆实体表
-  记忆关联实体表: 记忆关联实体表
   记忆提交表: 记忆提交表
-  记忆提交变更表: 记忆提交变更表
+  记忆行变更表: 记忆行变更表
   系统版本表: 系统版本表
   记忆指针表: 记忆指针表
   当前动态工具表: 当前动态工具表
-  动态工具实体表: 动态工具实体表
   前缀快照表: 前缀快照表
   日志表: 日志表
   会话表: 会话表
@@ -424,24 +418,22 @@ export type 公开记忆关联 = { 起点id: string; 终点id: string; 关联度
 
 export type 公开动态工具 = { id: string; 名称: string; 描述: string; 代码: string; 创建时间: Date }
 
-export type 公开记忆变更 = {
+export type 公开记忆行变更 = {
   id: string
-  变更类型: 'add' | 'update' | 'remove'
-  目标实体类型: 'memory' | 'memory_relation' | 'dynamic_tool'
-  记忆实体id: string | null
-  起点记忆实体id: string | null
-  终点记忆实体id: string | null
-  动态工具实体id: string | null
-  变更前数据: Record<string, unknown> | null
-  变更后数据: Record<string, unknown> | null
+  提交内序号: number
+  目标表: 记忆变更目标表
+  操作类型: 记忆行操作类型
+  主键: Record<string, unknown>
+  行数据: Record<string, unknown> | null
 }
 
 export type 公开记忆提交 = {
   id: string
   父记忆提交id: string | null
   提交说明: string
+  状态名称: string | null
   创建时间: Date
-  变更列表: 公开记忆变更[]
+  变更列表: 公开记忆行变更[]
 }
 
 export type 公开交互日志 = {
@@ -470,7 +462,6 @@ export type 公开会话 = {
   id: string
   标题: string
   当前消息id: string | null
-  前驱会话id: string | null
   前驱消息id: string | null
   创建时间: Date
   更新时间: Date
@@ -488,7 +479,6 @@ export type 公开消息 = {
 export type 查询会话列表选项 = { 偏移?: number | undefined; 数量?: number | undefined }
 
 export type 创建派生会话选项 = {
-  前驱会话id: string
   前驱消息id: string
   摘要: string
   标题?: string | undefined
@@ -526,40 +516,46 @@ export let 快照数据Schema = z.object({
 })
 export type 快照数据 = z.infer<typeof 快照数据Schema>
 
-export let 完整状态Schema = z.object({
-  格式版本: z.literal(4),
-  记忆快照: 快照数据Schema,
-  当前会话id: z.string().nullable(),
-  会话列表: z.array(
-    z.object({
-      id: z.string(),
-      标题: z.string(),
-      当前消息id: z.string().nullable(),
-      前驱会话id: z.string().nullable(),
-      前驱消息id: z.string().nullable(),
-      创建时间: z.union([z.string(), z.date()]).transform((值) => new Date(值)),
-      更新时间: z.union([z.string(), z.date()]).transform((值) => new Date(值)),
-    }),
-  ),
-  消息列表: z.array(
-    z.object({
-      id: z.string(),
-      序号: z.number().int(),
-      会话id: z.string(),
-      父消息id: z.string().nullable(),
-      消息: 智能体消息Schema,
-      创建时间: z.union([z.string(), z.date()]).transform((值) => new Date(值)),
-    }),
-  ),
-  前缀快照列表: z.array(
-    z.object({
-      id: z.string(),
-      系统提示词: z.string(),
-      工具定义: JSON值Schema,
-      创建时间: z.union([z.string(), z.date()]).transform((值) => new Date(值)),
-    }),
-  ),
-})
+export let 完整状态Schema = z
+  .object({
+    记忆快照: 快照数据Schema,
+    当前会话id: z.string().nullable(),
+    会话列表: z.array(
+      z
+        .object({
+          id: z.string(),
+          标题: z.string(),
+          当前消息id: z.string().nullable(),
+          前驱消息id: z.string().nullable(),
+          创建时间: z.union([z.string(), z.date()]).transform((值) => new Date(值)),
+          更新时间: z.union([z.string(), z.date()]).transform((值) => new Date(值)),
+        })
+        .strict(),
+    ),
+    消息列表: z.array(
+      z
+        .object({
+          id: z.string(),
+          序号: z.number().int(),
+          会话id: z.string(),
+          父消息id: z.string().nullable(),
+          消息: 智能体消息Schema,
+          创建时间: z.union([z.string(), z.date()]).transform((值) => new Date(值)),
+        })
+        .strict(),
+    ),
+    前缀快照列表: z.array(
+      z
+        .object({
+          id: z.string(),
+          系统提示词: z.string(),
+          工具定义: JSON值Schema,
+          创建时间: z.union([z.string(), z.date()]).transform((值) => new Date(值)),
+        })
+        .strict(),
+    ),
+  })
+  .strict()
 export type 完整状态 = z.infer<typeof 完整状态Schema>
 
 // ============================================================

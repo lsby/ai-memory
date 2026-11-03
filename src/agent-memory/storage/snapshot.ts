@@ -34,7 +34,6 @@ export async function 载入快照(数据库查询器: Kysely<记忆数据库>, 
 
 export async function 导出完整状态(数据库查询器: Kysely<记忆数据库>, 当前会话id: string | null): Promise<string> {
   let 完整状态: 完整状态 = {
-    格式版本: 4,
     记忆快照: await 读取快照(数据库查询器),
     当前会话id,
     会话列表: await 查询全部会话(数据库查询器),
@@ -70,7 +69,7 @@ export async function 导入完整状态(
   for (let 会话 of 数据.会话列表) {
     await 数据库查询器
       .insertInto('会话表')
-      .values({ ...会话, 当前消息id: null, 前驱会话id: null, 前驱消息id: null })
+      .values({ ...会话, 当前消息id: null, 前驱消息id: null })
       .execute()
   }
   for (let 消息 of 数据.消息列表) {
@@ -91,7 +90,6 @@ export async function 导入完整状态(
       .updateTable('会话表')
       .set({
         当前消息id: 会话.当前消息id,
-        前驱会话id: 会话.前驱会话id,
         前驱消息id: 会话.前驱消息id,
         更新时间: 会话.更新时间,
       })

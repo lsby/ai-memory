@@ -4,7 +4,8 @@ import { 校验schema名, 转义标识符, 默认schema } from '../storage/conne
 import { 记忆数据库 } from '../types'
 import { 确保在事务中执行 } from './common'
 import { 初始化不可变约束 } from './db-immutable-schema'
-import { 初始化永久实体登记触发器, 初始化永久实体表 } from './db-permanent-entities'
+
+export let 记忆数据库架构版本 = 12
 
 /**
  * 在指定 schema 里建表（默认 public，和旧版本的数据布局一致）。
@@ -21,27 +22,29 @@ async function 在事务中初始化数据库(数据库查询器: Kysely<记忆�
     await sql.raw(语句).execute(数据库查询器)
   }
 
-  if (schema !== 默认schema) await 执行(`CREATE SCHEMA IF NOT EXISTS ${转义标识符(schema)}`)
-  await 执行(`CREATE EXTENSION IF NOT EXISTS vector WITH SCHEMA public`)
-
   let 现有表结果 = await sql<{ table_name: string }>`
     SELECT table_name FROM information_schema.tables
     WHERE table_schema = ${schema}
       AND table_name IN ('记忆元数据表', '系统版本表', '记忆表', '当前记忆表', '记忆提交表')
   `.execute(数据库查询器)
   let 现有表 = new Set(现有表结果.rows.map((记录) => 记录.table_name))
-  if (现有表.has('记忆元数据表')) throw new Error('检测到 v8 或更旧的记忆数据库；v10 不支持自动迁移，请使用全新 schema')
+  if (现有表.has('记忆元数据表')) throw new Error('检测到旧版记忆数据库；v12 不支持自动迁移，请使用全新 schema')
   let 全新数据库 = 现有表.has('系统版本表') === false
   if (全新数据库 && (现有表.has('记忆表') || 现有表.has('当前记忆表') || 现有表.has('记忆提交表'))) {
-    throw new Error('检测到没有系统版本的记忆数据表，拒绝将其当作全新 v10 数据库')
+    throw new Error('检测到没有系统版本的记忆数据表，拒绝将其当作全新 v12 数据库')
   }
   if (全新数据库 === false) {
     let 版本结果 = await sql<{ 内核架构版本: number }>`
       SELECT 内核架构版本 FROM ${sql.raw(名('系统版本表'))} WHERE id = 1
     `.execute(数据库查询器)
     let 版本 = 版本结果.rows[0]?.内核架构版本
-    if (版本 !== 10 || 版本结果.rows.length !== 1) throw new Error(`不支持的记忆数据库版本: ${String(版本)}`)
+    if (版本 !== 记忆数据库架构版本 || 版本结果.rows.length !== 1) {
+      throw new Error(`记忆数据库架构版本不兼容：代码要求 v${String(记忆数据库架构版本)}，数据库为 v${String(版本)}`)
+    }
   }
+
+  if (schema !== 默认schema) await 执行(`CREATE SCHEMA IF NOT EXISTS ${转义标识符(schema)}`)
+  await 执行(`CREATE EXTENSION IF NOT EXISTS vector WITH SCHEMA public`)
 
   let enumCheck = await sql`
     SELECT 1 FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace
@@ -49,6 +52,33 @@ async function 在事务中初始化数据库(数据库查询器: Kysely<记忆�
   `.execute(数据库查询器)
   if (enumCheck.rows.length === 0) {
     await 执行(`CREATE TYPE ${名('记忆等级枚举')} AS ENUM ('零级', '一级', '二级');`)
+  }
+  let 日志事件类型枚举检查 = await sql`
+    SELECT 1 FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace
+    WHERE t.typname = '日志事件类型枚举' AND n.nspname = ${schema}
+  `.execute(数据库查询器)
+  if (日志事件类型枚举检查.rows.length === 0) {
+    await 执行(`
+      CREATE TYPE ${名('日志事件类型枚举')} AS ENUM (
+        '流程开始', '流程结束', '流程异常', '记忆召回', '记忆提交', '记忆分支切换',
+        'AI文本片段', '工具调用开始', '工具调用结果', '工具调用失败', '校验失败', '最终结果',
+        '流程信息', '错误', '原始请求配置', '原始AI返回', '模型请求审计', '模型响应完成', '自定义'
+      );
+    `)
+  }
+  let 记忆变更目标表枚举检查 = await sql`
+    SELECT 1 FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace
+    WHERE t.typname = '记忆变更目标表枚举' AND n.nspname = ${schema}
+  `.execute(数据库查询器)
+  if (记忆变更目标表枚举检查.rows.length === 0) {
+    await 执行(`CREATE TYPE ${名('记忆变更目标表枚举')} AS ENUM ('memory', 'memory_relation', 'dynamic_tool');`)
+  }
+  let 记忆行操作类型枚举检查 = await sql`
+    SELECT 1 FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace
+    WHERE t.typname = '记忆行操作类型枚举' AND n.nspname = ${schema}
+  `.execute(数据库查询器)
+  if (记忆行操作类型枚举检查.rows.length === 0) {
+    await 执行(`CREATE TYPE ${名('记忆行操作类型枚举')} AS ENUM ('insert', 'update', 'delete');`)
   }
 
   await 执行(`
@@ -84,27 +114,22 @@ async function 在事务中初始化数据库(数据库查询器: Kysely<记忆�
             id TEXT PRIMARY KEY,
             父记忆提交id TEXT,
             提交说明 TEXT NOT NULL,
+            状态名称 TEXT,
             创建时间 TIMESTAMPTZ NOT NULL
           )
         `)
 
   await 执行(`
-          CREATE TABLE IF NOT EXISTS ${名('记忆提交变更表')} (
+          CREATE TABLE IF NOT EXISTS ${名('记忆行变更表')} (
             id TEXT PRIMARY KEY,
-            序号 BIGSERIAL,
-            记忆提交id TEXT NOT NULL REFERENCES ${名('记忆提交表')}(id) ON DELETE CASCADE,
-            变更类型 TEXT NOT NULL,
-            目标实体类型 TEXT NOT NULL,
-            记忆实体id TEXT,
-            起点记忆实体id TEXT,
-            终点记忆实体id TEXT,
-            动态工具实体id TEXT,
-            变更前数据 JSONB,
-            变更后数据 JSONB
+            记忆提交id TEXT NOT NULL REFERENCES ${名('记忆提交表')}(id) ON DELETE RESTRICT,
+            提交内序号 INTEGER NOT NULL,
+            目标表 ${名('记忆变更目标表枚举')} NOT NULL,
+            操作类型 ${名('记忆行操作类型枚举')} NOT NULL,
+            主键 JSONB NOT NULL,
+            行数据 JSONB
           )
         `)
-
-  await 执行(`ALTER TABLE ${名('记忆提交变更表')} ADD COLUMN IF NOT EXISTS 序号 BIGSERIAL;`)
 
   await 执行(`
           CREATE TABLE IF NOT EXISTS ${名('系统版本表')} (
@@ -120,7 +145,7 @@ async function 在事务中初始化数据库(数据库查询器: Kysely<记忆�
           )
         `)
   if (全新数据库) {
-    await 数据库查询器.insertInto('系统版本表').values({ id: 1, 内核架构版本: 10 }).execute()
+    await 数据库查询器.insertInto('系统版本表').values({ id: 1, 内核架构版本: 记忆数据库架构版本 }).execute()
     await 数据库查询器.insertInto('记忆指针表').values({ id: 1, 当前记忆提交id: null }).execute()
   }
   await 校验记忆提交拓扑(数据库查询器)
@@ -137,19 +162,14 @@ async function 在事务中初始化数据库(数据库查询器: Kysely<记忆�
           )
         `)
 
-  await 初始化永久实体表(数据库查询器, schema)
-
   await 执行(`
           CREATE TABLE IF NOT EXISTS ${名('会话表')} (
             id TEXT PRIMARY KEY,
             标题 TEXT NOT NULL DEFAULT '',
             当前消息id TEXT,
-            前驱会话id TEXT REFERENCES ${名('会话表')}(id) ON DELETE RESTRICT,
             前驱消息id TEXT,
             创建时间 TIMESTAMPTZ NOT NULL,
-            更新时间 TIMESTAMPTZ NOT NULL,
-            CHECK ((前驱会话id IS NULL) = (前驱消息id IS NULL)),
-            CHECK (前驱会话id IS NULL OR 前驱会话id <> id)
+            更新时间 TIMESTAMPTZ NOT NULL
           )
         `)
 
@@ -179,7 +199,7 @@ async function 在事务中初始化数据库(数据库查询器: Kysely<记忆�
             id TEXT PRIMARY KEY,
             序号 BIGSERIAL,
             事件组id TEXT NOT NULL,
-            事件类型 TEXT NOT NULL,
+            事件类型 ${名('日志事件类型枚举')} NOT NULL,
             开始时间 TIMESTAMPTZ NOT NULL,
             耗时ms DOUBLE PRECISION,
             事件内容 JSONB NOT NULL,
@@ -217,36 +237,26 @@ async function 在事务中初始化数据库(数据库查询器: Kysely<记忆�
     END $$;
   `)
 
-  await 执行(`
-    CREATE TABLE IF NOT EXISTS ${名('_记忆提交上下文表')} (
-      id INTEGER PRIMARY KEY,
-      活动记忆提交id TEXT,
-      回放中 BOOLEAN NOT NULL DEFAULT FALSE
-    );
-  `)
-
-  await 执行(`ALTER TABLE ${名('_记忆提交上下文表')} ADD COLUMN IF NOT EXISTS 回放中 BOOLEAN NOT NULL DEFAULT FALSE;`)
-
-  await 执行(`
-    INSERT INTO ${名('_记忆提交上下文表')} (id, 活动记忆提交id) VALUES (1, NULL) ON CONFLICT (id) DO NOTHING;
-  `)
-  await 执行(`UPDATE ${名('_记忆提交上下文表')} SET 活动记忆提交id = NULL, 回放中 = FALSE WHERE id = 1;`)
-
   await 执行(`CREATE INDEX IF NOT EXISTS 当前记忆表_等级_创建序号_idx ON ${名('当前记忆表')} (等级, 创建序号);`)
   await 执行(`CREATE INDEX IF NOT EXISTS 当前记忆表_创建时间_idx ON ${名('当前记忆表')} (创建时间);`)
   await 执行(`CREATE INDEX IF NOT EXISTS 当前记忆表_关键词_idx ON ${名('当前记忆表')} USING GIN (关键词);`)
   await 执行(`CREATE INDEX IF NOT EXISTS 当前记忆表_标签_idx ON ${名('当前记忆表')} USING GIN (标签);`)
   await 执行(`CREATE INDEX IF NOT EXISTS 当前记忆关联表_终点_idx ON ${名('当前记忆关联表')} (终点id);`)
-  await 执行(`CREATE INDEX IF NOT EXISTS 记忆提交变更表_记忆提交_idx ON ${名('记忆提交变更表')} (记忆提交id);`)
+  await 执行(
+    `CREATE UNIQUE INDEX IF NOT EXISTS 记忆行变更表_提交内序号_idx ON ${名('记忆行变更表')} (记忆提交id, 提交内序号);`,
+  )
   await 执行(`CREATE INDEX IF NOT EXISTS 记忆提交表_创建时间_idx ON ${名('记忆提交表')} (创建时间 DESC);`)
   await 执行(`CREATE INDEX IF NOT EXISTS 记忆提交表_父记忆提交_idx ON ${名('记忆提交表')} (父记忆提交id);`)
   await 执行(
     `CREATE UNIQUE INDEX IF NOT EXISTS 记忆提交表_唯一根_idx ON ${名('记忆提交表')} ((1)) WHERE 父记忆提交id IS NULL;`,
   )
+  await 执行(
+    `CREATE UNIQUE INDEX IF NOT EXISTS 记忆提交表_状态名称唯一_idx ON ${名('记忆提交表')} (状态名称) WHERE 状态名称 IS NOT NULL;`,
+  )
   await 执行(`CREATE INDEX IF NOT EXISTS 日志表_事件组_idx ON ${名('日志表')} (事件组id, 序号);`)
   await 执行(`CREATE INDEX IF NOT EXISTS 日志表_开始时间_idx ON ${名('日志表')} (开始时间 DESC);`)
   await 执行(`CREATE INDEX IF NOT EXISTS 会话表_更新时间_idx ON ${名('会话表')} (更新时间 DESC, id);`)
-  await 执行(`CREATE INDEX IF NOT EXISTS 会话表_前驱会话_idx ON ${名('会话表')} (前驱会话id);`)
+  await 执行(`CREATE INDEX IF NOT EXISTS 会话表_前驱消息_idx ON ${名('会话表')} (前驱消息id);`)
   await 执行(`CREATE INDEX IF NOT EXISTS 消息表_会话序号_idx ON ${名('消息表')} (会话id, 序号);`)
   await 执行(`CREATE INDEX IF NOT EXISTS 消息表_父消息_idx ON ${名('消息表')} (父消息id);`)
   await 执行(`CREATE UNIQUE INDEX IF NOT EXISTS 消息表_会话_id_unique ON ${名('消息表')} (会话id, id);`)
@@ -258,39 +268,47 @@ async function 在事务中初始化数据库(数据库查询器: Kysely<记忆�
 
   await 初始化不可变约束(数据库查询器, schema)
 
-  await 初始化永久实体登记触发器(数据库查询器, schema)
-
-  // 所有业务写入必须先创建提交并把它设为 HEAD。BEFORE 触发器负责在改动发生前快速失败，
-  // AFTER 触发器只负责把已经通过校验的行级 Diff 记入当前提交。
+  // 所有业务写入必须先创建活动提交。事务局部配置对触发器可见，并会在提交或回滚后自动清除。
   await 执行(`
     CREATE OR REPLACE FUNCTION ${名('校验记忆写入上下文_触发器')}()
     RETURNS TRIGGER AS $$
     DECLARE
       v_活动记忆提交id TEXT;
-      v_restoring BOOLEAN := FALSE;
-      v_head_id TEXT;
-      v_commit_message TEXT;
+      v_回放中 BOOLEAN;
+      v_当前记忆提交id TEXT;
+      v_父记忆提交id TEXT;
+      v_提交说明 TEXT;
     BEGIN
-      SELECT 活动记忆提交id, 回放中 INTO v_活动记忆提交id, v_restoring
-      FROM ${名('_记忆提交上下文表')} WHERE id = 1;
-
-      IF v_restoring THEN
+      v_回放中 := COALESCE(current_setting('lsby_ai_memory.replaying', TRUE), '') = 'true';
+      IF v_回放中 THEN
         IF TG_OP = 'DELETE' THEN RETURN OLD; END IF;
         RETURN NEW;
       END IF;
 
+      v_活动记忆提交id := NULLIF(current_setting('lsby_ai_memory.active_commit_id', TRUE), '');
       IF v_活动记忆提交id IS NULL OR v_活动记忆提交id = '' THEN
-        RAISE EXCEPTION '%只能在活动提交中修改', TG_TABLE_NAME;
+        RAISE EXCEPTION '%只能在活动记忆提交中修改', TG_TABLE_NAME;
       END IF;
 
-      SELECT 提交说明 INTO v_commit_message FROM ${名('记忆提交表')} WHERE id = v_活动记忆提交id;
-      IF v_commit_message IS NULL OR length(btrim(v_commit_message)) = 0 THEN
+      SELECT 父记忆提交id, 提交说明 INTO v_父记忆提交id, v_提交说明
+      FROM ${名('记忆提交表')} WHERE id = v_活动记忆提交id;
+      IF NOT FOUND OR v_提交说明 IS NULL OR length(btrim(v_提交说明)) = 0 THEN
         RAISE EXCEPTION '活动记忆提交不存在或提交说明为空: %', v_活动记忆提交id;
       END IF;
 
-      SELECT 当前记忆提交id INTO v_head_id FROM ${名('记忆指针表')} WHERE id = 1;
-      IF v_head_id IS DISTINCT FROM v_活动记忆提交id THEN
-        RAISE EXCEPTION '活动记忆提交必须是当前 HEAD: 活动提交 %, HEAD %', v_活动记忆提交id, v_head_id;
+      SELECT 当前记忆提交id INTO v_当前记忆提交id FROM ${名('记忆指针表')} WHERE id = 1;
+      IF v_父记忆提交id IS DISTINCT FROM v_当前记忆提交id THEN
+        RAISE EXCEPTION '活动记忆提交的父提交必须是当前 HEAD: 父提交 %, HEAD %', v_父记忆提交id, v_当前记忆提交id;
+      END IF;
+
+      IF TG_OP = 'UPDATE' AND TG_TABLE_NAME IN ('当前记忆表', '当前动态工具表')
+        AND to_jsonb(OLD)->>'id' IS DISTINCT FROM to_jsonb(NEW)->>'id' THEN
+        RAISE EXCEPTION '%不允许修改主键', TG_TABLE_NAME;
+      END IF;
+      IF TG_OP = 'UPDATE' AND TG_TABLE_NAME = '当前记忆关联表'
+        AND (to_jsonb(OLD)->>'起点id' IS DISTINCT FROM to_jsonb(NEW)->>'起点id'
+          OR to_jsonb(OLD)->>'终点id' IS DISTINCT FROM to_jsonb(NEW)->>'终点id') THEN
+        RAISE EXCEPTION '当前记忆关联表不允许修改主键';
       END IF;
 
       IF TG_OP = 'DELETE' THEN RETURN OLD; END IF;
@@ -307,218 +325,86 @@ async function 在事务中初始化数据库(数据库查询器: Kysely<记忆�
     `)
   }
 
-  let columnsCheck = await sql`
-    SELECT column_name FROM information_schema.columns WHERE table_schema = ${schema} AND table_name = '当前记忆表'
-  `.execute(数据库查询器)
-  let hasX = columnsCheck.rows.some(
-    (记录: unknown): boolean =>
-      typeof 记录 === 'object' && 记录 !== null && 'column_name' in 记录 && 记录.column_name === 'x',
-  )
-  if (!hasX) {
-    await 执行(`ALTER TABLE ${名('当前记忆表')} ADD COLUMN x DOUBLE PRECISION NOT NULL DEFAULT 0;`)
-    await 执行(`ALTER TABLE ${名('当前记忆表')} ADD COLUMN y DOUBLE PRECISION NOT NULL DEFAULT 0;`)
+  // 一个提交可以包含多项行级变化；触发器按发生顺序记录完整的新行快照。
+  await 执行(`
+    CREATE OR REPLACE FUNCTION ${名('记录记忆行变更_触发器')}()
+    RETURNS TRIGGER AS $$
+    DECLARE
+      v_活动记忆提交id TEXT;
+      v_回放中 BOOLEAN;
+      v_目标表 ${名('记忆变更目标表枚举')};
+      v_操作类型 ${名('记忆行操作类型枚举')};
+      v_主键 JSONB;
+      v_行数据 JSONB;
+      v_提交内序号 INTEGER;
+    BEGIN
+      v_回放中 := COALESCE(current_setting('lsby_ai_memory.replaying', TRUE), '') = 'true';
+      IF v_回放中 THEN
+        RETURN NULL;
+      END IF;
+
+      v_活动记忆提交id := NULLIF(current_setting('lsby_ai_memory.active_commit_id', TRUE), '');
+      IF v_活动记忆提交id IS NULL THEN
+        RAISE EXCEPTION '%只能在活动记忆提交中修改', TG_TABLE_NAME;
+      END IF;
+      IF TG_OP = 'UPDATE' AND to_jsonb(OLD) IS NOT DISTINCT FROM to_jsonb(NEW) THEN
+        RETURN NULL;
+      END IF;
+
+      IF TG_OP = 'INSERT' THEN
+        v_操作类型 := 'insert';
+        v_行数据 := to_jsonb(NEW);
+      ELSIF TG_OP = 'UPDATE' THEN
+        v_操作类型 := 'update';
+        v_行数据 := to_jsonb(NEW);
+      ELSIF TG_OP = 'DELETE' THEN
+        v_操作类型 := 'delete';
+        v_行数据 := NULL;
+      END IF;
+
+      IF TG_TABLE_NAME = '当前记忆表' THEN
+        v_目标表 := 'memory';
+        IF TG_OP = 'DELETE' THEN
+          v_主键 := jsonb_build_object('id', to_jsonb(OLD)->>'id');
+        ELSE
+          v_主键 := jsonb_build_object('id', to_jsonb(NEW)->>'id');
+        END IF;
+      ELSIF TG_TABLE_NAME = '当前记忆关联表' THEN
+        v_目标表 := 'memory_relation';
+        IF TG_OP = 'DELETE' THEN
+          v_主键 := jsonb_build_object('起点id', to_jsonb(OLD)->>'起点id', '终点id', to_jsonb(OLD)->>'终点id');
+        ELSE
+          v_主键 := jsonb_build_object('起点id', to_jsonb(NEW)->>'起点id', '终点id', to_jsonb(NEW)->>'终点id');
+        END IF;
+      ELSIF TG_TABLE_NAME = '当前动态工具表' THEN
+        v_目标表 := 'dynamic_tool';
+        IF TG_OP = 'DELETE' THEN
+          v_主键 := jsonb_build_object('id', to_jsonb(OLD)->>'id');
+        ELSE
+          v_主键 := jsonb_build_object('id', to_jsonb(NEW)->>'id');
+        END IF;
+      ELSE
+        RAISE EXCEPTION '未知的记忆投影表: %', TG_TABLE_NAME;
+      END IF;
+
+      SELECT COALESCE(MAX(提交内序号), 0) + 1 INTO v_提交内序号
+      FROM ${名('记忆行变更表')} WHERE 记忆提交id = v_活动记忆提交id;
+      INSERT INTO ${名('记忆行变更表')}
+        (id, 记忆提交id, 提交内序号, 目标表, 操作类型, 主键, 行数据)
+      VALUES
+        (gen_random_uuid()::TEXT, v_活动记忆提交id, v_提交内序号, v_目标表, v_操作类型, v_主键, v_行数据);
+
+      RETURN NULL;
+    END;
+    $$ LANGUAGE plpgsql;
+  `)
+
+  for (let 表名 of ['当前记忆表', '当前记忆关联表', '当前动态工具表']) {
+    await 执行(`DROP TRIGGER IF EXISTS trg_记录记忆行变更 ON ${名(表名)};`)
+    await 执行(`
+      CREATE TRIGGER trg_记录记忆行变更
+      AFTER INSERT OR UPDATE OR DELETE ON ${名(表名)}
+      FOR EACH ROW EXECUTE FUNCTION ${名('记录记忆行变更_触发器')}();
+    `)
   }
-
-  // 提升向量检索性能，添加针对余弦距离 (<=>) 的 hnsw 索引
-  // 注意：在 pgvector 中创建 hnsw 索引要求 vector 字段具有明确的维度（例如 vector(1536)）。
-  // 由于我们的系统支持多种不同的模型（不同维度），因此不能在未指定维度的情况下创建 hnsw 索引。
-  // await sql`CREATE INDEX IF NOT EXISTS 当前记忆表_向量_idx ON 当前记忆表 USING hnsw (向量 vector_cosine_ops);`.execute(
-  //   数据库查询器,
-  // )
-  // await sql`CREATE INDEX IF NOT EXISTS 当前动态工具表_向量_idx ON 当前动态工具表 USING hnsw (向量 vector_cosine_ops);`.execute(
-  //   数据库查询器,
-  // )
-
-  // ==================== 创建用于自动生成提交 Diff 的触发器 ====================
-  // 1. 当前记忆表触发器函数
-  await 执行(`
-    CREATE OR REPLACE FUNCTION ${名('记录当前记忆表变更_触发器')}()
-    RETURNS TRIGGER AS $$
-    DECLARE
-      v_活动记忆提交id TEXT;
-      v_restoring BOOLEAN := FALSE;
-      v_op_type TEXT;
-      v_memory_id TEXT;
-      v_old_val JSONB := NULL;
-      v_new_val JSONB := NULL;
-    BEGIN
-      BEGIN
-        SELECT 活动记忆提交id, 回放中 INTO v_活动记忆提交id, v_restoring FROM ${名('_记忆提交上下文表')} WHERE id = 1;
-      EXCEPTION WHEN OTHERS THEN
-        v_活动记忆提交id := NULL;
-      END;
-      
-      IF v_restoring THEN
-        RETURN NULL;
-      ELSIF v_活动记忆提交id IS NULL OR v_活动记忆提交id = '' THEN
-        RAISE EXCEPTION '当前记忆表只能在活动提交中修改';
-      END IF;
-
-      IF TG_OP = 'INSERT' THEN
-        v_op_type := 'add';
-        v_memory_id := NEW.id;
-        v_new_val := to_jsonb(NEW);
-      ELSIF TG_OP = 'UPDATE' THEN
-        IF OLD.等级 IS NOT DISTINCT FROM NEW.等级
-          AND OLD.评分 IS NOT DISTINCT FROM NEW.评分
-          AND OLD.内容 IS NOT DISTINCT FROM NEW.内容
-          AND OLD.关键词 IS NOT DISTINCT FROM NEW.关键词
-          AND OLD.标签 IS NOT DISTINCT FROM NEW.标签
-          AND OLD.向量 IS NOT DISTINCT FROM NEW.向量
-          AND OLD.向量维度 IS NOT DISTINCT FROM NEW.向量维度
-          AND OLD.创建时间 IS NOT DISTINCT FROM NEW.创建时间
-          AND OLD.创建序号 IS NOT DISTINCT FROM NEW.创建序号
-          AND OLD.最后访问序号 IS NOT DISTINCT FROM NEW.最后访问序号
-          AND OLD.访问次数 IS NOT DISTINCT FROM NEW.访问次数
-          AND OLD.x IS NOT DISTINCT FROM NEW.x
-          AND OLD.y IS NOT DISTINCT FROM NEW.y THEN
-          RETURN NULL;
-        END IF;
-        v_op_type := 'update';
-        v_memory_id := NEW.id;
-        v_old_val := to_jsonb(OLD);
-        v_new_val := to_jsonb(NEW);
-      ELSIF TG_OP = 'DELETE' THEN
-        v_op_type := 'remove';
-        v_memory_id := OLD.id;
-        v_old_val := to_jsonb(OLD);
-      END IF;
-
-      INSERT INTO ${名('记忆提交变更表')} (id, 记忆提交id, 变更类型, 目标实体类型, 记忆实体id, 变更前数据, 变更后数据)
-      VALUES (gen_random_uuid()::TEXT, v_活动记忆提交id, v_op_type, 'memory', v_memory_id, v_old_val, v_new_val);
-
-      RETURN NULL;
-    END;
-    $$ LANGUAGE plpgsql;
-  `)
-
-  await 执行(`DROP TRIGGER IF EXISTS trg_记录当前记忆表变更 ON ${名('当前记忆表')};`)
-  await 执行(`
-    CREATE TRIGGER trg_记录当前记忆表变更
-    AFTER INSERT OR UPDATE OR DELETE ON ${名('当前记忆表')}
-    FOR EACH ROW EXECUTE FUNCTION ${名('记录当前记忆表变更_触发器')}();
-  `)
-
-  // 2. 当前记忆关联表触发器函数
-  await 执行(`
-    CREATE OR REPLACE FUNCTION ${名('记录当前记忆关联表变更_触发器')}()
-    RETURNS TRIGGER AS $$
-    DECLARE
-      v_活动记忆提交id TEXT;
-      v_restoring BOOLEAN := FALSE;
-      v_op_type TEXT;
-      v_source_id TEXT;
-      v_end_id TEXT;
-      v_old_val JSONB := NULL;
-      v_new_val JSONB := NULL;
-    BEGIN
-      BEGIN
-        SELECT 活动记忆提交id, 回放中 INTO v_活动记忆提交id, v_restoring FROM ${名('_记忆提交上下文表')} WHERE id = 1;
-      EXCEPTION WHEN OTHERS THEN
-        v_活动记忆提交id := NULL;
-      END;
-
-      IF v_restoring THEN
-        RETURN NULL;
-      ELSIF v_活动记忆提交id IS NULL OR v_活动记忆提交id = '' THEN
-        RAISE EXCEPTION '当前记忆关联表只能在活动提交中修改';
-      END IF;
-
-      IF TG_OP = 'INSERT' THEN
-        v_op_type := 'add';
-        v_source_id := NEW.起点id;
-        v_end_id := NEW.终点id;
-        v_new_val := to_jsonb(NEW);
-      ELSIF TG_OP = 'UPDATE' THEN
-        IF OLD.关联度 IS NOT DISTINCT FROM NEW.关联度 THEN
-          RETURN NULL;
-        END IF;
-        v_op_type := 'update';
-        v_source_id := NEW.起点id;
-        v_end_id := NEW.终点id;
-        v_old_val := to_jsonb(OLD);
-        v_new_val := to_jsonb(NEW);
-      ELSIF TG_OP = 'DELETE' THEN
-        v_op_type := 'remove';
-        v_source_id := OLD.起点id;
-        v_end_id := OLD.终点id;
-        v_old_val := to_jsonb(OLD);
-      END IF;
-
-      INSERT INTO ${名('记忆提交变更表')} (id, 记忆提交id, 变更类型, 目标实体类型, 起点记忆实体id, 终点记忆实体id, 变更前数据, 变更后数据)
-      VALUES (gen_random_uuid()::TEXT, v_活动记忆提交id, v_op_type, 'memory_relation', v_source_id, v_end_id, v_old_val, v_new_val);
-
-      RETURN NULL;
-    END;
-    $$ LANGUAGE plpgsql;
-  `)
-
-  await 执行(`DROP TRIGGER IF EXISTS trg_记录当前记忆关联表变更 ON ${名('当前记忆关联表')};`)
-  await 执行(`
-    CREATE TRIGGER trg_记录当前记忆关联表变更
-    AFTER INSERT OR UPDATE OR DELETE ON ${名('当前记忆关联表')}
-    FOR EACH ROW EXECUTE FUNCTION ${名('记录当前记忆关联表变更_触发器')}();
-  `)
-
-  // 3. 当前动态工具表触发器函数。动态工具会参与模型上下文，也必须跟随提交历史回退。
-  await 执行(`
-    CREATE OR REPLACE FUNCTION ${名('记录当前动态工具表变更_触发器')}()
-    RETURNS TRIGGER AS $$
-    DECLARE
-      v_活动记忆提交id TEXT;
-      v_restoring BOOLEAN := FALSE;
-      v_op_type TEXT;
-      v_tool_id TEXT;
-      v_old_val JSONB := NULL;
-      v_new_val JSONB := NULL;
-    BEGIN
-      BEGIN
-        SELECT 活动记忆提交id, 回放中 INTO v_活动记忆提交id, v_restoring FROM ${名('_记忆提交上下文表')} WHERE id = 1;
-      EXCEPTION WHEN OTHERS THEN
-        v_活动记忆提交id := NULL;
-      END;
-
-      IF v_restoring THEN
-        RETURN NULL;
-      ELSIF v_活动记忆提交id IS NULL OR v_活动记忆提交id = '' THEN
-        RAISE EXCEPTION '当前动态工具表只能在活动提交中修改';
-      END IF;
-
-      IF TG_OP = 'INSERT' THEN
-        v_op_type := 'add';
-        v_tool_id := NEW.id;
-        v_new_val := to_jsonb(NEW);
-      ELSIF TG_OP = 'UPDATE' THEN
-        IF OLD.名称 IS NOT DISTINCT FROM NEW.名称
-          AND OLD.描述 IS NOT DISTINCT FROM NEW.描述
-          AND OLD.代码 IS NOT DISTINCT FROM NEW.代码
-          AND OLD.向量 IS NOT DISTINCT FROM NEW.向量
-          AND OLD.向量维度 IS NOT DISTINCT FROM NEW.向量维度
-          AND OLD.创建时间 IS NOT DISTINCT FROM NEW.创建时间 THEN
-          RETURN NULL;
-        END IF;
-        v_op_type := 'update';
-        v_tool_id := NEW.id;
-        v_old_val := to_jsonb(OLD);
-        v_new_val := to_jsonb(NEW);
-      ELSIF TG_OP = 'DELETE' THEN
-        v_op_type := 'remove';
-        v_tool_id := OLD.id;
-        v_old_val := to_jsonb(OLD);
-      END IF;
-
-      INSERT INTO ${名('记忆提交变更表')} (id, 记忆提交id, 变更类型, 目标实体类型, 动态工具实体id, 变更前数据, 变更后数据)
-      VALUES (gen_random_uuid()::TEXT, v_活动记忆提交id, v_op_type, 'dynamic_tool', v_tool_id, v_old_val, v_new_val);
-
-      RETURN NULL;
-    END;
-    $$ LANGUAGE plpgsql;
-  `)
-
-  await 执行(`DROP TRIGGER IF EXISTS trg_记录当前动态工具表变更 ON ${名('当前动态工具表')};`)
-  await 执行(`
-    CREATE TRIGGER trg_记录当前动态工具表变更
-    AFTER INSERT OR UPDATE OR DELETE ON ${名('当前动态工具表')}
-    FOR EACH ROW EXECUTE FUNCTION ${名('记录当前动态工具表变更_触发器')}();
-  `)
 }

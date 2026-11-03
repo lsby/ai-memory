@@ -11,7 +11,9 @@ export {
   快照数据Schema,
   批量注入记忆项Schema,
   更新记忆选项Schema,
+  记忆变更目标表Schema,
   记忆等级,
+  记忆行操作类型Schema,
 } from './agent-memory/types'
 export type {
   JSON值,
@@ -24,8 +26,8 @@ export type {
   公开消息,
   公开记忆,
   公开记忆关联,
-  公开记忆变更,
   公开记忆提交,
+  公开记忆行变更,
   创建派生会话选项,
   博闻强记配置,
   压缩当前会话选项,
@@ -40,6 +42,8 @@ export type {
   查询会话列表选项,
   查询记忆选项,
   自动压缩配置,
+  记忆变更目标表,
+  记忆行操作类型,
 } from './agent-memory/types'
 export { 智能体 } from './agent/core/agent'
 export { 中文模型语言包, 英文模型语言包 } from './agent/model-language'

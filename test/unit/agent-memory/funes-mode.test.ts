@@ -58,7 +58,6 @@ describe('博闻强记模式', () => {
     let 上游会话 = await 实例.读取当前会话()
     if (上游会话.当前消息id === null) throw new Error('上游会话没有 HEAD')
     await 实例.创建派生会话({
-      前驱会话id: 上游会话.id,
       前驱消息id: 上游会话.当前消息id,
       摘要: '普通摘要',
     })
@@ -164,7 +163,6 @@ describe('博闻强记模式', () => {
     let 上游会话 = await 实例.读取当前会话()
     if (上游会话.当前消息id === null) throw new Error('上游会话没有 HEAD')
     await 实例.创建派生会话({
-      前驱会话id: 上游会话.id,
       前驱消息id: 上游会话.当前消息id,
       摘要: '只是摘要',
     })

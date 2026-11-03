@@ -48,12 +48,10 @@ describe('记忆应用管理接口', () => {
     expect(await 智能体实例.查询记忆关联(第一条.id)).toEqual([{ 起点id, 终点id, 关联度: 1 }])
     let 关联变更 = (await 智能体实例.查询记忆提交())
       .flatMap((提交) => 提交.变更列表)
-      .find((变更) => 变更.目标实体类型 === 'memory_relation')
+      .find((变更) => 变更.目标表 === 'memory_relation')
     expect(关联变更).toMatchObject({
-      起点记忆实体id: 起点id,
-      终点记忆实体id: 终点id,
-      记忆实体id: null,
-      动态工具实体id: null,
+      操作类型: 'insert',
+      主键: { 起点id, 终点id },
     })
 
     let 更新后 = await 智能体实例.更新记忆(第一条.id, { 内容: '更新后的苹果记忆', 标签: ['已更新'], 评分: 88 })
@@ -78,7 +76,7 @@ describe('记忆应用管理接口', () => {
     await expect(智能体实例.更新记忆('id', {})).rejects.toThrow('至少提供一个')
   })
 
-  it('v2 记忆快照和 v4 完整状态往返恢复动态工具、前缀及完整会话', async (): Promise<void> => {
+  it('记忆快照和完整状态往返恢复动态工具、前缀及完整会话', async (): Promise<void> => {
     智能体实例 = 夹具.新建智能体({ 向量模型: { 类型: '无' } })
     await 智能体实例.添加记忆({
       内容: '需要恢复的记忆',
@@ -113,8 +111,9 @@ describe('记忆应用管理接口', () => {
 
     let 完整状态文本 = await 智能体实例.导出完整状态()
     let 完整状态 = 完整状态Schema.parse(JSON.parse(完整状态文本))
+    expect(完整状态).not.toHaveProperty('格式版本')
+    expect(() => 完整状态Schema.parse({ ...JSON.parse(完整状态文本), 未定义字段: true })).toThrow()
     expect(完整状态).toMatchObject({
-      格式版本: 4,
       当前会话id: 会话.id,
       会话列表: [{ id: 会话.id }],
       消息列表: [{ 消息: { role: 'system' } }, { 消息: { content: '完整内部状态' } }],
@@ -141,9 +140,8 @@ describe('记忆应用管理接口', () => {
 
     let 更新提交 = (await 智能体实例.查询记忆提交()).find((提交) => 提交.提交说明 === '更新记忆')
     expect(更新提交?.变更列表).toHaveLength(1)
-    expect(更新提交?.变更列表[0]).toMatchObject({ 变更类型: 'update', 目标实体类型: 'memory', 记忆实体id: 记忆.id })
-    expect(更新提交?.变更列表[0]?.变更前数据).toMatchObject({ 内容: '回退前内容' })
-    expect(更新提交?.变更列表[0]?.变更后数据).toMatchObject({ 内容: '回退后内容' })
+    expect(更新提交?.变更列表[0]).toMatchObject({ 操作类型: 'update', 目标表: 'memory', 主键: { id: 记忆.id } })
+    expect(更新提交?.变更列表[0]?.行数据).toMatchObject({ 内容: '回退后内容' })
     let 回退前提交数 = (await 智能体实例.查询记忆提交()).length
 
     expect(await 智能体实例.回退最近记忆提交()).toBe(true)
@@ -166,13 +164,30 @@ describe('记忆应用管理接口', () => {
 
     let 注册提交 = (await 智能体实例.查询记忆提交()).find((提交) => 提交.提交说明 === '编程接入: 注册动态工具')
     expect(注册提交?.变更列表).toHaveLength(1)
-    expect(注册提交?.变更列表[0]).toMatchObject({ 变更类型: 'add', 目标实体类型: 'dynamic_tool' })
+    expect(注册提交?.变更列表[0]).toMatchObject({ 操作类型: 'insert', 目标表: 'dynamic_tool' })
 
     expect(await 智能体实例.回退最近记忆提交()).toBe(true)
     expect(await 智能体实例.查询动态工具()).toEqual([])
     if (注册提交 === undefined) throw new Error('动态工具提交未生成')
     expect(await 智能体实例.切换记忆提交(注册提交.id)).toBe(true)
     expect(await 智能体实例.查询动态工具()).toMatchObject([{ 名称: 'snapshot_tool' }])
+  })
+
+  it('允许给提交设置一次唯一状态名称', async (): Promise<void> => {
+    智能体实例 = 夹具.新建智能体({ 向量模型: { 类型: '无' } })
+    await 智能体实例.添加记忆({
+      内容: '可命名状态',
+      关键词: ['命名'],
+      标签: [],
+      评分: 50,
+      等级: 记忆等级.一级,
+      创建时间: new Date('2026-01-01T00:00:00.000Z'),
+    })
+    let 提交id = await 智能体实例.查询当前记忆提交id()
+    if (提交id === null) throw new Error('测试提交未生成')
+    expect(await 智能体实例.命名记忆提交(提交id, '初始状态')).toBe(true)
+    expect((await 智能体实例.查询记忆提交()).find((提交) => 提交.id === 提交id)?.状态名称).toBe('初始状态')
+    expect(await 智能体实例.命名记忆提交(提交id, '再次命名')).toBe(false)
   })
 
   it('从旧提交继续写入会产生分支并且可以在分支间切换', async (): Promise<void> => {

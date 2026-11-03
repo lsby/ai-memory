@@ -243,12 +243,11 @@ describe('实例级对话历史', () => {
     expect(子分支).toHaveLength(2)
 
     let 派生会话 = await 带记忆实例.创建派生会话({
-      前驱会话id: 会话.id,
       前驱消息id: 分支回复.id,
       摘要: '此前会话的不可变摘要',
       标题: '压缩后的会话',
     })
-    expect(派生会话).toMatchObject({ 前驱会话id: 会话.id, 前驱消息id: 分支回复.id })
+    expect(派生会话).toMatchObject({ 前驱消息id: 分支回复.id })
     let 派生消息列表 = await 带记忆实例.读取会话消息(派生会话.id)
     expect(派生消息列表.map((消息) => 消息.消息.role)).toEqual(['system', 'system'])
     expect(派生消息列表[1]?.消息.content).toBe('此前会话的不可变摘要')
@@ -278,7 +277,6 @@ describe('实例级对话历史', () => {
       目标字符数: 100,
     })
 
-    expect(派生会话.前驱会话id).toBe(原会话.id)
     expect(派生会话.前驱消息id).toBe(原会话.当前消息id)
     expect((await 带记忆实例.读取会话消息(派生会话.id))[1]?.消息.content).toBe('精确压缩摘要')
     expect((await 带记忆实例.读取会话消息(原会话.id)).length).toBeGreaterThan(0)

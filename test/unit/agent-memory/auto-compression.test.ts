@@ -93,7 +93,7 @@ describe('自动压缩遥测、超时与冷却', () => {
 
     expect(创建).toHaveBeenCalledTimes(1)
     let 派生会话 = await 智能体.读取当前会话()
-    expect(派生会话.前驱会话id).toBe(压缩前会话.id)
+    expect(派生会话.前驱消息id).toBe(压缩前会话.当前消息id)
     let 日志列表 = await 读取事件组(智能体, '事件组-压缩成功')
     let 开始 = 日志列表.find((日志) => 日志.事件类型 === '流程开始' && 日志内容(日志)['入口'] === '自动压缩')
     expect(开始).toBeDefined()
@@ -235,8 +235,11 @@ describe('自动压缩遥测、超时与冷却', () => {
       let A会话 = await A.读取当前会话()
       let B会话 = await B.读取当前会话()
       expect(await A.查询派生会话(A会话.id)).toEqual([])
-      expect(await A.查询派生会话(B会话.前驱会话id ?? 'none')).toEqual([])
-      expect((await B.查询派生会话(B会话.前驱会话id ?? 'none')).map((会话) => 会话.id)).toEqual([B会话.id])
+      if (B会话.前驱消息id === null) throw new Error('B 派生会话缺少前驱消息')
+      let B前驱消息 = (await B.读取消息历史(B会话.前驱消息id, 1))[0]
+      if (B前驱消息 === undefined) throw new Error('B 派生会话的前驱消息不存在')
+      expect(await A.查询派生会话(B前驱消息.会话id)).toEqual([])
+      expect((await B.查询派生会话(B前驱消息.会话id)).map((会话) => 会话.id)).toEqual([B会话.id])
     } finally {
       await A.销毁()
       await B.销毁()
@@ -326,9 +329,9 @@ describe('自动压缩遥测、超时与冷却', () => {
     if (原会话.当前消息id === null) throw new Error('缺少当前消息')
     expect(await 智能体.查询派生会话(原会话.id)).toEqual([])
 
-    let 第一个 = await 智能体.创建派生会话({ 前驱会话id: 原会话.id, 前驱消息id: 原会话.当前消息id, 摘要: 'A' })
+    let 第一个 = await 智能体.创建派生会话({ 前驱消息id: 原会话.当前消息id, 摘要: 'A' })
     await 等待(5)
-    let 第二个 = await 智能体.创建派生会话({ 前驱会话id: 原会话.id, 前驱消息id: 原会话.当前消息id, 摘要: 'B' })
+    let 第二个 = await 智能体.创建派生会话({ 前驱消息id: 原会话.当前消息id, 摘要: 'B' })
     expect((await 智能体.查询派生会话(原会话.id)).map((会话) => 会话.id)).toEqual([第二个.id, 第一个.id])
     await 等待(5)
     await 智能体.更新会话标题(第一个.id, '最近更新')
@@ -336,7 +339,7 @@ describe('自动压缩遥测、超时与冷却', () => {
     expect(await 智能体.查询派生会话(第二个.id)).toEqual([])
   })
 
-  it('会话表的前驱会话索引存在，旧数据目录缺索引时重新打开会补上', async (): Promise<void> => {
+  it('会话表的前驱消息索引存在，重新初始化仍保持完整', async (): Promise<void> => {
     let pglite = 创建带向量的PGlite()
     let schema = 'idx_case'
     let 打开 = (): 带记忆的智能体 =>
@@ -351,12 +354,12 @@ describe('自动压缩遥测、超时与冷却', () => {
     try {
       let 第一个实例 = 打开()
       await 第一个实例.初始化()
-      expect(await 查索引()).toContain('会话表_前驱会话_idx')
-      await pglite.exec(`DROP INDEX "${schema}"."会话表_前驱会话_idx"`)
-      expect(await 查索引()).not.toContain('会话表_前驱会话_idx')
+      expect(await 查索引()).toContain('会话表_前驱消息_idx')
+      await pglite.exec(`DROP INDEX "${schema}"."会话表_前驱消息_idx"`)
+      expect(await 查索引()).not.toContain('会话表_前驱消息_idx')
       let 第二个实例 = 打开()
       await 第二个实例.初始化()
-      expect(await 查索引()).toContain('会话表_前驱会话_idx')
+      expect(await 查索引()).toContain('会话表_前驱消息_idx')
     } finally {
       await pglite.close()
     }

@@ -13,10 +13,13 @@ export async function 准备博闻强记选项<T extends z.ZodType>(
   if (当前会话id === null) return 选项
   let 当前会话 = await 控制器.读取当前会话()
   let 内部注入消息 = [...(选项.内部注入消息 ?? [])]
-  if (当前会话.前驱会话id !== null) {
+  if (当前会话.前驱消息id !== null) {
+    let 前驱消息列表 = await 控制器.读取消息历史(当前会话.前驱消息id, 1)
+    let 前驱消息 = 前驱消息列表[0]
+    if (前驱消息 === undefined) throw new Error(`前驱消息不存在: ${当前会话.前驱消息id}`)
     内部注入消息.push({
       类型: 'recall-context',
-      内容: 模型语言包.博闻强记上游会话?.(当前会话.前驱会话id) ?? `[博闻强记] 上游会话 ID: ${当前会话.前驱会话id}`,
+      内容: 模型语言包.博闻强记上游会话?.(前驱消息.会话id) ?? `[博闻强记] 上游会话 ID: ${前驱消息.会话id}`,
       总是追加: true,
     })
   }

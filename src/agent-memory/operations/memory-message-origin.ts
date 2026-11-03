@@ -1,4 +1,4 @@
-import type { Kysely } from 'kysely'
+import { sql, type Kysely } from 'kysely'
 import { JSON值Schema, type JSON值, type 记忆数据库 } from '../types'
 
 export type 记忆相关消息 = { 消息id: string; 关系: '新增'; 记忆提交id: string }
@@ -23,15 +23,12 @@ export async function 查询记忆新增相关消息(
   允许消息id集合?: ReadonlySet<string>,
 ): Promise<记忆相关消息[]> {
   // 博闻强记目前只暴露“新增记忆”的因果关系；更新、降级等关系留给后续明确语义后再扩展。
-  let 变更列表 = await 数据库查询器
-    .selectFrom('记忆提交变更表')
-    .select(['记忆提交id'])
-    .where('目标实体类型', '=', 'memory')
-    .where('记忆实体id', '=', 记忆实体id)
-    .where('变更类型', '=', 'add')
-    .execute()
+  let 变更列表 = await sql<{ 记忆提交id: string }>`
+    SELECT 记忆提交id FROM 记忆行变更表
+    WHERE 目标表 = 'memory' AND 操作类型 = 'insert' AND 主键 ->> 'id' = ${记忆实体id}
+  `.execute(数据库查询器)
   let 结果: 记忆相关消息[] = []
-  for (let 变更 of 变更列表) {
+  for (let 变更 of 变更列表.rows) {
     let 提交 = await 数据库查询器
       .selectFrom('记忆提交表')
       .select(['id', '父记忆提交id'])

@@ -35,23 +35,18 @@ export async function 创建会话(
   选项: {
     id?: string | undefined
     标题?: string | undefined
-    前驱会话id?: string | null | undefined
     前驱消息id?: string | null | undefined
   } = {},
 ): Promise<公开会话> {
-  let 前驱会话id = 选项.前驱会话id ?? null
   let 前驱消息id = 选项.前驱消息id ?? null
-  if ((前驱会话id === null) !== (前驱消息id === null)) throw new Error('前驱会话id 和 前驱消息id 必须同时提供')
-  if (前驱会话id !== null && 前驱消息id !== null) {
-    let 前驱消息 = await 数据库查询器
-      .selectFrom('消息表')
-      .select(['id', '会话id'])
-      .where('id', '=', 前驱消息id)
-      .executeTakeFirst()
-    if (前驱消息 === undefined || 前驱消息.会话id !== 前驱会话id) throw new Error('前驱消息不属于指定的前驱会话')
-  }
+  let 前驱消息 =
+    前驱消息id === null
+      ? null
+      : await 数据库查询器.selectFrom('消息表').select(['id', '会话id']).where('id', '=', 前驱消息id).executeTakeFirst()
+  if (前驱消息id !== null && 前驱消息 === undefined) throw new Error(`前驱消息不存在: ${前驱消息id}`)
   let id = 选项.id ?? randomUUID()
-  if (id === 前驱会话id) throw new Error('会话不能以自身作为前驱会话')
+  if (前驱消息 !== null && 前驱消息 !== undefined && id === 前驱消息.会话id)
+    throw new Error('会话不能以自身消息作为前驱')
   let 时间 = new Date()
   let 会话 = await 数据库查询器
     .insertInto('会话表')
@@ -59,7 +54,6 @@ export async function 创建会话(
       id,
       标题: 选项.标题 ?? '',
       当前消息id: null,
-      前驱会话id,
       前驱消息id,
       创建时间: 时间,
       更新时间: 时间,
@@ -90,11 +84,12 @@ export async function 查询会话列表(数据库查询器: Kysely<记忆数据
 export async function 查询派生会话(数据库查询器: Kysely<记忆数据库>, 前驱会话id: string): Promise<公开会话[]> {
   let 已校验前驱会话id = z.string().trim().min(1).parse(前驱会话id)
   let 会话列表 = await 数据库查询器
-    .selectFrom('会话表')
-    .selectAll()
-    .where('前驱会话id', '=', 已校验前驱会话id)
-    .orderBy('更新时间', 'desc')
-    .orderBy('id', 'asc')
+    .selectFrom('会话表 as 会话')
+    .innerJoin('消息表 as 前驱消息', '前驱消息.id', '会话.前驱消息id')
+    .selectAll('会话')
+    .where('前驱消息.会话id', '=', 已校验前驱会话id)
+    .orderBy('会话.更新时间', 'desc')
+    .orderBy('会话.id', 'asc')
     .execute()
   return 会话列表.map(转为公开会话)
 }
@@ -177,7 +172,6 @@ export async function 原子创建压缩派生会话(
         id,
         标题: 选项.标题,
         当前消息id: null,
-        前驱会话id: 选项.前驱会话id,
         前驱消息id: 选项.前驱消息id,
         创建时间: 时间,
         更新时间: 时间,

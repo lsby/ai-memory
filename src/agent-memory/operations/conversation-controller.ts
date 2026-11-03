@@ -178,14 +178,11 @@ export class 会话控制器 {
     await this.依赖.确保已初始化()
     let 前驱链 = await 存储读取消息历史(this.依赖.数据库查询器, 选项.前驱消息id)
     let 前驱末尾 = 前驱链.at(-1)
-    if (前驱末尾 === undefined || 前驱末尾.会话id !== 选项.前驱会话id) {
-      throw new Error('前驱消息不属于指定的前驱会话')
-    }
+    if (前驱末尾 === undefined) throw new Error(`前驱消息不存在: ${选项.前驱消息id}`)
     let 系统消息 = 前驱链[0]?.消息
     if (系统消息 === undefined || 系统消息.role !== 'system') throw new Error('前驱会话缺少可复用的系统前缀')
     let 会话 = await 存储创建会话(this.依赖.数据库查询器, {
       标题: 选项.标题 ?? '压缩会话',
-      前驱会话id: 选项.前驱会话id,
       前驱消息id: 选项.前驱消息id,
     })
     let { 持久化消息id: _原消息id, ...派生系统消息 } = 系统消息
@@ -194,7 +191,7 @@ export class 会话控制器 {
       {
         role: 'system',
         content: 选项.摘要,
-        compressionSourceSessionId: 选项.前驱会话id,
+        compressionSourceSessionId: 前驱末尾.会话id,
         compressionSourceMessageId: 选项.前驱消息id,
       },
     ])

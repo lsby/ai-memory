@@ -18,6 +18,7 @@ import {
 } from './logger'
 import {
   切换记忆提交 as 外部切换记忆提交,
+  命名记忆提交 as 外部命名记忆提交,
   回退到父记忆提交 as 外部回退到父记忆提交,
   获取当前提交ID,
 } from './operations/commit'
@@ -326,6 +327,12 @@ export class 带记忆的智能体 extends 持久化会话智能体 {
   public async 查询当前记忆提交id(): Promise<string | null> {
     await this.确保已初始化()
     return await 获取当前提交ID(this.数据库查询器)
+  }
+
+  /** 给尚未命名的提交设置唯一状态名称；提交一旦命名便不可改名。 */
+  public async 命名记忆提交(记忆提交id: string, 状态名称: string): Promise<boolean> {
+    await this.确保已初始化()
+    return await 外部命名记忆提交(this.数据库查询器, 记忆提交id, 状态名称)
   }
 
   /** 切换到指定提交的完整状态；已有提交不会被删除，之后的新提交将从该提交产生分支。 */

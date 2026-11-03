@@ -110,18 +110,17 @@ export async function 查询记忆提交(数据库查询器: Kysely<记忆数据
     .execute()
   if (提交列表.length === 0) return []
   let 变更列表 = await 数据库查询器
-    .selectFrom('记忆提交变更表')
+    .selectFrom('记忆行变更表')
     .selectAll()
     .where(
       '记忆提交id',
       'in',
       提交列表.map((提交) => 提交.id),
     )
+    .orderBy('提交内序号', 'asc')
     .execute()
   return 提交列表.map((提交): 公开记忆提交 => ({
     ...提交,
-    变更列表: 变更列表
-      .filter((变更) => 变更.记忆提交id === 提交.id)
-      .map(({ 记忆提交id: _提交id, 序号: _序号, ...变更 }) => 变更),
+    变更列表: 变更列表.filter((变更) => 变更.记忆提交id === 提交.id).map(({ 记忆提交id: _提交id, ...变更 }) => 变更),
   }))
 }
