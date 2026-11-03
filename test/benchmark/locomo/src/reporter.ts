@@ -36,9 +36,9 @@ export function printBenchmarkReport(options: PrintBenchmarkReportOptions): void
   console.log('-----------------------------------------------------')
   console.log('分题型正确率统计:')
   let catNames: Record<number, string> = {
-    1: 'Multi-hop (多跳关联)',
-    2: 'Single-hop (单跳回忆)',
-    3: 'Temporal (时序推理)',
+    1: 'Single-hop (单跳回忆)',
+    2: 'Temporal (时序推理)',
+    3: 'Multi-hop (多跳关联)',
     4: 'Open-domain (常识结合)',
     5: 'Adversarial (防幻觉)',
   }
