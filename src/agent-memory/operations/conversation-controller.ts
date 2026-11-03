@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto'
 import { z } from 'zod'
 import type { 模型语言包 } from '../../agent/model-language'
 import { 智能体工具, type 智能体执行模式, type 智能体消息类型 } from '../../agent/types'
+import { 转换Schema, 转换值 } from '../prompt/model-language'
 import {
   创建会话 as 存储创建会话,
   原子创建压缩派生会话 as 存储原子创建压缩派生会话,
@@ -285,10 +286,20 @@ export class 会话控制器 {
         )
       },
     })
+    let 适配Schema = 转换Schema(对话搜索参数JSONSchema, this.依赖.模型语言包, true)
+    let 模型参数JSONSchema =
+      适配Schema !== null && typeof 适配Schema === 'object' && Array.isArray(适配Schema) === false
+        ? (适配Schema as Record<string, unknown>)
+        : 对话搜索参数JSONSchema
     return 智能体工具.创建模型适配(工具, {
       描述: 工具.描述,
-      参数JSONSchema: 对话搜索参数JSONSchema,
-      解析参数: (参数): Record<string, unknown> => 参数,
+      参数JSONSchema: 模型参数JSONSchema,
+      解析参数: (参数): Record<string, unknown> => {
+        let 内部参数 = 转换值(参数, '对内部', this.依赖.模型语言包)
+        return 内部参数 !== null && typeof 内部参数 === 'object' && Array.isArray(内部参数) === false
+          ? (内部参数 as Record<string, unknown>)
+          : 参数
+      },
       转换返回值: (返回值): unknown => {
         let 已解析返回值 = z
           .object({

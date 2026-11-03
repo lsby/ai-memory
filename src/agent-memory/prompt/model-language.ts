@@ -21,6 +21,11 @@ let 内部字段名 = [
   '查询内容',
   '过滤内容',
   '过滤内容模式',
+  '会话id',
+  '消息id',
+  '记忆id',
+  '角色',
+  '上下文消息数',
   '时间范围',
   '基准',
   '开始相对天数',
@@ -57,12 +62,14 @@ function 转换键(键: string, 方向: '对模型' | '对内部', 模型语言�
   return 内部字段名.find((内部名) => 模型语言包.模型字段名(内部名) === 键) ?? 键
 }
 
-function 转换值(值: unknown, 方向: '对模型' | '对内部', 模型语言包: 模型语言包): unknown {
+export function 转换值(值: unknown, 方向: '对模型' | '对内部', 模型语言包: 模型语言包): unknown {
   if (Array.isArray(值)) return 值.map((项) => 转换值(项, 方向, 模型语言包))
   if (值 !== null && typeof 值 === 'object') {
-    return Object.fromEntries(
-      Object.entries(值).map(([键, 项]) => [转换键(键, 方向, 模型语言包), 转换值(项, 方向, 模型语言包)]),
-    )
+    let 条目 = Object.entries(值)
+    if (方向 === '对内部') {
+      条目 = 条目.filter(([_键, 项]) => 项 !== null && 项 !== undefined)
+    }
+    return Object.fromEntries(条目.map(([键, 项]) => [转换键(键, 方向, 模型语言包), 转换值(项, 方向, 模型语言包)]))
   }
   if (方向 === '对模型' && typeof 值 === 'string') return 模型语言包.模型枚举值(值)
   if (方向 === '对内部') {
@@ -73,7 +80,7 @@ function 转换值(值: unknown, 方向: '对模型' | '对内部', 模型语言
   return 值
 }
 
-function 转换Schema(值: unknown, 模型语言包: 模型语言包, 保留描述: boolean): unknown {
+export function 转换Schema(值: unknown, 模型语言包: 模型语言包, 保留描述: boolean): unknown {
   if (Array.isArray(值)) return 值.map((项) => 转换Schema(项, 模型语言包, 保留描述))
   if (值 === null || typeof 值 !== 'object') return 值
   let 结果: Record<string, unknown> = {}

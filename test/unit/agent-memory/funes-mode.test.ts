@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { z } from 'zod'
+import { 英文模型语言包 } from '../../../src/agent/model-language'
 import { 带记忆的智能体, 记忆等级 } from '../../../src/index'
 import { 创建假客户端, 提交 } from '../../helpers/append-only-cache-helper'
 import { 使用共享PGlite } from '../../helpers/shared-pglite-fixture'
@@ -258,5 +259,41 @@ describe('博闻强记模式', () => {
       )
       .parse(JSON.parse(工具结果.搜索结果_完整记忆 ?? '[]'))
     expect(记忆列表[0]?.相关消息).toHaveLength(1)
+  })
+
+  it('英文模型语言包下消息搜索工具暴露英文字段并支持英文参数及 null 容错', async (): Promise<void> => {
+    let 实例 = 夹具.新建智能体({
+      向量模型: { 类型: '在线', openai客户端: 创建假向量客户端({}), 模型名称: 'fake' },
+      博闻强记模式: true,
+      博闻强记消息搜索数量: 20,
+      模型语言包: 英文模型语言包,
+    })
+    实例列表.push(实例)
+    let 假 = 创建假客户端([
+      {
+        工具调用: [
+          {
+            id: 'search-english',
+            名称: 'search_conversation_messages',
+            参数: { query: 'needle', filters: null, context_count: 0 },
+          },
+        ],
+      },
+      提交(1),
+    ])
+    await 实例.对话(对话选项(假, 'say needle'))
+    let 首次请求 = 假.请求列表[0]
+    let 工具列表 = 首次请求?.tools as Array<{ function?: { name?: string } }> | undefined
+    let 工具定义 = 工具列表?.find((t) => t.function?.name === 'search_conversation_messages')
+    expect(JSON.stringify(工具定义)).toContain('query')
+    expect(JSON.stringify(工具定义)).toContain('context_count')
+    expect(JSON.stringify(工具定义)).not.toContain('查询内容')
+
+    let 工具结果 = JSON.parse(读取工具消息(假.请求列表[1], 'search-english')) as {
+      status?: string
+      messages?: unknown[]
+    }
+    expect(工具结果.status).toBe('success')
+    expect(工具结果.messages?.length).toBeGreaterThan(0)
   })
 })
