@@ -76,7 +76,7 @@ describe('文件存储生命周期', () => {
     }
   })
 
-  it('初始化数据库会创建 v12 行变更模型、强外键指针和关键索引', async (): Promise<void> => {
+  it('初始化数据库会创建 v13 行变更模型、消息向量列、强外键指针和关键索引', async (): Promise<void> => {
     let pglite = new PGlite({ extensions: { vector } })
     let 数据库查询器 = new Kysely<记忆数据库>({ dialect: new PGliteDialect({ pglite }) })
     try {
@@ -135,6 +135,11 @@ describe('文件存储生命周期', () => {
         SELECT rc.constraint_name, rc.delete_rule FROM information_schema.referential_constraints rc
         WHERE rc.constraint_schema = 'public' AND rc.constraint_name = '会话表_前驱消息id_fkey'
       `.execute(数据库查询器)
+      let 消息向量列 = await sql<{ column_name: string; data_type: string; is_nullable: string }>`
+        SELECT column_name, data_type, is_nullable FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = '消息表' AND column_name IN ('向量', '向量维度')
+        ORDER BY column_name
+      `.execute(数据库查询器)
 
       expect(版本?.内核架构版本).toBe(记忆数据库架构版本)
       expect(指针).toEqual({ id: 1, 当前记忆提交id: null })
@@ -154,6 +159,19 @@ describe('文件存储生命周期', () => {
       expect(变更提交外键.rows).toEqual([{ constraint_name: '记忆行变更表_记忆提交id_fkey', delete_rule: 'RESTRICT' }])
       expect(会话前驱列.rows).toEqual([{ column_name: '前驱消息id' }])
       expect(会话前驱外键.rows).toEqual([{ constraint_name: '会话表_前驱消息id_fkey', delete_rule: 'RESTRICT' }])
+      expect(消息向量列.rows).toEqual([
+        { column_name: '向量', data_type: 'USER-DEFINED', is_nullable: 'YES' },
+        { column_name: '向量维度', data_type: 'integer', is_nullable: 'YES' },
+      ])
+      await pglite.query(
+        `INSERT INTO 会话表 (id, 标题, 创建时间, 更新时间) VALUES ('vector-session', '', now(), now())`,
+      )
+      await expect(
+        pglite.query(
+          `INSERT INTO 消息表 (id, 会话id, 角色, 载荷, 向量, 向量维度, 创建时间)
+           VALUES ('bad-vector', 'vector-session', 'user', '{"role":"user","content":"x"}', '[1,2]', 3, now())`,
+        ),
+      ).rejects.toThrow()
       expect(日志内容列.rows).toEqual([{ data_type: 'jsonb' }])
       expect(日志事件类型列.rows).toEqual([{ data_type: 'USER-DEFINED', udt_name: '日志事件类型枚举' }])
       expect(日志事件类型值.rows.map((记录) => 记录.enumlabel)).toEqual(交互日志事件类型Schema.options)

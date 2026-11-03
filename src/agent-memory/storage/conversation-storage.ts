@@ -26,6 +26,8 @@ function 转为公开消息(消息: Selectable<消息表>): 公开消息 {
     会话id: 消息.会话id,
     父消息id: 消息.父消息id,
     消息: 解析消息载荷(消息.载荷),
+    向量: 消息.向量,
+    向量维度: 消息.向量维度,
     创建时间: 消息.创建时间,
   }
 }
@@ -109,9 +111,11 @@ export async function 追加消息列表(
   会话id: string,
   预期父消息id: string | null,
   消息列表: 智能体消息类型[],
+  向量列表: Array<number[] | null>,
 ): Promise<公开消息[]> {
   if (消息列表.length === 0) return []
   let 已校验消息列表 = z.array(智能体消息Schema).parse(消息列表)
+  if (向量列表.length !== 已校验消息列表.length) throw new Error('消息数量与向量数量不一致')
   return await 数据库查询器.transaction().execute(async (trx): Promise<公开消息[]> => {
     let 当前会话 = await trx.selectFrom('会话表').select('当前消息id').where('id', '=', 会话id).executeTakeFirst()
     if (当前会话 === undefined) throw new Error(`会话不存在: ${会话id}`)
@@ -119,7 +123,9 @@ export async function 追加消息列表(
 
     let 父消息id = 预期父消息id
     let 新消息列表: 公开消息[] = []
-    for (let 消息 of 已校验消息列表) {
+    for (let [索引, 消息] of 已校验消息列表.entries()) {
+      let 向量 = 向量列表[索引]
+      if (向量 === undefined) throw new Error(`缺少第 ${String(索引 + 1)} 条消息的向量信息`)
       let id = 消息.持久化消息id ?? randomUUID()
       消息.持久化消息id = id
       let 结果 = await trx
@@ -130,6 +136,8 @@ export async function 追加消息列表(
           父消息id,
           角色: 消息.role,
           载荷: JSON.stringify(消息),
+          向量: 向量 === null ? null : JSON.stringify(向量),
+          向量维度: 向量?.length ?? null,
           创建时间: new Date(),
         })
         .returningAll()
@@ -152,7 +160,9 @@ export async function 原子创建压缩派生会话(
     前驱会话id: string
     前驱消息id: string
     系统消息: 智能体消息类型
+    系统消息向量: number[] | null
     摘要: string
+    摘要消息向量: number[] | null
     标题: string
   },
 ): Promise<公开会话> {
@@ -179,20 +189,33 @@ export async function 原子创建压缩派生会话(
       .returningAll()
       .executeTakeFirstOrThrow()
     let 父消息id: string | null = null
-    for (let 消息 of [
-      选项.系统消息,
+    let 待写入消息 = [
+      { 消息: 选项.系统消息, 向量: 选项.系统消息向量 },
       {
-        role: 'system' as const,
-        content: 选项.摘要,
-        compressionSourceSessionId: 选项.前驱会话id,
-        compressionSourceMessageId: 选项.前驱消息id,
+        消息: {
+          role: 'system' as const,
+          content: 选项.摘要,
+          compressionSourceSessionId: 选项.前驱会话id,
+          compressionSourceMessageId: 选项.前驱消息id,
+        },
+        向量: 选项.摘要消息向量,
       },
-    ]) {
+    ]
+    for (let { 消息, 向量 } of 待写入消息) {
       let 消息id = randomUUID()
       消息.持久化消息id = 消息id
       await trx
         .insertInto('消息表')
-        .values({ id: 消息id, 会话id: id, 父消息id, 角色: 消息.role, 载荷: JSON.stringify(消息), 创建时间: new Date() })
+        .values({
+          id: 消息id,
+          会话id: id,
+          父消息id,
+          角色: 消息.role,
+          载荷: JSON.stringify(消息),
+          向量: 向量 === null ? null : JSON.stringify(向量),
+          向量维度: 向量?.length ?? null,
+          创建时间: new Date(),
+        })
         .execute()
       父消息id = 消息id
     }

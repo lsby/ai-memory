@@ -81,6 +81,8 @@ export async function 导入完整状态(
         父消息id: 消息.父消息id,
         角色: 消息.消息.role,
         载荷: JSON.stringify(消息.消息),
+        向量: Array.isArray(消息.向量) ? JSON.stringify(消息.向量) : 消息.向量,
+        向量维度: 消息.向量维度,
         创建时间: 消息.创建时间,
       })
       .execute()

@@ -25,6 +25,7 @@ type 会话控制器依赖 = {
   确保已初始化: () => Promise<void>
   读取新会话标识: () => string
   载入内存历史: (消息列表: 智能体消息类型[], 会话id: string) => void
+  生成新消息向量列表: (消息列表: 智能体消息类型[]) => Promise<Array<number[] | null>>
   模型语言包: 模型语言包
 }
 
@@ -71,7 +72,8 @@ export class 会话控制器 {
     for (let 消息 of 新消息列表) {
       if (消息.持久化消息id === undefined) 消息.持久化消息id = randomUUID()
     }
-    let 新消息 = await 存储追加消息列表(this.依赖.数据库查询器, 会话id, this.当前消息id值, 新消息列表)
+    let 向量列表 = await this.依赖.生成新消息向量列表(新消息列表)
+    let 新消息 = await 存储追加消息列表(this.依赖.数据库查询器, 会话id, this.当前消息id值, 新消息列表, 向量列表)
     let 末尾 = 新消息.at(-1)
     if (末尾 === undefined) return
     this.当前消息id值 = 末尾.id
@@ -164,7 +166,14 @@ export class 会话控制器 {
     消息: 智能体消息类型
   }): Promise<公开消息> {
     await this.依赖.确保已初始化()
-    let 新消息列表 = await 存储追加消息列表(this.依赖.数据库查询器, 选项.会话id, 选项.预期父消息id, [选项.消息])
+    let 向量列表 = await this.依赖.生成新消息向量列表([选项.消息])
+    let 新消息列表 = await 存储追加消息列表(
+      this.依赖.数据库查询器,
+      选项.会话id,
+      选项.预期父消息id,
+      [选项.消息],
+      向量列表,
+    )
     let 新消息 = 新消息列表[0]
     if (新消息 === undefined) throw new Error('未能追加消息')
     if (this.当前会话id值 === 选项.会话id) {
@@ -181,12 +190,8 @@ export class 会话控制器 {
     if (前驱末尾 === undefined) throw new Error(`前驱消息不存在: ${选项.前驱消息id}`)
     let 系统消息 = 前驱链[0]?.消息
     if (系统消息 === undefined || 系统消息.role !== 'system') throw new Error('前驱会话缺少可复用的系统前缀')
-    let 会话 = await 存储创建会话(this.依赖.数据库查询器, {
-      标题: 选项.标题 ?? '压缩会话',
-      前驱消息id: 选项.前驱消息id,
-    })
     let { 持久化消息id: _原消息id, ...派生系统消息 } = 系统消息
-    await 存储追加消息列表(this.依赖.数据库查询器, 会话.id, null, [
+    let 新消息列表: 智能体消息类型[] = [
       派生系统消息,
       {
         role: 'system',
@@ -194,7 +199,13 @@ export class 会话控制器 {
         compressionSourceSessionId: 前驱末尾.会话id,
         compressionSourceMessageId: 选项.前驱消息id,
       },
-    ])
+    ]
+    let 向量列表 = await this.依赖.生成新消息向量列表(新消息列表)
+    let 会话 = await 存储创建会话(this.依赖.数据库查询器, {
+      标题: 选项.标题 ?? '压缩会话',
+      前驱消息id: 选项.前驱消息id,
+    })
+    await 存储追加消息列表(this.依赖.数据库查询器, 会话.id, null, 新消息列表, 向量列表)
     let 已更新会话 = await 存储查询会话(this.依赖.数据库查询器, 会话.id)
     if (已更新会话 === null) throw new Error(`会话不存在: ${会话.id}`)
     await this.激活会话(已更新会话)
@@ -210,11 +221,20 @@ export class 会话控制器 {
     let 系统消息 = 历史[0]?.消息
     if (系统消息 === undefined || 系统消息.role !== 'system') throw new Error('当前会话缺少可复用的系统前缀')
     let { 持久化消息id: _原消息id, ...派生系统消息 } = 系统消息
+    let 摘要消息: 智能体消息类型 = {
+      role: 'system',
+      content: 摘要,
+      compressionSourceSessionId: 会话id,
+      compressionSourceMessageId: 消息id,
+    }
+    let 向量列表 = await this.依赖.生成新消息向量列表([派生系统消息, 摘要消息])
     let 派生会话 = await 存储原子创建压缩派生会话(this.依赖.数据库查询器, {
       前驱会话id: 会话id,
       前驱消息id: 消息id,
       系统消息: 派生系统消息,
+      系统消息向量: 向量列表[0] ?? null,
       摘要,
+      摘要消息向量: 向量列表[1] ?? null,
       标题: 标题 ?? this.依赖.模型语言包.压缩会话标题(),
     })
     await this.激活会话(派生会话)

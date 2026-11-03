@@ -190,6 +190,8 @@ export type 消息表 = {
   父消息id: string | null
   角色: 智能体消息类型['role']
   载荷: ColumnType<智能体消息类型, string, string>
+  向量: string | number[] | null
+  向量维度: number | null
   创建时间: Date
 }
 
@@ -473,6 +475,8 @@ export type 公开消息 = {
   会话id: string
   父消息id: string | null
   消息: 智能体消息类型
+  向量: string | number[] | null
+  向量维度: number | null
   创建时间: Date
 }
 
@@ -540,6 +544,8 @@ export let 完整状态Schema = z
           会话id: z.string(),
           父消息id: z.string().nullable(),
           消息: 智能体消息Schema,
+          向量: z.union([z.string(), z.array(z.number())]).nullable(),
+          向量维度: z.number().int().positive().nullable(),
           创建时间: z.union([z.string(), z.date()]).transform((值) => new Date(值)),
         })
         .strict(),

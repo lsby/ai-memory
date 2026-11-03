@@ -5,7 +5,7 @@ import { 记忆数据库 } from '../types'
 import { 确保在事务中执行 } from './common'
 import { 初始化不可变约束 } from './db-immutable-schema'
 
-export let 记忆数据库架构版本 = 12
+export let 记忆数据库架构版本 = 13
 
 /**
  * 在指定 schema 里建表（默认 public，和旧版本的数据布局一致）。
@@ -28,10 +28,10 @@ async function 在事务中初始化数据库(数据库查询器: Kysely<记忆�
       AND table_name IN ('记忆元数据表', '系统版本表', '记忆表', '当前记忆表', '记忆提交表')
   `.execute(数据库查询器)
   let 现有表 = new Set(现有表结果.rows.map((记录) => 记录.table_name))
-  if (现有表.has('记忆元数据表')) throw new Error('检测到旧版记忆数据库；v12 不支持自动迁移，请使用全新 schema')
+  if (现有表.has('记忆元数据表')) throw new Error('检测到旧版记忆数据库；v13 不支持自动迁移，请使用全新 schema')
   let 全新数据库 = 现有表.has('系统版本表') === false
   if (全新数据库 && (现有表.has('记忆表') || 现有表.has('当前记忆表') || 现有表.has('记忆提交表'))) {
-    throw new Error('检测到没有系统版本的记忆数据表，拒绝将其当作全新 v12 数据库')
+    throw new Error('检测到没有系统版本的记忆数据表，拒绝将其当作全新 v13 数据库')
   }
   if (全新数据库 === false) {
     let 版本结果 = await sql<{ 内核架构版本: number }>`
@@ -181,7 +181,13 @@ async function 在事务中初始化数据库(数据库查询器: Kysely<记忆�
             父消息id TEXT,
             角色 TEXT NOT NULL CHECK (角色 IN ('system', 'developer', 'user', 'assistant', 'tool', 'function')),
             载荷 JSONB NOT NULL,
-            创建时间 TIMESTAMPTZ NOT NULL
+            向量 public.vector,
+            向量维度 INTEGER,
+            创建时间 TIMESTAMPTZ NOT NULL,
+            CHECK (
+              (向量 IS NULL AND 向量维度 IS NULL)
+              OR (向量 IS NOT NULL AND 向量维度 = public.vector_dims(向量))
+            )
           )
         `)
 

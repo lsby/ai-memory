@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { 带记忆的智能体, 记忆等级 } from '../../../src/index'
 import { 创建假客户端, 提交 } from '../../helpers/append-only-cache-helper'
 import { 使用共享PGlite } from '../../helpers/shared-pglite-fixture'
+import { 创建假向量客户端, 创建带向量的PGlite } from '../../helpers/shared-storage-helper'
 
 let 夹具 = 使用共享PGlite()
 let 实例列表: 带记忆的智能体[] = []
@@ -42,6 +43,48 @@ afterEach(async (): Promise<void> => {
 })
 
 describe('博闻强记模式', () => {
+  it('只为模式开启后新写入的消息生成可选向量，不回填已有消息', async (): Promise<void> => {
+    let pglite = 创建带向量的PGlite()
+    let schema = 夹具.分配schema()
+    let 普通实例 = new 带记忆的智能体({
+      向量模型: { 类型: '无' },
+      存储: { 模式: '外部', pglite, schema },
+    })
+    let 博闻强记实例: 带记忆的智能体 | undefined
+    try {
+      let 会话 = await 普通实例.创建会话({ 标题: '向量边界' })
+      let 旧消息 = await 普通实例.追加会话消息({
+        会话id: 会话.id,
+        预期父消息id: null,
+        消息: { role: 'user', content: '开启模式以前的消息' },
+      })
+      expect(旧消息).toMatchObject({ 向量: null, 向量维度: null })
+      await 普通实例.销毁()
+
+      博闻强记实例 = new 带记忆的智能体({
+        向量模型: { 类型: '在线', openai客户端: 创建假向量客户端({}), 模型名称: 'fake' },
+        博闻强记模式: true,
+        博闻强记消息搜索数量: 20,
+        存储: { 模式: '外部', pglite, schema },
+      })
+      let 新消息 = await 博闻强记实例.追加会话消息({
+        会话id: 会话.id,
+        预期父消息id: 旧消息.id,
+        消息: { role: 'assistant', content: '开启模式以后的消息' },
+      })
+      expect(新消息.向量).not.toBeNull()
+      expect(新消息.向量维度).toBe(4)
+      expect(await 博闻强记实例.读取会话消息(会话.id)).toMatchObject([
+        { id: 旧消息.id, 向量: null, 向量维度: null },
+        { id: 新消息.id, 向量维度: 4 },
+      ])
+    } finally {
+      await 普通实例.销毁()
+      if (博闻强记实例 !== undefined) await 博闻强记实例.销毁()
+      await pglite.close()
+    }
+  })
+
   it('正常模式不泄露搜索工具、上游 ID、模式提示或记忆来源字段', async (): Promise<void> => {
     let 实例 = 夹具.新建智能体({ 向量模型: { 类型: '无' } })
     实例列表.push(实例)

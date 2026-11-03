@@ -33,6 +33,7 @@ import {
   查询记忆关联 as 外部查询记忆关联,
   查询记忆提交 as 外部查询记忆提交,
 } from './operations/management'
+import { 生成消息向量 } from './operations/message-vector'
 import { 定时任务入口 as 外部定时任务入口, 执行记忆重组 as 外部执行记忆重组 } from './operations/reorganization'
 import { 解决问题 as 外部解决问题 } from './operations/solve'
 import { 带互斥的PGlite方言, 默认schema } from './storage/connection'
@@ -84,23 +85,22 @@ export class 带记忆的智能体 extends 持久化会话智能体 {
     let { 配置, 记忆提示词文本 } = 构建智能体配置(选项)
     this.配置 = 配置
     this.记忆提示词文本 = 记忆提示词文本
-    let 存储 = 配置.存储
-    this.schema名 = 存储.schema ?? 默认schema
+    this.schema名 = 配置.存储.schema ?? 默认schema
     this.上下文依赖 = {
       配置: this.配置,
       读取当前会话id: (): string | null => this.会话控制器().当前会话id(),
       执行记忆变更任务: this.执行记忆变更任务.bind(this),
     }
     let pglite选项: PGliteOptions = { extensions: { vector } }
-    switch (存储.模式) {
+    switch (配置.存储.模式) {
       case '内存':
         this.PGlite就绪 = Promise.resolve(new PGlite(pglite选项))
         break
       case '文件':
-        this.PGlite就绪 = 获取或创建PGlite({ ...pglite选项, dataDir: 存储.路径 })
+        this.PGlite就绪 = 获取或创建PGlite({ ...pglite选项, dataDir: 配置.存储.路径 })
         break
       case '外部':
-        this.PGlite就绪 = Promise.resolve(存储.pglite)
+        this.PGlite就绪 = Promise.resolve(配置.存储.pglite)
         break
     }
     // 打开失败（如目录被占用）时错误在 初始化() 里抛出；这里先挂一个空处理，避免实例没被使用时出现未处理的拒绝
@@ -114,6 +114,8 @@ export class 带记忆的智能体 extends 持久化会话智能体 {
         确保已初始化: async (): Promise<void> => await this.确保已初始化(),
         读取新会话标识: (): string => this.读取会话标识(),
         载入内存历史: (消息列表, 会话id): void => super.载入对话历史(消息列表, 会话id),
+        生成新消息向量列表: async (消息列表): Promise<Array<number[] | null>> =>
+          await 生成消息向量(this.配置, 消息列表),
         模型语言包: this.模型语言包,
       }),
       this.配置.博闻强记模式 === true ? this.配置.博闻强记消息搜索数量 : undefined,
@@ -152,9 +154,7 @@ export class 带记忆的智能体 extends 持久化会话智能体 {
 
   private async 确保已初始化(): Promise<void> {
     this.确保未销毁()
-    if (this.数据库是否已初始化 === false) {
-      await this.初始化()
-    }
+    if (this.数据库是否已初始化 === false) await this.初始化()
   }
 
   private 确保未销毁(): void {
