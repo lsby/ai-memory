@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { 智能体, 记忆等级, type 智能体消息类型 } from '../../../src/index'
 import { 创建假客户端, 创建选项, 加法工具, 报错工具, 提交, 断言前缀稳定 } from '../../helpers/append-only-cache-helper'
 import { 使用共享PGlite } from '../../helpers/shared-pglite-fixture'
+import { 创建假向量客户端 } from '../../helpers/shared-storage-helper'
 
 let 夹具 = 使用共享PGlite()
 
@@ -245,7 +246,9 @@ describe('前缀指纹', () => {
 describe('前缀已变时零副作用', () => {
   it('带记忆的智能体在自动召回之前就检查前缀: 访问计数、访问序号、提交记录都不变', async (): Promise<void> => {
     let 假 = 创建假客户端([提交(1), 提交(2), 提交(3)])
-    let 实例 = 夹具.新建智能体({ 向量模型: { 类型: '无' } })
+    let 实例 = 夹具.新建智能体({
+      向量模型: { 类型: '在线', openai客户端: 创建假向量客户端({}), 模型名称: 'fake' },
+    })
     let 读取状态 = async (): Promise<string> => {
       let 快照: { 记忆列表: { id: string; 访问次数?: number; 最后访问序号?: number }[] } = JSON.parse(
         await 实例.保存快照(),

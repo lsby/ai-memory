@@ -17,8 +17,7 @@ import {
   追加消息列表 as 存储追加消息列表,
 } from '../storage/conversation-storage'
 import type { 公开会话, 公开消息, 创建派生会话选项, 查询会话列表选项, 记忆数据库 } from '../types'
-import { 读取当前会话谱系消息 } from './conversation-lineage'
-import { 查询记忆新增相关消息 } from './memory-message-origin'
+import { 对话搜索参数JSONSchema, 对话搜索参数Schema, 搜索谱系消息 } from './conversation-search'
 
 type 会话控制器依赖 = {
   数据库查询器: Kysely<记忆数据库>
@@ -26,6 +25,7 @@ type 会话控制器依赖 = {
   读取新会话标识: () => string
   载入内存历史: (消息列表: 智能体消息类型[], 会话id: string) => void
   生成新消息向量列表: (消息列表: 智能体消息类型[]) => Promise<Array<number[] | null>>
+  获取查询向量: (查询内容: string) => Promise<number[] | null>
   模型语言包: 模型语言包
 }
 
@@ -257,17 +257,7 @@ export class 会话控制器 {
       描述:
         this.依赖.模型语言包.博闻强记消息搜索工具描述?.() ??
         '在当前会话及其压缩前驱链中搜索原始消息，不会读取其他会话或分支。',
-      参数Schema: z.object({
-        conversation_id: z.string().trim().min(1).optional(),
-        message_id: z.string().trim().min(1).optional(),
-        memory_id: z.string().trim().min(1).optional(),
-        text: z.string().optional(),
-        regex: z.string().max(1000).optional(),
-        role: z.enum(['system', 'user', 'assistant', 'tool']).optional(),
-        started_at: z.string().datetime().optional(),
-        ended_before: z.string().datetime().optional(),
-        context_count: z.number().int().min(0).max(50).default(0),
-      }),
+      参数Schema: 对话搜索参数Schema,
       返回值Schema: z.object({
         结果: z.enum(['成功', '失败']),
         错误信息: z.string().optional(),
@@ -283,30 +273,21 @@ export class 会话控制器 {
           )
           .optional(),
       }),
-      实现: async (参数) => await this.搜索谱系消息(参数, 最大结果数),
+      实现: async (参数) => {
+        await this.依赖.确保已初始化()
+        return await 搜索谱系消息(
+          this.依赖.数据库查询器,
+          this.当前会话id值,
+          参数,
+          最大结果数,
+          this.依赖.获取查询向量,
+          this.依赖.模型语言包.无当前会话(),
+        )
+      },
     })
     return 智能体工具.创建模型适配(工具, {
       描述: 工具.描述,
-      参数JSONSchema: {
-        type: 'object',
-        properties: {
-          conversation_id: { type: 'string' },
-          message_id: { type: 'string' },
-          memory_id: { type: 'string' },
-          text: { type: 'string' },
-          regex: { type: 'string', maxLength: 1000 },
-          role: { type: 'string', enum: ['system', 'user', 'assistant', 'tool'] },
-          started_at: { type: 'string', format: 'date-time' },
-          ended_before: { type: 'string', format: 'date-time' },
-          context_count: {
-            type: 'integer',
-            minimum: 0,
-            maximum: 50,
-            default: 0,
-            description: '为每条命中消息额外返回谱系顺序中的前后消息数，上下文消息不再受其他筛选条件过滤',
-          },
-        },
-      },
+      参数JSONSchema: 对话搜索参数JSONSchema,
       解析参数: (参数): Record<string, unknown> => 参数,
       转换返回值: (返回值): unknown => {
         let 已解析返回值 = z
@@ -367,87 +348,5 @@ export class 会话控制器 {
     this.当前会话id值 = 会话.id
     this.当前消息id值 = 会话.当前消息id
     this.已持久化消息数量 = 消息列表.length
-  }
-
-  private async 搜索谱系消息(
-    参数: {
-      conversation_id?: string | undefined
-      message_id?: string | undefined
-      memory_id?: string | undefined
-      text?: string | undefined
-      regex?: string | undefined
-      role?: 'system' | 'user' | 'assistant' | 'tool' | undefined
-      started_at?: string | undefined
-      ended_before?: string | undefined
-      context_count: number
-    },
-    最大结果数: number,
-  ): Promise<{
-    结果: '成功' | '失败'
-    错误信息?: string
-    消息列表?: Array<{ id: string; 会话id: string; 角色: string; 内容: string | null; 创建时间: string }>
-  }> {
-    await this.依赖.确保已初始化()
-    let 会话id = this.当前会话id值
-    if (会话id === null) return { 结果: '失败', 错误信息: this.依赖.模型语言包.无当前会话() }
-    try {
-      let 谱系消息 = await 读取当前会话谱系消息(this.依赖.数据库查询器, 会话id)
-      let 允许消息id = new Set(谱系消息.map((消息) => 消息.id))
-      let 记忆相关消息id: ReadonlySet<string> | undefined = undefined
-      if (参数.memory_id !== undefined) {
-        let 关系 = await 查询记忆新增相关消息(this.依赖.数据库查询器, 参数.memory_id, 允许消息id)
-        记忆相关消息id = new Set(关系.map((项) => 项.消息id))
-      }
-      let 正则 = 参数.regex === undefined ? null : new RegExp(参数.regex, 'u')
-      let 开始时间 = 参数.started_at === undefined ? null : new Date(参数.started_at)
-      let 结束时间 = 参数.ended_before === undefined ? null : new Date(参数.ended_before)
-      let 匹配列表 = 谱系消息.filter((消息): boolean => {
-        let 内容值 = 'content' in 消息.消息 ? 消息.消息.content : null
-        let 内容 = typeof 内容值 === 'string' ? 内容值 : JSON.stringify(消息.消息)
-        return (
-          (参数.conversation_id === undefined || 消息.会话id === 参数.conversation_id) &&
-          (参数.message_id === undefined || 消息.id === 参数.message_id) &&
-          (记忆相关消息id === undefined || 记忆相关消息id.has(消息.id)) &&
-          (参数.role === undefined || 消息.消息.role === 参数.role) &&
-          (参数.text === undefined || 内容.includes(参数.text)) &&
-          (正则 === null || 正则.test(内容)) &&
-          (开始时间 === null || 消息.创建时间 >= 开始时间) &&
-          (结束时间 === null || 消息.创建时间 < 结束时间)
-        )
-      })
-      匹配列表.sort((a, b): number => {
-        let 时间差 = b.创建时间.getTime() - a.创建时间.getTime()
-        return 时间差 !== 0 ? 时间差 : b.序号 - a.序号
-      })
-      let 命中列表 = 匹配列表.slice(0, 最大结果数)
-      let 返回列表 = 命中列表
-      if (参数.context_count > 0) {
-        let 命中id = new Set(命中列表.map((消息) => 消息.id))
-        let 返回索引 = new Set<number>()
-        for (let 索引 = 0; 索引 < 谱系消息.length; 索引++) {
-          let 消息 = 谱系消息[索引]
-          if (消息 === undefined || 命中id.has(消息.id) === false) continue
-          let 起点 = Math.max(0, 索引 - 参数.context_count)
-          let 终点 = Math.min(谱系消息.length - 1, 索引 + 参数.context_count)
-          for (let 上下文索引 = 起点; 上下文索引 <= 终点; 上下文索引++) 返回索引.add(上下文索引)
-        }
-        返回列表 = 谱系消息.filter((_消息, 索引) => 返回索引.has(索引))
-      }
-      return {
-        结果: '成功',
-        消息列表: 返回列表.map((消息) => {
-          let 内容值 = 'content' in 消息.消息 ? 消息.消息.content : null
-          return {
-            id: 消息.id,
-            会话id: 消息.会话id,
-            角色: 消息.消息.role,
-            内容: typeof 内容值 === 'string' ? 内容值 : null,
-            创建时间: 消息.创建时间.toISOString(),
-          }
-        }),
-      }
-    } catch (错误) {
-      return { 结果: '失败', 错误信息: 错误 instanceof Error ? 错误.message : String(错误) }
-    }
   }
 }

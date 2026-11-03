@@ -10,7 +10,7 @@ let 实例列表: 带记忆的智能体[] = []
 
 function 新建(搜索数量: number = 20): 带记忆的智能体 {
   let 实例 = 夹具.新建智能体({
-    向量模型: { 类型: '无' },
+    向量模型: { 类型: '在线', openai客户端: 创建假向量客户端({}), 模型名称: 'fake' },
     博闻强记模式: true,
     博闻强记消息搜索数量: 搜索数量,
   })
@@ -86,7 +86,9 @@ describe('博闻强记模式', () => {
   })
 
   it('正常模式不泄露搜索工具、上游 ID、模式提示或记忆来源字段', async (): Promise<void> => {
-    let 实例 = 夹具.新建智能体({ 向量模型: { 类型: '无' } })
+    let 实例 = 夹具.新建智能体({
+      向量模型: { 类型: '在线', openai客户端: 创建假向量客户端({}), 模型名称: 'fake' },
+    })
     实例列表.push(实例)
     await 实例.添加记忆({
       内容: 'normal alpha',
@@ -110,13 +112,7 @@ describe('博闻强记模式', () => {
           {
             id: 'normal-extend',
             名称: 'extend_memory',
-            参数: {
-              查询内容: 'normal',
-              发散起点数: 1,
-              直接返回数: 1,
-              最大扩展跳数: 0,
-              最小关联阈值: 0,
-            },
+            参数: { 查询内容: 'normal' },
           },
         ],
       },
@@ -146,7 +142,13 @@ describe('博闻强记模式', () => {
 
     let 假 = 创建假客户端([
       {
-        工具调用: [{ id: 'search-current', 名称: 'search_conversation_messages', 参数: { text: 'current-needle' } }],
+        工具调用: [
+          {
+            id: 'search-current',
+            名称: 'search_conversation_messages',
+            参数: { 查询内容: 'current-needle', 上下文消息数: 0 },
+          },
+        ],
       },
       提交(2),
     ])
@@ -158,7 +160,13 @@ describe('博闻强记模式', () => {
 
     let 无关搜索 = 创建假客户端([
       {
-        工具调用: [{ id: 'search-unrelated', 名称: 'search_conversation_messages', 参数: { text: 'secret-needle' } }],
+        工具调用: [
+          {
+            id: 'search-unrelated',
+            名称: 'search_conversation_messages',
+            参数: { 查询内容: 'secret-needle', 过滤内容: { 内容过滤正则表达式: 'secret-needle' } },
+          },
+        ],
       },
       提交(3),
     ])
@@ -186,7 +194,7 @@ describe('博闻强记模式', () => {
           {
             id: 'search-context',
             名称: 'search_conversation_messages',
-            参数: { message_id: 锚点.id, context_count: 2 },
+            参数: { 查询内容: '读取锚点上下文', 过滤内容: { 消息id: 锚点.id }, 上下文消息数: 2 },
           },
         ],
       },
@@ -232,7 +240,7 @@ describe('博闻强记模式', () => {
           {
             id: 'extend-memory',
             名称: 'extend_memory',
-            参数: { 查询内容: 'alpha', 发散起点数: 1, 直接返回数: 1, 最大扩展跳数: 0, 最小关联阈值: 0 },
+            参数: { 查询内容: 'alpha' },
           },
         ],
       },

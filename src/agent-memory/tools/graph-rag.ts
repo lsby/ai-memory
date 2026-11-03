@@ -3,9 +3,27 @@ import { z } from 'zod'
 import { 智能体事件, 智能体工具 } from '../../agent/types'
 import { 读取当前会话谱系消息 } from '../operations/conversation-lineage'
 import { 查询记忆新增相关消息, type 记忆相关消息 } from '../operations/memory-message-origin'
+import {
+  时间范围Schema,
+  符合过滤内容模式,
+  解析时间范围,
+  过滤内容模式Schema,
+  type 过滤内容模式,
+} from '../operations/search-parameters'
 import { 内部带记忆的智能体配置, 当前记忆表, 格式化为本地时间字符串, 记忆数据库 } from '../types'
 import { 获取混合关联排序 } from './common'
-import { 构建检索关键词 } from './search-keywords'
+
+let 记忆过滤内容Schema = z
+  .object({
+    时间范围: 时间范围Schema.optional(),
+    关键词过滤: z.array(z.string().trim().min(1)).describe('逐项精确匹配记忆表的关键词数组').optional(),
+    标签过滤: z.array(z.string().trim().min(1)).describe('逐项精确匹配记忆表的标签数组').optional(),
+    内容过滤正则表达式: z.string().max(1000).describe('只对记忆表的内容字段执行正则过滤').optional(),
+  })
+  .strict()
+  .describe('对向量检索结果施加的精确过滤条件')
+  .optional()
+type 记忆过滤内容 = z.infer<typeof 记忆过滤内容Schema>
 
 type 图谱检索上下文 = {
   配置: 内部带记忆的智能体配置
@@ -14,51 +32,44 @@ type 图谱检索上下文 = {
   当前会话id?: string | undefined
   读取当前会话id: () => string | null
   回调?: ((事件: 智能体事件) => Promise<void>) | undefined
+  检索策略?: { 发散起点数: number; 直接返回数: number; 最大扩展跳数: number; 最小关联阈值: number } | undefined
+}
+
+function 记忆符合过滤内容(
+  记忆: 当前记忆表,
+  过滤内容: 记忆过滤内容,
+  过滤内容模式: 过滤内容模式,
+  开始时间: Date | null,
+  结束时间: Date | null,
+  内容过滤正则表达式: RegExp | null,
+): boolean {
+  if (过滤内容 === undefined) return true
+  let 条件列表: boolean[] = []
+  for (let 关键词 of 过滤内容.关键词过滤 ?? []) 条件列表.push(记忆.关键词.includes(关键词))
+  for (let 标签 of 过滤内容.标签过滤 ?? []) 条件列表.push(记忆.标签.includes(标签))
+  if (内容过滤正则表达式 !== null) 条件列表.push(内容过滤正则表达式.test(记忆.内容))
+  if (开始时间 !== null || 结束时间 !== null) {
+    条件列表.push((开始时间 === null || 记忆.创建时间 >= 开始时间) && (结束时间 === null || 记忆.创建时间 < 结束时间))
+  }
+  return 符合过滤内容模式(条件列表, 过滤内容模式)
 }
 
 export function 回忆延伸工具(上下文: 图谱检索上下文): 智能体工具 {
   let { 配置, 数据库查询器, 获取向量, 当前会话id, 读取当前会话id, 回调 } = 上下文
+  let 检索策略 = 上下文.检索策略 ?? {
+    发散起点数: 5,
+    直接返回数: 3,
+    最大扩展跳数: 1,
+    最小关联阈值: 配置.向量相似度关联阈值,
+  }
 
   return 智能体工具.创建({
     名称: 'extend_memory',
     描述: '',
     参数Schema: z.object({
-      查询内容: z.string().describe('用于搜索的自然语言文本内容'),
-      时间范围: z
-        .object({
-          开始相对天数: z
-            .number()
-            .nullable()
-            .optional()
-            .describe(
-              '限定检索范围的起始点（表示距离今天过去的某一天）。例如传 30 表示从 30 天前开始找。留空表示不限更早的时间。',
-            ),
-          结束相对天数: z
-            .number()
-            .nullable()
-            .optional()
-            .describe(
-              '限定检索范围的结束点（表示距离今天过去的某一天）。例如传 7 表示只找到 7 天前为止的数据。传 0 或留空表示一直检索到现在。',
-            ),
-        })
-        .nullable()
-        .optional()
-        .describe('将检索限定在特定的时间范围内，为空表示搜索所有记忆'),
-      目标关键词: z
-        .array(z.string())
-        .nullable()
-        .optional()
-        .describe('额外指定需要尝试匹配的核心关键词（如特定人名、事件名等），用于补充检索条件以提升召回率'),
-      正则表达式过滤: z.string().nullable().optional().describe('用于过滤结果的正则表达式，仅保留内容匹配的记忆'),
-      发散起点数: z.number().default(5).describe('作为图谱发散起点的相关记忆数量'),
-      直接返回数: z.number().default(3).describe('直接返回完整内容的相关记忆数量'),
-      最大扩展跳数: z.number().default(1).describe('图遍历的最大跳数，0表示不发散'),
-      最小关联阈值: z
-        .number()
-        .default(配置.向量相似度关联阈值)
-        .describe(
-          `图遍历的最小综合关联度。建议设为 ${String(配置.向量相似度关联阈值)} 左右以支持纯语义关联，若大于 1 则必须有关键词重叠。`,
-        ),
+      查询内容: z.string().trim().min(1).describe('必填的自然语言查询，仅用于生成查询向量并按语义相似度召回记忆'),
+      过滤内容: 记忆过滤内容Schema,
+      过滤内容模式: 过滤内容模式Schema,
     }),
     返回值Schema: z.object({
       结果: z.enum(['成功', '失败']),
@@ -68,14 +79,8 @@ export function 回忆延伸工具(上下文: 图谱检索上下文): 智能体�
     }),
     实现: async (参数: {
       查询内容: string
-      时间范围?:
-        { 开始相对天数?: number | null | undefined; 结束相对天数?: number | null | undefined } | null | undefined
-      目标关键词?: string[] | null | undefined
-      正则表达式过滤?: string | null | undefined
-      发散起点数: number
-      直接返回数: number
-      最大扩展跳数: number
-      最小关联阈值: number
+      过滤内容?: 记忆过滤内容
+      过滤内容模式: 过滤内容模式
     }): Promise<{
       结果: '成功' | '失败'
       搜索结果_完整记忆?: string
@@ -83,36 +88,40 @@ export function 回忆延伸工具(上下文: 图谱检索上下文): 智能体�
       错误信息?: string
     }> => {
       try {
-        let 词语列表 = 构建检索关键词(参数.查询内容, 参数.目标关键词 ?? [])
-
         let 向量 = await 获取向量(参数.查询内容)
-
-        let 解析开始时间: Date | undefined = undefined
-        let 解析结束时间: Date | undefined = undefined
-        let 现在 = new Date()
-
-        let 开始天数 = 参数.时间范围?.开始相对天数
-        let 结束天数 = 参数.时间范围?.结束相对天数
-
-        if (开始天数 !== undefined && 开始天数 !== null) {
-          解析开始时间 = new Date(现在.getTime())
-          解析开始时间.setDate(解析开始时间.getDate() - 开始天数)
-        }
-        if (结束天数 !== undefined && 结束天数 !== null) {
-          解析结束时间 = new Date(现在.getTime())
-          解析结束时间.setDate(解析结束时间.getDate() - 结束天数)
-        }
+        if (向量 === null) throw new Error('未配置可用的向量模型，无法按查询内容搜索记忆')
+        let { 开始时间, 结束时间 } = 解析时间范围(参数.过滤内容?.时间范围)
+        let 内容过滤正则表达式 =
+          参数.过滤内容?.内容过滤正则表达式 === undefined ? null : new RegExp(参数.过滤内容.内容过滤正则表达式, 'u')
 
         let 匹配排序结果 = await 获取混合关联排序(数据库查询器, {
-          查询关键词: 词语列表,
+          查询关键词: [],
           查询向量: 向量,
           向量阈值: 配置.向量相似度关联阈值,
-          开始时间: 解析开始时间,
-          结束时间: 解析结束时间,
+        })
+        let 候选记忆 =
+          匹配排序结果.length === 0
+            ? []
+            : await 数据库查询器
+                .selectFrom('当前记忆表')
+                .selectAll()
+                .where(
+                  'id',
+                  'in',
+                  匹配排序结果.map((项) => 项.id),
+                )
+                .execute()
+        let 候选记忆映射 = new Map(候选记忆.map((记忆) => [记忆.id, 记忆]))
+        匹配排序结果 = 匹配排序结果.filter((项): boolean => {
+          let 记忆 = 候选记忆映射.get(项.id)
+          return (
+            记忆 !== undefined &&
+            记忆符合过滤内容(记忆, 参数.过滤内容, 参数.过滤内容模式, 开始时间, 结束时间, 内容过滤正则表达式)
+          )
         })
 
-        let 起点ID列表 = 匹配排序结果.slice(0, 参数.发散起点数).map((x) => x.id)
-        let 直接返回ID列表 = 匹配排序结果.slice(0, 参数.直接返回数).map((x) => x.id)
+        let 起点ID列表 = 匹配排序结果.slice(0, 检索策略.发散起点数).map((x) => x.id)
+        let 直接返回ID列表 = 匹配排序结果.slice(0, 检索策略.直接返回数).map((x) => x.id)
 
         let 度量映射 = new Map<string, string>()
         for (let 项 of 匹配排序结果) {
@@ -134,16 +143,11 @@ export function 回忆延伸工具(上下文: 图谱检索上下文): 智能体�
           })
         }
 
-        let 正则 =
-          参数.正则表达式过滤 !== undefined && 参数.正则表达式过滤 !== null && 参数.正则表达式过滤 !== ''
-            ? new RegExp(参数.正则表达式过滤)
-            : null
-
         let 直接返回的记忆集合 = new Set<string>(直接返回ID列表)
         let 扩展标签记忆集合 = new Set<string>()
 
         // 广度优先图遍历
-        if (起点ID列表.length > 0 && 参数.最大扩展跳数 > 0) {
+        if (起点ID列表.length > 0 && 检索策略.最大扩展跳数 > 0) {
           let 当前层 = [...起点ID列表]
           let 已访问 = new Set<string>(当前层)
 
@@ -166,17 +170,17 @@ export function 回忆延伸工具(上下文: 图谱检索上下文): 智能体�
 
             await 回调({
               类型: '流程信息',
-              内容: `[图谱延伸] 选取前 ${String(当前层.length)} 条最相关的记忆作为发散起点: { ${起点详情} }，准备以关联度阈值 >= ${String(参数.最小关联阈值)} 挖掘周边 ${String(参数.最大扩展跳数)} 跳的联想网络。`,
+              内容: `[图谱延伸] 选取前 ${String(当前层.length)} 条最相关的记忆作为发散起点: { ${起点详情} }，准备以关联度阈值 >= ${String(检索策略.最小关联阈值)} 挖掘周边 ${String(检索策略.最大扩展跳数)} 跳的联想网络。`,
             })
           }
 
-          for (let d = 0; d < 参数.最大扩展跳数; d++) {
+          for (let d = 0; d < 检索策略.最大扩展跳数; d++) {
             if (当前层.length === 0) break
             let 关联结果 = await 数据库查询器
               .selectFrom('当前记忆关联表')
               .select(['起点id', '终点id'])
               .where((eb) => eb.or([eb('起点id', 'in', 当前层), eb('终点id', 'in', 当前层)]))
-              .where('关联度', '>=', 参数.最小关联阈值)
+              .where('关联度', '>=', 检索策略.最小关联阈值)
               .execute()
 
             let 当前层集合 = new Set(当前层)
@@ -227,7 +231,10 @@ export function 回忆延伸工具(上下文: 图谱检索上下文): 智能体�
         let 最终扩展标签 = new Set<string>()
 
         for (let 记忆 of 最终记忆) {
-          if (正则 !== null && 正则.test(记忆.内容) === false) continue
+          if (
+            记忆符合过滤内容(记忆, 参数.过滤内容, 参数.过滤内容模式, 开始时间, 结束时间, 内容过滤正则表达式) === false
+          )
+            continue
 
           if (直接返回的记忆集合.has(记忆.id)) {
             最终直接内容.push(记忆)

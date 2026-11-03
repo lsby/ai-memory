@@ -121,15 +121,15 @@ let 英文字段映射: Record<string, string> = {
   标签列表: 'tags',
   最新状态: 'current_state',
   查询内容: 'query',
-  目标关键词: 'target_keywords',
-  发散起点数: 'seed_count',
-  直接返回数: 'result_count',
-  最大扩展跳数: 'max_hops',
-  最小关联阈值: 'min_relation_score',
-  正则表达式过滤: 'regex_filter',
+  过滤内容: 'filters',
+  过滤内容模式: 'filter_mode',
   时间范围: 'time_range',
+  基准: 'base_time',
   开始相对天数: 'start_relative_days',
   结束相对天数: 'end_relative_days',
+  关键词过滤: 'keyword_filter',
+  标签过滤: 'tag_filter',
+  内容过滤正则表达式: 'content_regex',
   搜索结果_完整记忆: 'memory_results',
   搜索结果_发散关键词: 'related_keywords',
   工具标识: 'tool_ref',
@@ -169,7 +169,7 @@ let 中文工具描述: Record<string, () => string> = {
   demote_memory: (): string => '将一条工作记忆转移到长期记忆，并重新评估评分。',
   promote_memory: (): string => '将一条长期记忆捞回工作记忆，并重新评估重要度。',
   extend_memory: (): string =>
-    '通过语义检索和记忆图谱查找相关长期记忆与关联概念。可限制时间、扩展跳数、关联阈值和正则过滤。',
+    '使用自然语言向量检索长期记忆，再按时间、关键词、标签或记忆内容正则表达式过滤结果，并沿记忆图谱寻找关联概念。过滤条件默认全部满足，也可选择任一满足。',
   append_memory_keywords: (): string => '向指定记忆追加关键词，并据此重建记忆图谱关联。',
   remove_memory_keywords: (): string => '从指定记忆移除关键词，并据此重建记忆图谱关联。',
   overwrite_memory_keywords: (): string => '覆盖指定记忆的关键词列表，并据此重建记忆图谱关联。',
@@ -196,7 +196,8 @@ let 英文工具描述: Record<string, () => string> = {
   add_level_2_memory: (): string => 'Store a durable rule, experience, or theory in long-term memory.',
   demote_memory: (): string => 'Move a working memory to long-term memory and reassess its score.',
   promote_memory: (): string => 'Move a long-term memory into working memory and reassess its score.',
-  extend_memory: (): string => 'Search and traverse related long-term memories and concepts.',
+  extend_memory: (): string =>
+    'Search long-term memory by natural-language vector similarity, optionally filter by relative time, keywords, tags, or a regex over memory content, then traverse related concepts. Filters use AND by default and may use OR.',
   append_memory_keywords: (): string => 'Append graph-indexing keywords to a memory.',
   remove_memory_keywords: (): string => 'Remove graph-indexing keywords from a memory.',
   overwrite_memory_keywords: (): string => 'Replace all graph-indexing keywords on a memory.',
@@ -280,7 +281,7 @@ export let 中文模型语言包: 模型语言包 = {
   博闻强记提示词: (): string =>
     '## 博闻强记模式\n你可以使用 `search_conversation_messages` 搜索当前会话及其压缩前驱链的原始消息，但不能访问其他会话或分支。`extend_memory` 直接命中的记忆可能附带与新增记忆相关的消息 ID，可用消息搜索工具查看原文。',
   博闻强记消息搜索工具描述: (): string =>
-    '按会话、消息、记忆、文本、正则、角色或时间搜索当前会话谱系中的原始消息。可通过 context_count 附带每条命中消息的前后上下文。命中数由系统配置限制。',
+    '使用必填的自然语言查询对当前会话谱系中的消息进行向量检索，再按会话、消息、记忆来源、角色、相对时间或消息内容正则表达式过滤。过滤条件默认全部满足，也可选择任一满足；默认附带每条命中消息前后各5条上下文。命中数由系统配置限制。',
   博闻强记上游会话: (会话id): string => `[博闻强记] 当前会话由上游会话 ${会话id} 压缩而来。`,
   历史工具描述: (): string =>
     '读取当前会话谱系中的原始消息。摘要代替早期上下文后，使用 previous_conversation 查看准确原文。',
@@ -377,7 +378,8 @@ export let 英文模型语言包: 模型语言包 = {
   提交结果格式错误: (错误, 名称): string =>
     `Submitted data does not match the expected format:\n${错误}\n\nFix it and call ${名称} again.`,
   模型字段名: (名称): string => 英文字段映射[名称] ?? 名称,
-  模型枚举值: (值): string => (值 === '成功' ? 'success' : 值 === '失败' ? 'failure' : 值),
+  模型枚举值: (值): string =>
+    值 === '成功' ? 'success' : 值 === '失败' ? 'failure' : 值 === '与' ? 'and' : 值 === '或' ? 'or' : 值,
   记忆工具描述: (名称, _默认描述): string => 英文工具描述[名称]?.() ?? `Use the ${名称} tool.`,
   默认记忆提示词: (启用工具名): string => 生成英文默认记忆提示词(启用工具名),
   当前零级记忆标题: (): string => '### Current level 0 memories (core rules)',
@@ -413,7 +415,7 @@ export let 英文模型语言包: 模型语言包 = {
   博闻强记提示词: (): string =>
     '## Funes mode\nYou may use `search_conversation_messages` to search exact original messages from the current conversation and its compressed ancestor lineage, but never from unrelated conversations or sibling branches. Direct hits returned by `extend_memory` may include message IDs related to the creation of that memory; use the message-search tool to inspect the original text.',
   博闻强记消息搜索工具描述: (): string =>
-    'Search exact original messages in the current conversation lineage by conversation, message, memory, text, regex, role, or time. Use context_count to include messages before and after each hit. The system-configured hit limit cannot be raised by the model.',
+    'Search the current conversation lineage using a required natural-language vector query, then filter by conversation, message, memory origin, role, relative time, or a regex over message content. Filters use AND by default and may use OR. Five messages before and after each hit are included by default. The configured hit limit cannot be raised.',
   博闻强记上游会话: (会话id): string =>
     `[Funes mode] The current conversation was compressed from upstream conversation ${会话id}.`,
   历史工具描述: (): string =>

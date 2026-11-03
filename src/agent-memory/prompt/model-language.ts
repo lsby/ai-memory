@@ -19,15 +19,15 @@ let 内部字段名 = [
   '标签列表',
   '最新状态',
   '查询内容',
-  '目标关键词',
-  '发散起点数',
-  '直接返回数',
-  '最大扩展跳数',
-  '最小关联阈值',
-  '正则表达式过滤',
+  '过滤内容',
+  '过滤内容模式',
   '时间范围',
+  '基准',
   '开始相对天数',
   '结束相对天数',
+  '关键词过滤',
+  '标签过滤',
+  '内容过滤正则表达式',
   '搜索结果_完整记忆',
   '搜索结果_发散关键词',
   '工具标识',
@@ -65,34 +65,44 @@ function 转换值(值: unknown, 方向: '对模型' | '对内部', 模型语言
     )
   }
   if (方向 === '对模型' && typeof 值 === 'string') return 模型语言包.模型枚举值(值)
-  if (方向 === '对内部' && 值 === 模型语言包.模型枚举值('成功')) return '成功'
-  if (方向 === '对内部' && 值 === 模型语言包.模型枚举值('失败')) return '失败'
+  if (方向 === '对内部') {
+    for (let 内部枚举值 of ['成功', '失败', '与', '或']) {
+      if (值 === 模型语言包.模型枚举值(内部枚举值)) return 内部枚举值
+    }
+  }
   return 值
 }
 
-function 转换Schema(值: unknown, 模型语言包: 模型语言包): unknown {
-  if (Array.isArray(值)) return 值.map((项) => 转换Schema(项, 模型语言包))
+function 转换Schema(值: unknown, 模型语言包: 模型语言包, 保留描述: boolean): unknown {
+  if (Array.isArray(值)) return 值.map((项) => 转换Schema(项, 模型语言包, 保留描述))
   if (值 === null || typeof 值 !== 'object') return 值
   let 结果: Record<string, unknown> = {}
   for (let [键, 项] of Object.entries(值)) {
-    if (键 === 'description') continue
+    if (键 === 'description' && 保留描述 === false) continue
     if (键 === 'properties' && 项 !== null && typeof 项 === 'object') {
       结果[键] = Object.fromEntries(
-        Object.entries(项).map(([字段, 定义]) => [转换键(字段, '对模型', 模型语言包), 转换Schema(定义, 模型语言包)]),
+        Object.entries(项).map(([字段, 定义]) => [
+          转换键(字段, '对模型', 模型语言包),
+          转换Schema(定义, 模型语言包, 保留描述),
+        ]),
       )
     } else if (键 === 'required' && Array.isArray(项)) {
       结果[键] = 项.map((字段) => (typeof 字段 === 'string' ? 转换键(字段, '对模型', 模型语言包) : 字段))
     } else if (键 === 'enum' && Array.isArray(项)) {
       结果[键] = 项.map((枚举值) => 转换值(枚举值, '对模型', 模型语言包))
     } else {
-      结果[键] = 转换Schema(项, 模型语言包)
+      结果[键] = 转换Schema(项, 模型语言包, 保留描述)
     }
   }
   return 结果
 }
 
 export function 本地化记忆工具(工具: 智能体工具, 模型语言包: 模型语言包): 智能体工具 {
-  let schema = 转换Schema(zodToJsonSchema(工具.参数Schema, { target: 'openAi' }), 模型语言包)
+  let 是否回忆延伸 = 工具.名称 === 'extend_memory'
+  let 原始Schema = 是否回忆延伸
+    ? zodToJsonSchema(工具.参数Schema)
+    : zodToJsonSchema(工具.参数Schema, { target: 'openAi' })
+  let schema = 转换Schema(原始Schema, 模型语言包, 是否回忆延伸)
   if (schema === null || typeof schema !== 'object' || Array.isArray(schema))
     throw new Error('工具 JSON Schema 不是对象')
   return 智能体工具.创建模型适配(工具, {

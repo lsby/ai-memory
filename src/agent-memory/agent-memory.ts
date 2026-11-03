@@ -33,7 +33,7 @@ import {
   查询记忆关联 as 外部查询记忆关联,
   查询记忆提交 as 外部查询记忆提交,
 } from './operations/management'
-import { 生成消息向量 } from './operations/message-vector'
+import { 生成查询向量, 生成消息向量 } from './operations/message-vector'
 import { 定时任务入口 as 外部定时任务入口, 执行记忆重组 as 外部执行记忆重组 } from './operations/reorganization'
 import { 解决问题 as 外部解决问题 } from './operations/solve'
 import { 带互斥的PGlite方言, 默认schema } from './storage/connection'
@@ -114,8 +114,8 @@ export class 带记忆的智能体 extends 持久化会话智能体 {
         确保已初始化: async (): Promise<void> => await this.确保已初始化(),
         读取新会话标识: (): string => this.读取会话标识(),
         载入内存历史: (消息列表, 会话id): void => super.载入对话历史(消息列表, 会话id),
-        生成新消息向量列表: async (消息列表): Promise<Array<number[] | null>> =>
-          await 生成消息向量(this.配置, 消息列表),
+        生成新消息向量列表: (消息列表): Promise<Array<number[] | null>> => 生成消息向量(this.配置, 消息列表),
+        获取查询向量: (查询内容): Promise<number[] | null> => 生成查询向量(this.配置, 查询内容),
         模型语言包: this.模型语言包,
       }),
       this.配置.博闻强记模式 === true ? this.配置.博闻强记消息搜索数量 : undefined,
