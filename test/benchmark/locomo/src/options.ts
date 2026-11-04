@@ -65,6 +65,8 @@ export function parseCliOptions(): CliOptions {
       i++
     } else if (arg.startsWith('--from-db=')) {
       fromDb = arg.slice('--from-db='.length).trim()
+    } else if (arg.startsWith('--db=')) {
+      fromDb = arg.slice('--db='.length).trim()
     } else if ((arg === '--from-db' || arg === '--db') && args[i + 1] !== undefined) {
       fromDb = args[i + 1]?.trim()
       i++
@@ -94,6 +96,45 @@ export function parseCliOptions(): CliOptions {
   }
 
   return { configName, note, fromDb, reorganizeRounds, funesMode, funesSearchLimit }
+}
+
+export function sanitizeNoteForDir(note?: string): string {
+  if (note === undefined || note.trim() === '') return ''
+  let cleaned = note
+    .trim()
+    .toLowerCase()
+    .replace(/[^\w\u4e00-\u9fa5]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+  if (cleaned.length > 30) {
+    cleaned = cleaned.slice(0, 30).replace(/-$/, '')
+  }
+  return cleaned !== '' ? `-${cleaned}` : ''
+}
+
+export function setupTerminalMirrorLog(logFilePath: string): () => void {
+  let logStream = fs.createWriteStream(logFilePath, { flags: 'a', encoding: 'utf-8' })
+  let origStdoutWrite = process.stdout.write.bind(process.stdout)
+  let origStderrWrite = process.stderr.write.bind(process.stderr)
+  let cleanAnsi = (str: string): string => str.replace(/\x1B\[[0-?]*[ -/]*[@-~]/g, '')
+
+  process.stdout.write = (chunk: Uint8Array | string, encoding?: unknown, cb?: unknown): boolean => {
+    let text = typeof chunk === 'string' ? chunk : Buffer.from(chunk).toString('utf-8')
+    logStream.write(cleanAnsi(text))
+    return origStdoutWrite(chunk, encoding as never, cb as never)
+  }
+
+  process.stderr.write = (chunk: Uint8Array | string, encoding?: unknown, cb?: unknown): boolean => {
+    let text = typeof chunk === 'string' ? chunk : Buffer.from(chunk).toString('utf-8')
+    logStream.write(cleanAnsi(text))
+    return origStderrWrite(chunk, encoding as never, cb as never)
+  }
+
+  return (): void => {
+    process.stdout.write = origStdoutWrite
+    process.stderr.write = origStderrWrite
+    logStream.end()
+  }
 }
 
 export function loadBenchmarkEnv(configName?: string): { loadedPath?: string; configName?: string } {
@@ -129,21 +170,19 @@ export function loadBenchmarkEnv(configName?: string): { loadedPath?: string; co
     )
   }
 
-  // 未指定时按优先级自动探测默认配置
-  let defaultCandidates = [
-    { name: 'deepseek', path: path.join(envDir, 'deepseek.env') },
-    { name: 'local', path: path.join(envDir, 'local.env') },
-    { name: 'default', path: path.join(envDir, 'default.env') },
-    { name: 'test-env', path: path.resolve(__dirname, '../../../../test/.env') },
-  ]
-  for (let candidate of defaultCandidates) {
-    if (fs.existsSync(candidate.path) === true) {
-      if (typeof process.loadEnvFile === 'function') {
-        process.loadEnvFile(candidate.path)
-      }
-      return { loadedPath: candidate.path, configName: candidate.name }
-    }
+  // 若未指定配置文件，检查系统环境变量是否已完整提供 AI_BASE_URL
+  if (process.env['AI_BASE_URL'] !== undefined && process.env['AI_BASE_URL'] !== '') {
+    return {}
   }
 
-  return {}
+  let available: string[] = []
+  if (fs.existsSync(envDir) === true) {
+    available = fs
+      .readdirSync(envDir)
+      .filter((f) => f.endsWith('.env'))
+      .map((f) => f.replace(/\.env$/, ''))
+  }
+  throw new Error(
+    `未指定环境配置，且未检测到 AI_BASE_URL！\n请通过 --config=<name> 显式指定配置（可选: ${available.length > 0 ? available.join(', ') : '无'}）\n示例: --config=deepseek 或 --config=local`,
+  )
 }

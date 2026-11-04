@@ -2,6 +2,9 @@
 /dist
 /coverage
 /test/benchmark/locomo/output/
+/test/benchmark/growth/output/
+/test/benchmark/*/output/
+/test/benchmark/db-baseline/
 /.env
 /.env.*
 !/.env.example
