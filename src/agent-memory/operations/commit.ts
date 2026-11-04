@@ -3,7 +3,8 @@ import { randomUUID } from 'node:crypto'
 import { z } from 'zod'
 import {
   当前动态工具表Schema,
-  当前记忆关联表Schema,
+  当前线索表Schema,
+  当前记忆线索关联表Schema,
   当前记忆表Schema,
   type 记忆提交表,
   type 记忆数据库,
@@ -11,7 +12,7 @@ import {
 } from '../types'
 
 let 单一主键Schema = z.object({ id: z.string() }).strict()
-let 关联主键Schema = z.object({ 起点id: z.string(), 终点id: z.string() }).strict()
+let 关联主键Schema = z.object({ 记忆id: z.string(), 线索id: z.string() }).strict()
 
 export async function 获取当前提交ID(数据库查询器: Kysely<记忆数据库>): Promise<string | null> {
   let 指针 = await 数据库查询器.selectFrom('记忆指针表').select('当前记忆提交id').where('id', '=', 1).executeTakeFirst()
@@ -90,24 +91,41 @@ async function 应用记忆变更(数据库查询器: Kysely<记忆数据库>, �
     .execute()
 }
 
-async function 应用记忆关联变更(数据库查询器: Kysely<记忆数据库>, 变更: 记忆行变更表): Promise<void> {
+async function 应用线索变更(数据库查询器: Kysely<记忆数据库>, 变更: 记忆行变更表): Promise<void> {
+  let 主键 = 单一主键Schema.parse(变更.主键)
+  if (变更.操作类型 === 'delete') {
+    await 数据库查询器.deleteFrom('当前线索表').where('id', '=', 主键.id).execute()
+    return
+  }
+  if (变更.行数据 === null) throw new Error(`记忆行变更 ${变更.id} 缺少行数据，无法重放`)
+  let 线索 = 当前线索表Schema.parse(变更.行数据)
+  if (线索.id !== 主键.id) throw new Error(`记忆行变更 ${变更.id} 的主键与行数据不一致`)
+  let { id: _id, ...可更新线索 } = 线索
+  await 数据库查询器
+    .insertInto('当前线索表')
+    .values(线索)
+    .onConflict((冲突) => 冲突.column('id').doUpdateSet(可更新线索))
+    .execute()
+}
+
+async function 应用记忆线索关联变更(数据库查询器: Kysely<记忆数据库>, 变更: 记忆行变更表): Promise<void> {
   let 主键 = 关联主键Schema.parse(变更.主键)
   if (变更.操作类型 === 'delete') {
     await 数据库查询器
-      .deleteFrom('当前记忆关联表')
-      .where('起点id', '=', 主键.起点id)
-      .where('终点id', '=', 主键.终点id)
+      .deleteFrom('当前记忆线索关联表')
+      .where('记忆id', '=', 主键.记忆id)
+      .where('线索id', '=', 主键.线索id)
       .execute()
     return
   }
   if (变更.行数据 === null) throw new Error(`记忆行变更 ${变更.id} 缺少行数据，无法重放`)
-  let 关联 = 当前记忆关联表Schema.parse(变更.行数据)
-  if (关联.起点id !== 主键.起点id || 关联.终点id !== 主键.终点id)
+  let 关联 = 当前记忆线索关联表Schema.parse(变更.行数据)
+  if (关联.记忆id !== 主键.记忆id || 关联.线索id !== 主键.线索id)
     throw new Error(`记忆行变更 ${变更.id} 的主键与行数据不一致`)
   await 数据库查询器
-    .insertInto('当前记忆关联表')
+    .insertInto('当前记忆线索关联表')
     .values(关联)
-    .onConflict((冲突) => 冲突.columns(['起点id', '终点id']).doUpdateSet({ 关联度: 关联.关联度 }))
+    .onConflict((冲突) => 冲突.columns(['记忆id', '线索id']).doUpdateSet({ 向量: 关联.向量, 向量维度: 关联.向量维度 }))
     .execute()
 }
 
@@ -133,8 +151,11 @@ async function 应用变更(数据库查询器: Kysely<记忆数据库>, 变更:
     case 'memory':
       await 应用记忆变更(数据库查询器, 变更)
       return
-    case 'memory_relation':
-      await 应用记忆关联变更(数据库查询器, 变更)
+    case 'clue':
+      await 应用线索变更(数据库查询器, 变更)
+      return
+    case 'memory_clue_relation':
+      await 应用记忆线索关联变更(数据库查询器, 变更)
       return
     case 'dynamic_tool':
       await 应用动态工具变更(数据库查询器, 变更)
@@ -204,8 +225,9 @@ async function 获取可靠提交链(数据库查询器: Kysely<记忆数据库>
 async function 重放提交链(数据库查询器: Kysely<记忆数据库>, 提交链: 记忆提交表[]): Promise<void> {
   await 设置事务配置(数据库查询器, 'lsby_ai_memory.active_commit_id', '')
   await 设置事务配置(数据库查询器, 'lsby_ai_memory.replaying', 'true')
-  await 数据库查询器.deleteFrom('当前记忆关联表').execute()
+  await 数据库查询器.deleteFrom('当前记忆线索关联表').execute()
   await 数据库查询器.deleteFrom('当前记忆表').execute()
+  await 数据库查询器.deleteFrom('当前线索表').execute()
   await 数据库查询器.deleteFrom('当前动态工具表').execute()
   for (let 提交 of 提交链) {
     let 变更列表 = await 数据库查询器

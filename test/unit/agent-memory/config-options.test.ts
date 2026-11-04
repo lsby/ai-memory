@@ -109,16 +109,13 @@ describe('P1 记忆工具筛选', () => {
     let 请求 = 假.请求列表[0]
     expect(取工具名列表(请求).sort()).toEqual(['__submit_result__', 'extend_memory'])
     let 工具定义 = JSON.stringify(请求?.tools ?? [])
-    expect(工具定义).toContain('查询内容')
-    expect(工具定义).toContain('过滤内容')
-    expect(工具定义).toContain('过滤内容模式')
-    expect(工具定义).toContain('内容过滤正则表达式')
-    expect(工具定义).toContain('只对记忆表的内容字段执行正则过滤')
-    expect(工具定义).not.toContain('发散起点数')
+    expect(工具定义).toContain('内容')
+    expect(工具定义).toContain('线索')
+    expect(工具定义).not.toContain('过滤内容')
     let 系统提示词 = 取系统提示词(请求)
     expect(系统提示词).not.toContain('认知进化范式')
     expect(系统提示词).not.toContain('经验沉淀')
-    expect(系统提示词).not.toContain('关键词与标签')
+    expect(系统提示词).not.toContain('线索与线索')
     expect(系统提示词).not.toContain('动态工具系统')
     expect(系统提示词).toContain('「回忆延伸」')
   })
@@ -252,8 +249,7 @@ describe('模型语言包', () => {
             名称: 'add_level_1_memory',
             参数: {
               content: 'and',
-              keywords: ['or'],
-              tags: ['created', 'level_0'],
+              clues: ['or', 'created', 'level_0'],
               score: 90,
               commit_message: 'Remember this stable production configuration.',
             },
@@ -275,7 +271,7 @@ describe('模型语言包', () => {
     let 工具消息 = 假.请求列表[1]?.messages.find((消息) => 消息['tool_call_id'] === 'call_memory')
     expect(工具消息?.['content']).toContain('current_state')
     expect(工具消息?.['content']).not.toMatch(/[\u3400-\u9fff]/u)
-    expect(await 实例.查询记忆()).toMatchObject([{ 内容: 'and', 关键词: ['or'], 标签: ['created', 'level_0'] }])
+    expect(await 实例.查询记忆()).toMatchObject([{ 内容: 'and', 线索: ['or', 'created', 'level_0'] }])
   })
 })
 
@@ -385,8 +381,7 @@ describe('P3 时区', () => {
       let 实例 = 创建记忆实例(实例时区 === undefined ? {} : { 时区: 实例时区 })
       await 实例.添加记忆({
         内容: '一级记忆',
-        关键词: ['一级'],
-        标签: [],
+        线索: ['一级'],
         评分: 80,
         等级: 记忆等级.一级,
         创建时间: new Date('2026-01-01T00:00:00.000Z'),
@@ -403,8 +398,7 @@ describe('P3 时区', () => {
     let 实例 = 创建记忆实例({ 时区: 'Asia/Shanghai' })
     await 实例.添加记忆({
       内容: '一级记忆',
-      关键词: ['一级'],
-      标签: [],
+      线索: ['一级'],
       评分: 80,
       等级: 记忆等级.一级,
       创建时间: new Date('2026-01-01T00:00:00.000Z'),
@@ -475,8 +469,8 @@ describe('P4 额外请求参数', () => {
 describe('P5 遗忘豁免', () => {
   let 创建时间 = new Date('2026-01-01T00:00:00.000Z')
 
-  function 二级记忆(内容: string, 评分: number, 标签: string[] = []): 批量注入记忆项 {
-    return { 内容, 关键词: [内容], 标签, 评分, 等级: 记忆等级.二级, 创建时间 }
+  function 二级记忆(内容: string, 评分: number, 额外线索: string[] = []): 批量注入记忆项 {
+    return { 内容, 线索: [内容, ...额外线索], 评分, 等级: 记忆等级.二级, 创建时间 }
   }
 
   function 一批记忆(数量: number, 评分: number): 批量注入记忆项[] {
@@ -485,7 +479,7 @@ describe('P5 遗忘豁免', () => {
 
   it('末位淘汰: 豁免的低分旧记忆在大量写入冲刷后仍在, 不豁免的被淘汰', async (): Promise<void> => {
     let 选项 = { 二级记忆数量上限: 5, 二级记忆遗忘分数阈值: 0 }
-    let 带豁免 = 创建记忆实例({ ...选项, 遗忘豁免: (记忆) => 记忆.标签.includes('关键事实') })
+    let 带豁免 = 创建记忆实例({ ...选项, 遗忘豁免: (记忆) => 记忆.线索.includes('关键事实') })
     let 不豁免 = 创建记忆实例(选项)
     for (let 实例 of [带豁免, 不豁免]) {
       await 实例.批量注入记忆([二级记忆('老板的生日是三月三日', 1, ['关键事实']), ...一批记忆(20, 50)])
@@ -500,14 +494,14 @@ describe('P5 遗忘豁免', () => {
 
   it('自然遗忘: 低于阈值的记忆被忘掉, 豁免的留下, 且关联边一起被清理', async (): Promise<void> => {
     let 选项 = { 二级记忆遗忘分数阈值: 10 }
-    let 带豁免 = 创建记忆实例({ ...选项, 遗忘豁免: (记忆) => 记忆.标签.includes('关键事实') })
+    let 带豁免 = 创建记忆实例({ ...选项, 遗忘豁免: (记忆) => 记忆.线索.includes('关键事实') })
     let 不豁免 = 创建记忆实例(选项)
     for (let 实例 of [带豁免, 不豁免]) {
       await 实例.批量注入记忆([二级记忆('必须记住的事', 5, ['关键事实']), ...一批记忆(8, 5)])
     }
     expect((await 带豁免.查询记忆()).map((记忆) => 记忆.内容)).toEqual(['必须记住的事'])
     expect(await 不豁免.查询记忆()).toHaveLength(0)
-    expect((await 带豁免.查询记忆关联()).every((边) => 边.起点id !== 边.终点id)).toBe(true)
+    expect((await 带豁免.查询记忆线索关联()).every((关联) => 关联.记忆id !== '')).toBe(true)
   })
 
   it('豁免回调拿到的是公开记忆, 并且豁免的记忆仍计入数量上限', async (): Promise<void> => {

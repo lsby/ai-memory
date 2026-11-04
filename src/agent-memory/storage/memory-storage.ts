@@ -1,4 +1,5 @@
 import { PGlite, type PGliteOptions } from '@electric-sql/pglite'
+import { vector } from '@electric-sql/pglite-pgvector'
 import type { Kysely } from 'kysely'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -10,6 +11,18 @@ let 全局PGlite引用计数 = new Map<string, number>()
 let 全局PGlite初始化锁 = new Map<string, Promise<void>>()
 /** 每个路径一条打开/关闭队列：关闭中的路径，新的打开要等它关完。 */
 let 全局PGlite路径队列 = new Map<string, Promise<void>>()
+
+export function 创建PGlite就绪(存储: 存储配置): Promise<PGlite> {
+  let 选项: PGliteOptions = { extensions: { vector } }
+  switch (存储.模式) {
+    case '内存':
+      return Promise.resolve(new PGlite(选项))
+    case '文件':
+      return 获取或创建PGlite({ ...选项, dataDir: 存储.路径 })
+    case '外部':
+      return Promise.resolve(存储.pglite)
+  }
+}
 
 function 入队执行<R>(路径: string, 任务: () => Promise<R>): Promise<R> {
   let 前一个 = 全局PGlite路径队列.get(路径) ?? Promise.resolve()

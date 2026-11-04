@@ -4,15 +4,12 @@ export let 英文字段映射: Record<string, string> = {
   消息: 'commit_message',
   错误信息: 'error',
   内容: 'content',
-  关键词: 'keywords',
-  标签: 'tags',
+  线索: 'clues',
   评分: 'score',
   新内容: 'new_content',
-  新关键词: 'new_keywords',
-  新标签: 'new_tags',
+  新线索: 'new_clues',
   新评分: 'new_score',
-  关键词列表: 'keywords',
-  标签列表: 'tags',
+  线索列表: 'clues',
   最新状态: 'current_state',
   查询内容: 'query',
   过滤内容: 'filters',
@@ -33,14 +30,11 @@ export let 英文字段映射: Record<string, string> = {
   消息列表: 'messages',
   上下文消息数: 'context_count',
   时间范围: 'time_range',
-  基准: 'base_time',
-  开始相对天数: 'start_relative_days',
-  结束相对天数: 'end_relative_days',
-  关键词过滤: 'keyword_filter',
-  标签过滤: 'tag_filter',
+  开始时间: 'start_time',
+  结束时间: 'end_time',
   内容过滤正则表达式: 'content_regex',
-  搜索结果_完整记忆: 'memory_results',
-  搜索结果_发散关键词: 'related_keywords',
+  直接联想到的记忆: 'recalled_memories',
+  闪现出的线索: 'flashing_clues',
   工具标识: 'tool_ref',
   工具名称: 'tool_name',
   名称: 'name',
@@ -77,23 +71,19 @@ export let 英文描述映射: Record<string, string> = {
     'Number of contextual messages before and after each hit in chronological order, default 5',
 
   // search-parameters.ts
-  '多个过滤条件的组合方式。“与”要求全部满足，“或”要求至少满足一个；默认为“与”':
+  '多个过滤条件的组合方式。"and" 要求全部满足，"or" 要求至少满足一个；默认为 "and"':
     'Combination logic for multiple filters. "and" requires all to match, "or" requires at least one; defaults to "and"',
-  '相对时间的计算基准，可传 ISO 日期或时间；不填时使用当前时间':
-    'Base reference timestamp for relative time calculation (ISO date/time); defaults to current time if omitted',
-  '开始时间等于基准减去该天数，包含此边界':
-    'Start time equals base time minus this number of days (inclusive boundary)',
-  '结束时间等于基准减去该天数，不包含此边界':
-    'End time equals base time minus this number of days (exclusive boundary)',
-  '按创建时间过滤；所有相对天数均以同一个基准计算':
-    'Filter by creation time; all relative days are computed from the same base reference',
+  '创建时间下界，可传 ISO 日期或时间，包含此边界': 'Absolute creation-time lower bound as an ISO date/time (inclusive)',
+  '创建时间上界，可传 ISO 日期或时间，不包含此边界':
+    'Absolute creation-time upper bound as an ISO date/time (exclusive)',
+  '按绝对创建时间过滤；开始时间包含边界，结束时间不包含边界':
+    'Filter by absolute creation time; the start boundary is inclusive and the end boundary is exclusive',
 
   // graph-rag.ts
-  逐项精确匹配记忆表的关键词数组: 'Match keywords in the memory keyword list item by item',
-  逐项精确匹配记忆表的标签数组: 'Match tags in the memory tag list item by item',
-  只对记忆表的内容字段执行正则过滤: 'Regular expression filter applied strictly to memory content',
-  '必填的自然语言查询，仅用于生成查询向量并按语义相似度召回记忆':
-    'Required natural-language vector query used to recall memories by semantic similarity',
+  当前想到的一个或多个自然语言内容: 'One or more natural-language thoughts to recall from',
+  当前想到的一个或多个自然语言线索: 'One or more natural-language clues to follow',
+  内容和线索至少提供一项: 'Provide at least one thought or clue',
+  '未配置可用的向量模型，无法联想记忆': 'No usable vector model is configured for memory recall',
 
   // solve.ts
   说明为什么要执行这次记忆变更: 'Explain why this memory change is needed',
@@ -119,35 +109,22 @@ export let 英文描述映射: Record<string, string> = {
 
   // level-0, 1, 2 memories
   核心法则的内容: 'Content of the core rule',
-  '相关关键词提取，用于构建知识图谱': 'Relevant keywords extracted to build the knowledge graph',
-  '元数据标签，用于分类和描述（例如 "系统设定"、"事实" 等）':
-    'Metadata tags for categorization and description (e.g. "system_setting", "fact")',
+  未来可能用于联想到这条记忆的自然语言线索: 'Natural-language clues that may help recall this memory in the future',
   修改后的内容: 'Updated content',
-  修改后的关键词列表: 'Updated keywords list',
-  修改后的标签列表: 'Updated tags list',
+  修改后的线索列表: 'Updated clue list',
   记忆的内容: 'Content of the memory',
-  '相关关键词提取，将依据这些关键词自动构建记忆关联图谱':
-    'Keywords extracted to automatically build the memory association graph',
-  '元数据标签，用于分类和描述（例如 "临时猜想"、"置信度:80%" 等）':
-    'Metadata tags for categorization and description (e.g. "hypothesis", "confidence:80%")',
   '0.0 到 100.0 的浮点数，代表重要程度。分数越低越容易被挤出工作区。':
     'Float from 0.0 to 100.0 representing importance. Lower scores are more easily demoted from working memory.',
   '重新评估这在当前任务的重要度 (0.0 - 100.0)': 'Reassessed importance for the current task (0.0 - 100.0)',
   '作为长期记忆保存的潜力评分 (0.0 - 100.0)': 'Potential importance score as long-term memory (0.0 - 100.0)',
-  '元数据标签，用于分类和描述（例如 "经验总结"、"可复用" 等）':
-    'Metadata tags for categorization and description (e.g. "experience_summary", "reusable")',
   '0.0 到 100.0 的浮点数，代表这条长期经验的重要度和潜力。':
     'Float from 0.0 to 100.0 representing importance and potential of this long-term memory.',
 
-  // keyword & tag
-  '需要修改关键词的记忆 ID': 'Memory ID whose keywords are to be modified',
-  需要追加的关键词列表: 'List of keywords to append',
-  需要移除的关键词列表: 'List of keywords to remove',
-  覆盖后的新关键词列表: 'New list of keywords to overwrite with',
-  '需要修改标签的记忆 ID': 'Memory ID whose tags are to be modified',
-  需要追加的标签列表: 'List of tags to append',
-  需要移除的标签列表: 'List of tags to remove',
-  覆盖后的新标签列表: 'New list of tags to overwrite with',
+  // clues
+  '需要修改线索的记忆 ID': 'Memory ID whose clues are to be modified',
+  需要追加的线索: 'Clues to append',
+  需要移除的线索: 'Clues to remove',
+  覆盖后的线索: 'New clue list to overwrite with',
 
   // deep-deduction
   '你希望这个子智能体扮演什么角色（例如: "严谨的数据分析师"）。':
@@ -179,28 +156,21 @@ export let 英文工具描述: Record<string, () => string> = {
     'Launch an isolated expert-level subagent to deeply verify complex hypotheses. An optional clean mode determines whether to inherit historical context or start in a pure slate.',
   add_level_0_memory: (): string =>
     'Add a permanently effective core rule or persona memory without capacity limits. Use with extreme caution.',
-  edit_level_0_memory: (): string => 'Modify the content, keywords, and tags of an existing core rule.',
+  edit_level_0_memory: (): string => 'Modify the content and associative clues of an existing core rule.',
   remove_level_0_memory: (): string => 'Remove an unneeded core rule from the current memory state.',
   add_level_1_memory: (): string =>
     'Add current-task focus and key clues into capacity-limited working memory. When full, lower-scoring memories are automatically demoted.',
-  edit_level_1_memory: (): string => 'Modify the content, keywords, tags, and score of an existing working memory.',
+  edit_level_1_memory: (): string => 'Modify the content, associative clues, and score of an existing working memory.',
   remove_level_1_memory: (): string => 'Remove an item from the current working memory state instead of demoting it.',
   add_level_2_memory: (): string =>
     'Directly store durable rules, experiences, or theoretical guidelines into automatically recalled long-term memory.',
   demote_memory: (): string => 'Demote a working memory to long-term memory and reassess its importance score.',
   promote_memory: (): string => 'Promote a long-term memory back to working memory and reassess its importance score.',
   extend_memory: (): string =>
-    'Search long-term memory using natural-language vector similarity, optionally filter by relative time, keywords, tags, or a regex over memory content, and traverse related concepts along the memory graph. Filters use AND by default and may use OR.',
-  append_memory_keywords: (): string =>
-    'Append keywords to a specified memory and rebuild memory graph connections accordingly.',
-  remove_memory_keywords: (): string =>
-    'Remove keywords from a specified memory and rebuild memory graph connections accordingly.',
-  overwrite_memory_keywords: (): string =>
-    'Overwrite the keyword list of a specified memory and rebuild memory graph connections accordingly.',
-  append_memory_tags: (): string =>
-    'Append metadata tags to a specified memory for categorization and state description.',
-  remove_memory_tags: (): string => 'Remove tags from a specified memory.',
-  overwrite_memory_tags: (): string => 'Overwrite the tag list of a specified memory.',
+    'Recall long-term memories from one or more natural-language thoughts or clues. Returns directly recalled memories and flashing clue strings that can be followed with another call.',
+  append_memory_clues: (): string => 'Append associative clues to a specified memory.',
+  remove_memory_clues: (): string => 'Remove associative clues from a specified memory.',
+  overwrite_memory_clues: (): string => 'Overwrite the associative clues of a specified memory.',
   create_dynamic_tool: (): string =>
     'Create and persist a JavaScript tool. The code must declare `tool = { name, description, parametersSchema, returnSchema, execute }`, where both schemas are object JSON Schemas and `execute` is an async function. The sandbox has no network, file-system, import, or require access. Provide smoke-test arguments; the tool is stored only after the test passes.',
   view_dynamic_tool_code: (): string => 'Read the complete source of an existing dynamic tool.',

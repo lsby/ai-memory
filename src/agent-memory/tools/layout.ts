@@ -6,13 +6,39 @@ import { 确保在事务中执行 } from './common'
 type 布局节点 = d3.SimulationNodeDatum & { id: string; x: number; y: number }
 type 布局连接 = d3.SimulationLinkDatum<布局节点> & { 关联度: number }
 
+async function 读取派生记忆连接(
+  数据库查询器: Kysely<记忆数据库>,
+): Promise<Array<{ 起点id: string; 终点id: string; 关联度: number }>> {
+  let 关联列表 = await 数据库查询器.selectFrom('当前记忆线索关联表').select(['记忆id', '线索id']).execute()
+  let 线索记忆映射 = new Map<string, string[]>()
+  for (let 关联 of 关联列表) {
+    let 列表 = 线索记忆映射.get(关联.线索id) ?? []
+    列表.push(关联.记忆id)
+    线索记忆映射.set(关联.线索id, 列表)
+  }
+  let 边映射 = new Map<string, { 起点id: string; 终点id: string; 关联度: number }>()
+  for (let 记忆列表 of 线索记忆映射.values()) {
+    for (let 左索引 = 0; 左索引 < 记忆列表.length; 左索引++) {
+      let 左id = 记忆列表[左索引]
+      if (左id === undefined) continue
+      for (let 右索引 = 左索引 + 1; 右索引 < 记忆列表.length; 右索引++) {
+        let 右id = 记忆列表[右索引]
+        if (右id === undefined) continue
+        let [起点id, 终点id] = 左id < 右id ? [左id, 右id] : [右id, 左id]
+        let 键 = `${起点id}\u0000${终点id}`
+        let 现有 = 边映射.get(键)
+        边映射.set(键, { 起点id, 终点id, 关联度: (现有?.关联度 ?? 0) + 1 })
+      }
+    }
+  }
+  return Array.from(边映射.values())
+}
+
 export async function 增量排版(数据库查询器: Kysely<记忆数据库>, 中心节点id: string): Promise<void> {
   // 1. 获取所有跟中心节点直接相连的边
-  let 相关边 = await 数据库查询器
-    .selectFrom('当前记忆关联表')
-    .selectAll()
-    .where((eb) => eb.or([eb('起点id', '=', 中心节点id), eb('终点id', '=', 中心节点id)]))
-    .execute()
+  let 相关边 = (await 读取派生记忆连接(数据库查询器)).filter(
+    (边) => 边.起点id === 中心节点id || 边.终点id === 中心节点id,
+  )
 
   // 收集涉及到的所有节点 ID
   let 节点id集合 = new Set<string>()
@@ -104,7 +130,7 @@ export async function 增量排版(数据库查询器: Kysely<记忆数据库>, 
 export async function 全局排版(数据库查询器: Kysely<记忆数据库>): Promise<void> {
   // 1. 读取所有节点和边
   let 所有节点 = await 数据库查询器.selectFrom('当前记忆表').select(['id', 'x', 'y']).execute()
-  let 所有边 = await 数据库查询器.selectFrom('当前记忆关联表').selectAll().execute()
+  let 所有边 = await 读取派生记忆连接(数据库查询器)
 
   let nodes = 所有节点.map((n) => ({
     id: n.id,

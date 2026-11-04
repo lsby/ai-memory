@@ -2,7 +2,8 @@ import type { Kysely } from 'kysely'
 import { sql } from 'kysely'
 import { randomUUID } from 'node:crypto'
 import type { 智能体事件 } from '../agent/types'
-import { 刷新记忆关联网络, 确保在事务中执行 } from './tools/common'
+import { 同步记忆线索, 清理孤立线索, 读取记忆线索映射 } from './storage/clue-storage'
+import { 确保在事务中执行 } from './tools/common'
 import { 增量排版 } from './tools/layout'
 import {
   记忆等级,
@@ -74,9 +75,9 @@ export async function 检查并清理二级记忆(
     WITH 关联度汇总 AS (
       SELECT
         m.id,
-        COALESCE(SUM(r.关联度), 0) AS 总关联度
+        COALESCE(COUNT(r.线索id), 0) AS 总关联度
       FROM 当前记忆表 m
-      LEFT JOIN 当前记忆关联表 r ON (r.起点id = m.id OR r.终点id = m.id)
+      LEFT JOIN 当前记忆线索关联表 r ON r.记忆id = m.id
       WHERE m.等级 = '二级'
       GROUP BY m.id
     )
@@ -94,12 +95,13 @@ export async function 检查并清理二级记忆(
     if (候选IDs.length === 0) return []
     let 记忆列表 = await 数据库查询器
       .selectFrom('当前记忆表')
-      .select(['id', '等级', '评分', '内容', '关键词', '标签', '创建时间'])
+      .select(['id', '等级', '评分', '内容', '创建时间'])
       .where('id', 'in', 候选IDs)
       .execute()
+    let 线索映射 = await 读取记忆线索映射(数据库查询器, 候选IDs)
     let 豁免IDs = new Set(
       记忆列表
-        .filter((记忆): boolean => 豁免回调({ ...记忆, 关键词: [...记忆.关键词], 标签: [...记忆.标签] }) === true)
+        .filter((记忆): boolean => 豁免回调({ ...记忆, 线索: 线索映射.get(记忆.id) ?? [] }) === true)
         .map((记忆) => 记忆.id),
     )
     return 候选IDs.filter((id): boolean => 豁免IDs.has(id) === false)
@@ -130,14 +132,10 @@ export async function 检查并清理二级记忆(
 
   if (要淘汰的IDs.length > 0) {
     await 确保在事务中执行(数据库查询器, async (trx) => {
-      // 先删除关联的边
-      await trx
-        .deleteFrom('当前记忆关联表')
-        .where((eb) => eb.or([eb('起点id', 'in', 要淘汰的IDs), eb('终点id', 'in', 要淘汰的IDs)]))
-        .execute()
+      await trx.deleteFrom('当前记忆线索关联表').where('记忆id', 'in', 要淘汰的IDs).execute()
 
-      // 再删除记忆
       await trx.deleteFrom('当前记忆表').where('id', 'in', 要淘汰的IDs).execute()
+      await 清理孤立线索(trx)
     })
 
     if (回调 !== undefined) {
@@ -152,7 +150,7 @@ export async function 检查并清理二级记忆(
 }
 
 export async function 批量注入记忆(上下文: 记忆操作上下文, 记忆项列表: 批量注入记忆项[]): Promise<string[]> {
-  let { 数据库查询器, 配置, 获取向量, 检查并降级一级记忆, 检查并清理二级记忆, 回调 } = 上下文
+  let { 数据库查询器, 获取向量, 检查并降级一级记忆, 检查并清理二级记忆, 回调 } = 上下文
   let id列表: string[] = []
   for (let 项 of 记忆项列表) {
     let id = randomUUID()
@@ -172,8 +170,6 @@ export async function 批量注入记忆(上下文: 记忆操作上下文, 记�
           等级: 项.等级,
           评分: 项.评分,
           内容: 项.内容,
-          关键词: 项.关键词,
-          标签: 项.标签,
           向量: 向量值,
           向量维度: 维度值,
           创建时间: 项.创建时间,
@@ -184,8 +180,22 @@ export async function 批量注入记忆(上下文: 记忆操作上下文, 记�
       if (插入结果?.创建序号 !== undefined) {
         await trx.updateTable('当前记忆表').set({ 最后访问序号: 插入结果.创建序号 }).where('id', '=', id).execute()
       }
-      await 刷新记忆关联网络(trx, id, 项.关键词, 配置, 回调)
+      await 同步记忆线索(
+        {
+          数据库查询器: trx,
+          获取向量: async (内容): Promise<number[] | null> => {
+            let 结果 = await 获取向量(内容)
+            return 结果.类型 === '成功' ? 结果.向量 : null
+          },
+        },
+        id,
+        项.内容,
+        项.线索,
+      )
       await 增量排版(trx, id)
+      if (回调 !== undefined) {
+        await 回调({ 类型: '流程信息', 内容: `[记忆线索网络更新] 已写入记忆 ${id} 及其联想线索` })
+      }
     })
   }
   await 检查并降级一级记忆()

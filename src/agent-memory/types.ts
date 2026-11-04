@@ -25,8 +25,6 @@ export let 当前记忆表Schema = z.object({
   等级: z.nativeEnum(记忆等级),
   评分: z.number(),
   内容: z.string(),
-  关键词: z.array(z.string()),
-  标签: z.array(z.string()),
   向量: z.union([z.string(), z.array(z.number())]).nullish(),
   向量维度: z.number().nullish(),
   创建时间: z.union([z.string(), z.date()]).transform((val) => new Date(val)),
@@ -39,8 +37,22 @@ export let 当前记忆表Schema = z.object({
 
 export type 当前记忆表 = z.infer<typeof 当前记忆表Schema>
 
-export let 当前记忆关联表Schema = z.object({ 起点id: z.string(), 终点id: z.string(), 关联度: z.number() })
-export type 当前记忆关联表 = z.infer<typeof 当前记忆关联表Schema>
+export let 当前线索表Schema = z.object({
+  id: z.string(),
+  内容: z.string(),
+  向量: z.union([z.string(), z.array(z.number())]).nullish(),
+  向量维度: z.number().nullish(),
+  创建时间: z.union([z.string(), z.date()]).transform((值) => new Date(值)),
+})
+export type 当前线索表 = z.infer<typeof 当前线索表Schema>
+
+export let 当前记忆线索关联表Schema = z.object({
+  记忆id: z.string(),
+  线索id: z.string(),
+  向量: z.union([z.string(), z.array(z.number())]).nullish(),
+  向量维度: z.number().nullish(),
+})
+export type 当前记忆线索关联表 = z.infer<typeof 当前记忆线索关联表Schema>
 
 export let 记忆提交表Schema = z.object({
   id: z.string(),
@@ -51,7 +63,7 @@ export let 记忆提交表Schema = z.object({
 })
 export type 记忆提交表 = z.infer<typeof 记忆提交表Schema>
 
-export let 记忆变更目标表Schema = z.enum(['memory', 'memory_relation', 'dynamic_tool'])
+export let 记忆变更目标表Schema = z.enum(['memory', 'clue', 'memory_clue_relation', 'dynamic_tool'])
 export type 记忆变更目标表 = z.infer<typeof 记忆变更目标表Schema>
 
 export let 记忆行操作类型Schema = z.enum(['insert', 'update', 'delete'])
@@ -197,7 +209,8 @@ export type 消息表 = {
 
 export type 记忆数据库 = {
   当前记忆表: 当前记忆表
-  当前记忆关联表: 当前记忆关联表
+  当前线索表: 当前线索表
+  当前记忆线索关联表: 当前记忆线索关联表
   记忆提交表: 记忆提交表
   记忆行变更表: 记忆行变更表
   系统版本表: 系统版本表
@@ -283,9 +296,10 @@ export type 带记忆的智能体选项 = 智能体选项 &
         }
       | { 类型: '无' }
     自动检索二级记忆数量?: number
-    自动检索二级记忆起点数?: number
+    自动检索线索数量?: number
+    自动检索关联数量?: number
     自动检索动态工具数量?: number
-    向量相似度关联阈值?: number
+    向量召回相似度阈值?: number
     /**
      * 存储位置。默认内存。三种模式都可以带 schema（默认 public，和旧版本的数据布局一致）。
      * 外部模式由调用方自己创建和关闭 PGlite（必须带 pgvector 扩展），实例的 销毁() 不会关闭这个句柄。
@@ -314,15 +328,6 @@ export type 带记忆的智能体选项 = 智能体选项 &
      * 在清理的事务里同步调用, 不要在里面做网络请求。被豁免的记忆仍计入二级记忆数量上限。
      */
     遗忘豁免?: (记忆: 公开记忆) => boolean
-    /**
-     * 受保护标签: 返回 true 的标签不能被模型工具改动。
-     * 模型工具(edit_level_0/1_memory、overwrite_memory_tags、remove_memory_tags、append_memory_tags、
-     * 三个 add_level_*_memory)改标签时: 原记忆上命中的标签一律保留; 模型想新增命中的标签会被忽略。
-     * 调用方自己用公开方法(添加记忆、更新记忆、批量注入记忆)改标签不受限制。
-     * 只影响工具的执行结果, 不改系统提示词和工具定义, 所以不影响前缀。默认不保护任何标签。
-     * 在工具执行的事务里同步调用, 不要在里面做网络请求。
-     */
-    受保护标签?: (标签: string) => boolean
   }
 
 export type 存储配置 =
@@ -339,7 +344,6 @@ export type 内部带记忆的智能体配置 = Omit<智能体选项, '模型语
       | '记忆工具筛选'
       | '记忆提示词'
       | '遗忘豁免'
-      | '受保护标签'
       | '博闻强记模式'
       | '博闻强记消息搜索数量'
     >
@@ -351,7 +355,6 @@ export type 内部带记忆的智能体配置 = Omit<智能体选项, '模型语
     /** 已经按 记忆工具筛选 和 禁用深度推演 算好的启用工具名, 构造时固定 */
     启用的记忆工具名: string[]
     遗忘豁免: (记忆: 公开记忆) => boolean
-    受保护标签?: (标签: string) => boolean
   } & ({ 博闻强记模式: true; 博闻强记消息搜索数量: number } | { 博闻强记模式: false; 博闻强记消息搜索数量?: undefined })
 
 export type 带记忆的解决问题选项<T extends z.ZodType> = 解决问题选项<T> & {
@@ -377,8 +380,7 @@ export type 带记忆的对话选项<T extends z.ZodType> = Omit<带记忆的解
 
 export let 批量注入记忆项Schema = z.object({
   内容: z.string().trim().min(1),
-  关键词: z.array(z.string().trim().min(1)),
-  标签: z.array(z.string().trim().min(1)),
+  线索: z.array(z.string().trim().min(1)),
   评分: z.number().finite().min(0).max(100),
   等级: z.nativeEnum(记忆等级),
   创建时间: z.union([z.string(), z.date()]).transform((值) => new Date(值)),
@@ -388,8 +390,7 @@ export type 批量注入记忆项 = z.infer<typeof 批量注入记忆项Schema>
 export let 更新记忆选项Schema = z
   .object({
     内容: z.string().trim().min(1).optional(),
-    关键词: z.array(z.string().trim().min(1)).optional(),
-    标签: z.array(z.string().trim().min(1)).optional(),
+    线索: z.array(z.string().trim().min(1)).optional(),
     评分: z.number().finite().min(0).max(100).optional(),
     等级: z.nativeEnum(记忆等级).optional(),
   })
@@ -402,21 +403,20 @@ export type 公开记忆 = {
   等级: 记忆等级
   评分: number
   内容: string
-  关键词: string[]
-  标签: string[]
+  线索: string[]
   创建时间: Date
 }
 
 export type 查询记忆选项 = {
   等级?: 记忆等级 | undefined
-  标签?: string | undefined
-  关键词?: string | undefined
+  线索?: string | undefined
   搜索文本?: string | undefined
   偏移?: number | undefined
   数量?: number | undefined
 }
 
-export type 公开记忆关联 = { 起点id: string; 终点id: string; 关联度: number }
+export type 公开线索 = { id: string; 内容: string; 创建时间: Date }
+export type 公开记忆线索关联 = { 记忆id: string; 线索id: string }
 
 export type 公开动态工具 = { id: string; 名称: string; 描述: string; 代码: string; 创建时间: Date }
 
@@ -513,9 +513,10 @@ export type 查询交互日志选项 = {
 }
 
 export let 快照数据Schema = z.object({
-  格式版本: z.literal(2),
+  格式版本: z.literal(3),
   记忆列表: z.array(当前记忆表Schema),
-  记忆关联列表: z.array(当前记忆关联表Schema),
+  线索列表: z.array(当前线索表Schema),
+  记忆线索关联列表: z.array(当前记忆线索关联表Schema),
   动态工具列表: z.array(当前动态工具表Schema),
 })
 export type 快照数据 = z.infer<typeof 快照数据Schema>

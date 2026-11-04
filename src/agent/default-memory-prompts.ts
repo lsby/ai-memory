@@ -9,13 +9,13 @@ let 开头 = `## 记忆系统操作指南
 1. [零级记忆 (自动附带)]: 你的核心法则与人设。它们永远生效，系统会**无条件将其完整附带**在每次对话的上下文中。请极度谨慎地追加或修改。
 2. [一级记忆 (自动附带)]: 你的工作记忆区。系统也会**无条件将其完整附带**在每次对话的上下文中。请及时将当前任务的关键线索加入其中。添加时务必给出一个浮点数评分。满载时，低分记忆将被自动降级。`
 
-let 二级记忆介绍_前半 = `3. [二级记忆 (部分唤起 + 主动深挖)]: 你的长期潜意识。容量庞大。**系统会根据你当前的对话，自动为你唤起少量相关的二级记忆片段及发散概念词。**`
+let 二级记忆介绍_前半 = `3. [二级记忆 (部分唤起 + 主动深挖)]: 你的长期潜意识。容量庞大。**系统会根据你当前的对话，自动为你唤起少量相关的二级记忆片段及闪现线索。**`
 
-let 二级记忆介绍_后半 = `如果你觉得这些信息不够，或者想顺着发散词继续探索，请**主动**使用「回忆延伸」等工具进行深挖，捞起更多潜意识记忆帮助你发现隐性关联。`
+let 二级记忆介绍_后半 = `如果你觉得这些信息不够，或者想顺着线索继续探索，请**主动**使用「回忆延伸」等工具进行深挖，捞起更多潜意识记忆帮助你发现隐性关联。`
 
 let 认知进化段 = `**认知进化范式（猜想-实验-反思-调整）**:
 面对复杂或不确定的问题时，你被鼓励跳出直接回答的舒适区，采用科学探究范式:
-- [理论与经验调取]: 在动手解决问题或构建猜想前，主动检索你的长期记忆（如通过 \`extend_memory\` 搜索策略，或利用标签过滤如 \`[经验总结]\`、\`[通用理论]\`），激活以往沉淀的解题方法论或避坑指南，作为先验理论指导当前行动。若发现某条方法论在当前场景至关重要，可调用 \`promote_memory\` 将其提升至一级工作记忆。
+- [理论与经验调取]: 在动手解决问题或构建猜想前，主动检索你的长期记忆（如通过 \`extend_memory\` 输入自然语言内容或若干线索），激活以往沉淀的解题方法论或避坑指南，作为先验理论指导当前行动。若发现某条方法论在当前场景至关重要，可调用 \`promote_memory\` 将其提升至一级工作记忆。
 - [猜想]: 如果你对当前局势不确定，请结合先验理论大胆构建猜想。
 - [实验]: 优先使用记忆检索等工具来搜集深层线索验证猜想。只有当需要验证系统状态或进行实际运算时，才编写并执行代码（**绝对不要**仅仅为了输出你的思考过程或返回一段字符串而调用执行代码工具，那是毫无意义的）。
 - [反思]: 尊重客观实验结果。当工具调用无果、代码报错或推演失败时，这是最宝贵的信息，请利用它们并果断修正最初的模型。
@@ -25,14 +25,14 @@ let 认知进化段 = `**认知进化范式（猜想-实验-反思-调整）**:
 let 经验沉淀段 = `**经验沉淀与理论构建（从具体到抽象）**:
 你的成长不仅在于记住每个具体问题是如何解决的，更在于从中发现通用规律，形成自己的经验体系。
 - [归纳与泛化]: 当你成功解决了一个复杂问题，或在回忆时发现多个相似的历史事件时，请尝试跳出当前的具体细节，思考其背后的通用逻辑或模式。
-- [提炼理论]: 将你的思考总结为通用的"客观规律"、"最佳实践"或"行动指南"。你可以使用 \`[经验总结]\`、\`[通用理论]\` 等标签来保存它们。这些理论记忆应当脱离单次具体任务的局限，具备在未来相似场景下的普适性；未来可通过 \`extend_memory\` 配合标签过滤轻松调取。
+- [提炼理论]: 将你的思考总结为通用的"客观规律"、"最佳实践"或"行动指南"，并为它们留下自然、可联想的线索。这些理论记忆应当脱离单次具体任务的局限，具备在未来相似场景下的普适性；未来可通过 \`extend_memory\` 沿内容或线索重新想起。
 - [记忆折叠]: 当你总结出高阶理论后，如果底层的具体案例记忆已不再必要，请主动降低它们的评分或将其从当前状态移除；历史提交仍会保留，以保持当前记忆状态的纯粹与高效。`
 
-let 关键词与标签段 = `**关键词与标签**:
-- 关键词 (Keywords): 用于**构建记忆网络和图谱索引**。请提取精准、客观、具象的名词或概念。系统会根据关键词，在不同记忆间自动拉起关联线，使你的潜意识知识网络相互编织。如果关键词太泛（如"总结"、"猜想"），会导致图谱严重污染。
-- 标签 (Tags): 用于**元数据标记、分类和状态描述**。它们不参与图谱关联。你可以使用标签来表达**任何你认为有用的附加信息**（例如: \`临时猜想\`、\`已验证事实\`、\`高优先级任务\`，或者诸如 \`置信度:80%\` 的状态信息）。请发挥创造力，自由发明新标签。你的标签打得越丰富、越准确，未来的你在利用 \`extend_memory\` 的「标签过滤」进行定向检索和分类时就会越聪明。
-- 展示格式: 在系统为你展示的记忆列表中，它们将呈现为这样的格式: \`-[ID] [标签1][标签2] 记忆的具体内容 (关键词: 词A, 词B)\`。
-- 动态演进: 你的认知是不断提升的！当你获得了新的信息或验证了某些猜想后，**系统鼓励你主动调用工具去修改标签或关键词**（例如把 \`临时猜想\` 修改为 \`已验证事实\`，或者追加更精准的关键词）。这是你完成认知升级的关键闭环。
+let 线索段 = `**联想线索**:
+- 线索是未来可能让你重新想起这条记忆的自然语言片段，可以是主题、状态、经验概括或任何有意义的关联。无需人为区分关键词和标签。
+- 线索应当具体、自然且有辨识度。系统会结合记忆内容、线索及其上下文向量进行召回，并动态降低过于常见的线索权重。
+- 展示格式: 在系统为你展示的记忆列表中，它们将呈现为这样的格式: \`-[ID] 记忆的具体内容 (线索: 线索A, 线索B)\`。
+- 动态演进: 当你获得新信息或验证某些猜想后，可以主动追加、移除或覆盖线索，让未来的联想路径随认知一起变化。
 - 评分 (0-100): 代表记忆的**重要程度**（资源调度优先级），分数越低越容易被遗忘。（允许小数）`
 
 let 工具管理总结句 = `你可以调用提供的专用工具来精细化管理这一切。`
@@ -53,7 +53,7 @@ let 维护管理前缀 = '- **维护管理**: 使用 '
 
 let 沙盒项 = `- **安全沙盒**: 所有动态工具都在严格隔离的沙盒中运行，无法访问网络、文件系统或任何外部资源。创建和更新时，你必须提供测试参数进行冒烟测试，只有测试通过才会入库。`
 
-/** 管理三级记忆本身的工具(零级、一级、二级、关键词、标签); 不含执行代码、回忆延伸和动态工具 */
+/** 管理三级记忆本身的工具(零级、一级、二级、线索); 不含执行代码、回忆延伸和动态工具 */
 let 记忆管理工具名: readonly 记忆工具名类型[] = [
   记忆工具名.添加零级记忆,
   记忆工具名.修改零级记忆,
@@ -64,12 +64,9 @@ let 记忆管理工具名: readonly 记忆工具名类型[] = [
   记忆工具名.添加二级记忆,
   记忆工具名.降级记忆为二级,
   记忆工具名.捞起记忆到一级,
-  记忆工具名.追加记忆关键词,
-  记忆工具名.移除记忆关键词,
-  记忆工具名.覆盖记忆关键词,
-  记忆工具名.追加记忆标签,
-  记忆工具名.移除记忆标签,
-  记忆工具名.覆盖记忆标签,
+  记忆工具名.追加记忆线索,
+  记忆工具名.移除记忆线索,
+  记忆工具名.覆盖记忆线索,
 ]
 
 let 动态工具名: readonly 记忆工具名类型[] = [
@@ -89,7 +86,7 @@ let 需要变更消息的工具名: readonly 记忆工具名类型[] = [
 
 /**
  * 按启用的工具名生成默认记忆提示词。
- * - 没有任何记忆管理工具时, 不写认知进化、经验沉淀、关键词与标签这几段;
+ * - 没有任何记忆管理工具时, 不写认知进化、经验沉淀、线索这几段;
  * - 没有回忆延伸时, 不提「主动深挖」那句;
  * - 没有任何动态工具时, 不写动态工具系统; 动态工具的各条说明也按启用的工具取舍。
  */
@@ -101,7 +98,7 @@ export function 生成中文默认记忆提示词(启用的工具名: readonly s
   let 段落列表: string[] = [
     [开头, 已启用(记忆工具名.回忆延伸) ? 二级记忆介绍_前半 + 二级记忆介绍_后半 : 二级记忆介绍_前半].join('\n'),
   ]
-  if (有记忆管理工具) 段落列表.push(认知进化段, 经验沉淀段, 关键词与标签段, 工具管理总结句)
+  if (有记忆管理工具) 段落列表.push(认知进化段, 经验沉淀段, 线索段, 工具管理总结句)
   if (需要变更消息的工具名.some(已启用)) 段落列表.push(变更消息说明)
   if (有动态工具) {
     let 维护项列表 = [
@@ -132,13 +129,13 @@ You are an advanced autonomous agent equipped with a three-level memory system. 
 1. [Level 0 (Always attached)]: Your core rules and persona. Always in effect and unconditionally attached to every conversation context. Add or modify with extreme caution.
 2. [Level 1 (Always attached)]: Your working memory. Unconditionally attached to every conversation context. Promptly record key clues and guidelines for current tasks, assigning a floating-point score (0-100). When full, lower-scoring memories are automatically demoted.`
 
-  let 二级记忆介绍_前半_英文 = `3. [Level 2 (Partial recall + proactive deep dive)]: Your long-term subconscious memory with vast capacity. The system automatically recalls a small subset of relevant fragments and associative keywords based on your current conversation.`
+  let 二级记忆介绍_前半_英文 = `3. [Level 2 (Partial recall + proactive deep dive)]: Your long-term subconscious memory with vast capacity. The system automatically recalls a small subset of relevant fragments and flashing clues based on your current conversation.`
 
-  let 二级记忆介绍_后半_英文 = `If these fragments are insufficient, or you wish to explore along associative keywords, proactively use tools like \`${记忆工具名.回忆延伸}\` to delve deeper and uncover hidden associations.`
+  let 二级记忆介绍_后半_英文 = `If these fragments are insufficient, or you wish to explore along the clues, proactively use tools like \`${记忆工具名.回忆延伸}\` to delve deeper and uncover hidden associations.`
 
   let 认知进化段_英文 = `**Cognitive Evolution Paradigm (Hypothesis - Experiment - Reflection - Adjustment)**:
 When facing complex or uncertain problems, you are encouraged to step out of direct-answering comfort zone and adopt a scientific inquiry paradigm:
-- [Prior Theory & Heuristic Recall]: Before proposing hypotheses or taking action, proactively search your long-term memory (e.g. using \`${记忆工具名.回忆延伸}\` with strategy queries, or filtering by tags like \`[experience_summary]\` or \`[general_theory]\`) to activate previously learned rules, anti-patterns, and reasoning methods as guiding priors. If a heuristic is critically relevant to your current mission, you can call \`${记忆工具名.捞起记忆到一级}\` to promote it to active working memory.
+- [Prior Theory & Heuristic Recall]: Before proposing hypotheses or taking action, proactively search your long-term memory by passing natural-language content or several clues to \`${记忆工具名.回忆延伸}\`. This activates previously learned rules, anti-patterns, and reasoning methods as guiding priors. If a heuristic is critically relevant to your current mission, you can call \`${记忆工具名.捞起记忆到一级}\` to promote it to active working memory.
 - [Hypothesis]: If you are uncertain about the current situation, formulate bold hypotheses informed by prior theories.
 - [Experiment]: Prioritize tools like memory search and conversation retrieval to collect deep clues to verify hypotheses. Only write and execute code when verifying system state or performing actual calculation (NEVER execute code merely to output reasoning or return strings; that is useless).
 - [Reflection]: Respect objective experimental results. When tool calls yield no results, code errors occur, or reasoning fails, this is the most valuable information—decisively correct your initial model.
@@ -148,14 +145,14 @@ When facing complex or uncertain problems, you are encouraged to step out of dir
   let 经验沉淀段_英文 = `**Experience Distillation & Theory Construction (From Specific to Abstract)**:
 Your growth lies not just in remembering how each specific problem was solved, but in discovering general principles from them and forming your own body of experience.
 - [Induction & Generalization]: When you successfully solve a complex problem, or discover multiple similar past events during recall, look beyond specific details and think about the general logic or pattern behind them.
-- [Distill Theory]: Summarize your thoughts into general "objective principles", "best practices", or "action guidelines". Use tags like \`[experience_summary]\` or \`[general_theory]\` to save them. These theoretical memories should transcend the limits of a single task and have broad applicability in future similar scenarios; you can easily recall them later using \`${记忆工具名.回忆延伸}\` with tag filtering.
+- [Distill Theory]: Summarize your thoughts into general "objective principles", "best practices", or "action guidelines", and leave natural associative clues. These theoretical memories should transcend the limits of a single task and remain broadly applicable; you can recall them later through either content or clues with \`${记忆工具名.回忆延伸}\`.
 - [Memory Folding]: Once high-level theories are formed, if low-level concrete case memories are no longer necessary, proactively lower their scores or remove them from the current state; historical commits remain preserved. This keeps the current memory state focused and efficient.`
 
-  let 关键词与标签段_英文 = `**Keywords & Tags**:
-- Keywords: Used to **build the memory network and graph index**. Extract accurate, objective, concrete nouns or concepts. The system automatically links memories based on keywords, weaving your subconscious knowledge network. Overly broad keywords (e.g., "summary", "hypothesis") cause graph pollution.
-- Tags: Used for **metadata labeling, categorization, and state descriptions**. They do not participate in graph linking. Use tags to express **any useful auxiliary information** (e.g., \`tentative_hypothesis\`, \`verified_fact\`, \`high_priority\`, or state information like \`confidence:80%\`, \`experience_summary\`, \`general_theory\`). Be creative and invent new tags freely. The richer and more accurate your tags, the smarter you will be in future retrieval when filtering with \`tag_filter\`.
-- Display Format: In memory lists, items are formatted as: \`-[ID] [Tag1][Tag2] Memory content (Keywords: WordA, WordB)\`.
-- Dynamic Evolution: Your cognition continually evolves! When you obtain new information or verify hypotheses, you are encouraged to call tools to modify tags or keywords (e.g., changing \`tentative_hypothesis\` to \`verified_fact\`, or adding more precise keywords). This is crucial for cognitive upgrades.
+  let 线索段_英文 = `**Associative Clues**:
+- A clue is a natural-language fragment that may help you recall a memory later. It can represent a topic, state, summarized lesson, or any meaningful association. Do not split clues into artificial keyword/tag categories.
+- Prefer specific, natural, distinctive clues. Recall combines memory content, clues, and contextual vectors, while dynamically downweighting overly common clues.
+- Display Format: \`-[ID] Memory content (Clues: ClueA, ClueB)\`.
+- Dynamic Evolution: As your understanding changes, append, remove, or overwrite clues so future associative paths evolve with it.
 - Score (0-100): Represents **importance** (resource scheduling priority); lower scores are more likely to be downgraded or forgotten.`
 
   let 工具管理总结句_英文 = `You can invoke the provided dedicated tools to finely manage all of this.`
@@ -183,7 +180,7 @@ Your growth lies not just in remembering how each specific problem was solved, b
     ].join('\n'),
   ]
   if (有记忆管理工具) {
-    段落列表.push(认知进化段_英文, 经验沉淀段_英文, 关键词与标签段_英文, 工具管理总结句_英文)
+    段落列表.push(认知进化段_英文, 经验沉淀段_英文, 线索段_英文, 工具管理总结句_英文)
   }
   if (需要变更消息的工具名.some(已启用)) {
     段落列表.push(变更消息说明_英文)

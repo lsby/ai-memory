@@ -36,7 +36,7 @@ export type 模型语言包 = {
   当前零级记忆标题: () => string
   当前一级记忆标题: () => string
   无记忆: () => string
-  关键词名称: () => string
+  线索名称: () => string
   评分名称: () => string
   记录于名称: () => string
   刚刚: () => string
@@ -46,7 +46,7 @@ export type 模型语言包 = {
   月前: (数量: number) => string
   自动召回记忆标题: () => string
   自动召回记忆说明: () => string
-  自动召回相关概念: (关键词: string[]) => string
+  自动召回线索: (线索: string[]) => string
   当前记忆状态: (内容: string) => string
   自动召回动态工具标题: () => string
   自动召回动态工具说明: () => string
@@ -72,21 +72,19 @@ export type 模型语言包 = {
   深度推演异常退出: (原因: string) => string
   深度推演无结论: () => string
   深度推演结论: (置信度: number, 结论: string) => string
-  深度推演先验标记: () => { 关键词: string; 标签: string }
-  深度推演专家标记: () => { 关键词: string; 标签: string }
+  深度推演先验标记: () => { 线索: string[] }
+  深度推演专家标记: () => { 线索: string[] }
   记忆完整状态: (数据: {
     等级: '零级' | '一级' | '二级'
     id: string
     内容: string
-    关键词: string[]
-    标签: string[]
+    线索: string[]
     评分?: number | undefined
   }) => string
   记忆已移除: (等级: '零级' | '一级', id: string) => string
   记忆已降级: (id: string, 评分: number) => string
   记忆已捞起: (id: string, 评分: number) => string
-  记忆关键词状态: (id: string, 关键词: string[]) => string
-  记忆标签状态: (id: string, 标签: string[]) => string
+  记忆线索状态: (id: string, 线索: string[]) => string
   找不到记忆: (id: string) => string
   动态工具参数JSON错误: (字段名: string) => string
   动态工具代码校验失败: (错误: string) => string
@@ -112,22 +110,18 @@ let 中文工具描述: Record<string, () => string> = {
   deep_deduction: (): string =>
     '启动一个隔离的专家级子智能体，深度验证复杂猜想。可选择纯净模式，以决定是否继承历史上下文。',
   add_level_0_memory: (): string => '添加一条永久生效且不受容量限制的核心法则或人设。请极度谨慎使用。',
-  edit_level_0_memory: (): string => '修改已有核心法则的内容、关键词和标签。',
+  edit_level_0_memory: (): string => '修改已有核心法则的内容和线索。',
   remove_level_0_memory: (): string => '从当前记忆状态移除一条不再需要的核心法则。',
   add_level_1_memory: (): string => '把当前任务的重点放入有容量限制的工作记忆。容量满载时会自动降级最低分记忆。',
-  edit_level_1_memory: (): string => '修改已有工作记忆的内容、关键词、标签和评分。',
+  edit_level_1_memory: (): string => '修改已有工作记忆的内容、线索和评分。',
   remove_level_1_memory: (): string => '从当前工作记忆状态移除一条记忆，而不是将它降级。',
   add_level_2_memory: (): string => '将规律、经验或长期理论直接存入可自动召回的长期记忆。',
   demote_memory: (): string => '将一条工作记忆转移到长期记忆，并重新评估评分。',
   promote_memory: (): string => '将一条长期记忆捞回工作记忆，并重新评估重要度。',
-  extend_memory: (): string =>
-    '使用自然语言向量检索长期记忆，再按时间、关键词、标签或记忆内容正则表达式过滤结果，并沿记忆图谱寻找关联概念。过滤条件默认全部满足，也可选择任一满足。',
-  append_memory_keywords: (): string => '向指定记忆追加关键词，并据此重建记忆图谱关联。',
-  remove_memory_keywords: (): string => '从指定记忆移除关键词，并据此重建记忆图谱关联。',
-  overwrite_memory_keywords: (): string => '覆盖指定记忆的关键词列表，并据此重建记忆图谱关联。',
-  append_memory_tags: (): string => '向指定记忆追加只用于分类和描述元数据的标签。',
-  remove_memory_tags: (): string => '从指定记忆移除标签。',
-  overwrite_memory_tags: (): string => '覆盖指定记忆的标签列表。',
+  extend_memory: (): string => '根据想到的内容和线索进行联想，返回直接想起的长期记忆与新闪现的线索。',
+  append_memory_clues: (): string => '向指定记忆追加联想线索。',
+  remove_memory_clues: (): string => '从指定记忆移除联想线索。',
+  overwrite_memory_clues: (): string => '覆盖指定记忆的联想线索。',
   create_dynamic_tool: (): string =>
     '创建并持久化 JavaScript 动态工具。代码必须声明 `tool = { name, description, parametersSchema, returnSchema, execute }`；两个 Schema 都必须是 object 类型的标准 JSON Schema，`execute` 必须是 async function。沙盒不能访问网络、文件系统、import 或 require。还必须提供测试参数，只有冒烟测试通过后才会保存。',
   view_dynamic_tool_code: (): string => '读取已有动态工具的完整源代码，以便排查或修改。',
@@ -176,7 +170,7 @@ export let 中文模型语言包: 模型语言包 = {
   当前零级记忆标题: (): string => '### 当前零级记忆 (核心法则)',
   当前一级记忆标题: (): string => '### 当前一级记忆 (重点关注的工作上下文)',
   无记忆: (): string => '- 无',
-  关键词名称: (): string => '关键词',
+  线索名称: (): string => '线索',
   评分名称: (): string => '评分',
   记录于名称: (): string => '记录于',
   刚刚: (): string => '刚刚',
@@ -186,8 +180,8 @@ export let 中文模型语言包: 模型语言包 = {
   月前: (数量): string => `${String(数量)}个月前`,
   自动召回记忆标题: (): string => '### 本轮自动召回的二级记忆',
   自动召回记忆说明: (): string => '以下长期记忆可能与当前任务有关：',
-  自动召回相关概念: (关键词): string =>
-    `相关概念: [${关键词.join(', ')}]\n这些只是较弱的关联；在读取准确记忆前，不要把它们归属于当前对象。`,
+  自动召回线索: (线索): string =>
+    `闪现出的线索: [${线索.join(', ')}]\n这些只是联想线索；在读取准确记忆前，不要把它们归属于当前对象。`,
   当前记忆状态: (内容): string =>
     `### 本轮最新记忆状态\n以下是当前完整状态，如果与历史中更早的记忆状态冲突，以本条为准。\n\n${内容}`,
   自动召回动态工具标题: (): string => '### 自动召回的动态工具',
@@ -222,15 +216,14 @@ export let 中文模型语言包: 模型语言包 = {
   深度推演异常退出: (原因): string => `子智能体因 [${原因}] 非正常退出。`,
   深度推演无结论: (): string => '子智能体未能返回结论。',
   深度推演结论: (置信度, 结论): string => `置信度: ${String(置信度)}%\n结论内容:\n${结论}`,
-  深度推演先验标记: (): { 关键词: string; 标签: string } => ({ 关键词: '先验知识', 标签: '前置知识' }),
-  深度推演专家标记: (): { 关键词: string; 标签: string } => ({ 关键词: '角色设定', 标签: '系统设定' }),
+  深度推演先验标记: (): { 线索: string[] } => ({ 线索: ['先验知识', '前置知识'] }),
+  深度推演专家标记: (): { 线索: string[] } => ({ 线索: ['角色设定', '系统设定'] }),
   记忆完整状态: (数据): string =>
-    `[${数据.等级}记忆 ID: ${数据.id}]${数据.评分 === undefined ? '' : ` (评分: ${String(数据.评分)})`} 内容: ${数据.内容} (关键词: ${数据.关键词.join(', ')}, 标签: ${数据.标签.join(', ')})`,
+    `[${数据.等级}记忆 ID: ${数据.id}]${数据.评分 === undefined ? '' : ` (评分: ${String(数据.评分)})`} 内容: ${数据.内容} (线索: ${数据.线索.join(', ')})`,
   记忆已移除: (等级, id): string => `[${等级}记忆 ID: ${id}] 已从当前状态移除`,
   记忆已降级: (id, 评分): string => `[记忆 ID: ${id}] 已成功降级为二级长期记忆 (新评分: ${String(评分)})`,
   记忆已捞起: (id, 评分): string => `[记忆 ID: ${id}] 已成功捞回至一级工作记忆区 (新评分: ${String(评分)})`,
-  记忆关键词状态: (id, 关键词): string => `[记忆 ID: ${id}] 最新关键词列表: ${关键词.join(', ')}`,
-  记忆标签状态: (id, 标签): string => `[记忆 ID: ${id}] 最新标签列表: ${标签.join(', ')}`,
+  记忆线索状态: (id, 线索): string => `[记忆 ID: ${id}] 最新线索: ${线索.join(', ')}`,
   找不到记忆: (id): string => `找不到指定 ID (${id}) 的记忆。`,
   动态工具参数JSON错误: (字段): string =>
     `参数格式错误：${字段} 不是合法的 JSON 字符串，且自动修复失败。请检查格式后重试。`,
@@ -310,7 +303,7 @@ export let 英文模型语言包: 模型语言包 = {
   当前零级记忆标题: (): string => '### Current level 0 memories (core rules)',
   当前一级记忆标题: (): string => '### Current level 1 memories (working context)',
   无记忆: (): string => '- None',
-  关键词名称: (): string => 'keywords',
+  线索名称: (): string => 'clues',
   评分名称: (): string => 'score',
   记录于名称: (): string => 'recorded at ',
   刚刚: (): string => 'just now',
@@ -320,8 +313,8 @@ export let 英文模型语言包: 模型语言包 = {
   月前: (数量): string => `${String(数量)} months ago`,
   自动召回记忆标题: (): string => '### Automatically recalled long-term memories',
   自动召回记忆说明: (): string => 'The following long-term memories may be relevant:',
-  自动召回相关概念: (关键词): string =>
-    `Related concepts: [${关键词.join(', ')}]\nThese are weak associations. Do not attribute them to the current subject without reading the exact memory.`,
+  自动召回线索: (线索): string =>
+    `Flashed clues: [${线索.join(', ')}]\nThese are associative clues. Do not attribute them to the current subject without reading the exact memory.`,
   当前记忆状态: (内容): string =>
     `### Current memory state\nThis is the complete current state. If it conflicts with an older memory-state message, use this one.\n\n${内容}`,
   自动召回动态工具标题: (): string => '### Automatically recalled dynamic tools',
@@ -340,7 +333,7 @@ export let 英文模型语言包: 模型语言包 = {
   博闻强记提示词: (): string =>
     '## Funes mode\nYou may use `search_conversation_messages` to search exact original messages from the current conversation and its compressed ancestor lineage, but never from unrelated conversations or sibling branches. Direct hits returned by `extend_memory` may include message IDs related to the creation of that memory; use the message-search tool to inspect the original text.',
   博闻强记消息搜索工具描述: (): string =>
-    'Search the current conversation lineage using a required natural-language vector query, then filter by conversation, message, memory origin, role, relative time, or a regex over message content. Filters use AND by default and may use OR. Five messages before and after each hit are included by default. The configured hit limit cannot be raised.',
+    'Search the current conversation lineage using a required natural-language vector query, then filter by conversation, message, memory origin, role, absolute time range, or a regex over message content. Filters use "and" by default and may use "or". Five messages before and after each hit are included by default. The configured hit limit cannot be raised.',
   博闻强记上游会话: (会话id): string =>
     `[Funes mode] The current conversation was compressed from upstream conversation ${会话id}.`,
   历史工具描述: (): string =>
@@ -357,16 +350,15 @@ export let 英文模型语言包: 模型语言包 = {
   深度推演异常退出: (原因): string => `The child agent exited abnormally because of: ${原因}.`,
   深度推演无结论: (): string => 'The child agent did not return a conclusion.',
   深度推演结论: (置信度, 结论): string => `Confidence: ${String(置信度)}%\nConclusion:\n${结论}`,
-  深度推演先验标记: (): { 关键词: string; 标签: string } => ({ 关键词: 'prior knowledge', 标签: 'prior knowledge' }),
-  深度推演专家标记: (): { 关键词: string; 标签: string } => ({ 关键词: 'expert role', 标签: 'system role' }),
+  深度推演先验标记: (): { 线索: string[] } => ({ 线索: ['prior knowledge'] }),
+  深度推演专家标记: (): { 线索: string[] } => ({ 线索: ['expert role', 'system role'] }),
   记忆完整状态: (数据): string =>
-    `[${数据.等级 === '零级' ? 'Level 0' : 数据.等级 === '一级' ? 'Level 1' : 'Level 2'} memory ID: ${数据.id}]${数据.评分 === undefined ? '' : ` (score: ${String(数据.评分)})`} content: ${数据.内容} (keywords: ${数据.关键词.join(', ')}, tags: ${数据.标签.join(', ')})`,
+    `[${数据.等级 === '零级' ? 'Level 0' : 数据.等级 === '一级' ? 'Level 1' : 'Level 2'} memory ID: ${数据.id}]${数据.评分 === undefined ? '' : ` (score: ${String(数据.评分)})`} content: ${数据.内容} (clues: ${数据.线索.join(', ')})`,
   记忆已移除: (等级, id): string =>
     `[${等级 === '零级' ? 'Level 0' : 'Level 1'} memory ID: ${id}] removed from the current state`,
   记忆已降级: (id, 评分): string => `[Memory ID: ${id}] moved to level 2 long-term memory (new score: ${String(评分)})`,
   记忆已捞起: (id, 评分): string => `[Memory ID: ${id}] moved to level 1 working memory (new score: ${String(评分)})`,
-  记忆关键词状态: (id, 关键词): string => `[Memory ID: ${id}] current keywords: ${关键词.join(', ')}`,
-  记忆标签状态: (id, 标签): string => `[Memory ID: ${id}] current tags: ${标签.join(', ')}`,
+  记忆线索状态: (id, 线索): string => `[Memory ID: ${id}] current clues: ${线索.join(', ')}`,
   找不到记忆: (id): string => `Memory ID ${id} was not found.`,
   动态工具参数JSON错误: (字段): string => `${字段} is not valid JSON and could not be repaired. Fix it and try again.`,
   动态工具代码校验失败: (错误): string => `Code validation failed: ${错误}`,

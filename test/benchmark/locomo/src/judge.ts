@@ -149,7 +149,7 @@ export class LocomoJudge {
       console.warn(`[Judge] LLM error for question ${String(qaResult.questionIndex)}: ${msg}`)
     }
 
-    // 备用语义/关键词匹配兜底
+    // 备用语义/线索匹配兜底
     let normPred = cleanPred.toLowerCase().trim()
     let normGold = qaResult.goldAnswer.toLowerCase().trim()
 

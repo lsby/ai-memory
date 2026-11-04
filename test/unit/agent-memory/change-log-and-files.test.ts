@@ -8,8 +8,8 @@ import { 带记忆的智能体, 记忆等级, type 批量注入记忆项 } from 
 import { 使用共享PGlite } from '../../helpers/shared-pglite-fixture'
 import { 限时 } from '../../helpers/shared-storage-helper'
 
-function 记忆项(内容: string, 关键词: string[] = [内容], 等级: 记忆等级 = 记忆等级.一级): 批量注入记忆项 {
-  return { 内容, 关键词, 标签: [], 评分: 80, 等级, 创建时间: new Date('2026-01-01T00:00:00.000Z') }
+function 记忆项(内容: string, 线索: string[] = [内容], 等级: 记忆等级 = 记忆等级.一级): 批量注入记忆项 {
+  return { 内容, 线索, 评分: 80, 等级, 创建时间: new Date('2026-01-01T00:00:00.000Z') }
 }
 
 describe('变更记录', { timeout: 90000 }, () => {
@@ -78,12 +78,14 @@ describe('变更记录', { timeout: 90000 }, () => {
     let pglite = new PGlite({ extensions: { vector } })
     try {
       let 实例 = 创建实例({ 存储: { 模式: '外部', pglite } })
-      let 记忆 = await 实例.添加记忆(记忆项('受提交保护', ['共同关键词']))
-      await 实例.添加记忆(记忆项('关联也受保护', ['共同关键词']))
+      let 记忆 = await 实例.添加记忆(记忆项('受提交保护', ['共同线索']))
+      await 实例.添加记忆(记忆项('关联也受保护', ['共同线索']))
       await expect(pglite.query(`UPDATE 当前记忆表 SET 内容 = '绕过提交' WHERE id = $1`, [记忆.id])).rejects.toThrow(
         '只能在活动记忆提交中修改',
       )
-      await expect(pglite.query(`UPDATE 当前记忆关联表 SET 关联度 = 999`)).rejects.toThrow('只能在活动记忆提交中修改')
+      await expect(pglite.query(`UPDATE 当前记忆线索关联表 SET 向量维度 = 999`)).rejects.toThrow(
+        '只能在活动记忆提交中修改',
+      )
       await expect(
         pglite.query(
           `INSERT INTO 当前动态工具表 (id, 名称, 描述, 代码, 创建时间) VALUES ('bypass', 'bypass', '', '', now())`,

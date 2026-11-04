@@ -1,5 +1,4 @@
-import { PGlite, type PGliteOptions } from '@electric-sql/pglite'
-import { vector } from '@electric-sql/pglite-pgvector'
+import type { PGlite } from '@electric-sql/pglite'
 import { Kysely } from 'kysely'
 import type OpenAI from 'openai'
 import { z } from 'zod'
@@ -29,15 +28,17 @@ import { 准备博闻强记选项 } from './operations/funes-mode'
 import {
   更新记忆 as 外部更新记忆,
   查询动态工具 as 外部查询动态工具,
+  查询线索 as 外部查询线索,
   查询记忆 as 外部查询记忆,
-  查询记忆关联 as 外部查询记忆关联,
   查询记忆提交 as 外部查询记忆提交,
+  查询记忆线索关联 as 外部查询记忆线索关联,
 } from './operations/management'
 import { 生成查询向量, 生成消息向量 } from './operations/message-vector'
 import { 定时任务入口 as 外部定时任务入口, 执行记忆重组 as 外部执行记忆重组 } from './operations/reorganization'
 import { 解决问题 as 外部解决问题 } from './operations/solve'
+import { 清理孤立线索, 生成记忆所需向量文本 } from './storage/clue-storage'
 import { 带互斥的PGlite方言, 默认schema } from './storage/connection'
-import { 清除共享初始化锁, 获取或创建PGlite, 获取或创建共享初始化锁, 销毁存储 } from './storage/memory-storage'
+import { 创建PGlite就绪, 清除共享初始化锁, 获取或创建共享初始化锁, 销毁存储 } from './storage/memory-storage'
 import {
   保存快照 as 外部保存快照,
   导入完整状态 as 外部导入完整状态,
@@ -53,9 +54,10 @@ import {
   type 公开交互日志,
   type 公开前缀快照,
   type 公开动态工具,
+  type 公开线索,
   type 公开记忆,
-  type 公开记忆关联,
   type 公开记忆提交,
+  type 公开记忆线索关联,
   type 内部带记忆的智能体配置,
   type 内部带记忆的解决问题选项,
   type 带事件组的对话选项,
@@ -91,18 +93,7 @@ export class 带记忆的智能体 extends 持久化会话智能体 {
       读取当前会话id: (): string | null => this.会话控制器().当前会话id(),
       执行记忆变更任务: this.执行记忆变更任务.bind(this),
     }
-    let pglite选项: PGliteOptions = { extensions: { vector } }
-    switch (配置.存储.模式) {
-      case '内存':
-        this.PGlite就绪 = Promise.resolve(new PGlite(pglite选项))
-        break
-      case '文件':
-        this.PGlite就绪 = 获取或创建PGlite({ ...pglite选项, dataDir: 配置.存储.路径 })
-        break
-      case '外部':
-        this.PGlite就绪 = Promise.resolve(配置.存储.pglite)
-        break
-    }
+    this.PGlite就绪 = 创建PGlite就绪(配置.存储)
     // 打开失败（如目录被占用）时错误在 初始化() 里抛出；这里先挂一个空处理，避免实例没被使用时出现未处理的拒绝
     this.PGlite就绪.catch((): void => {})
     this.数据库查询器 = new Kysely<记忆数据库>({
@@ -205,7 +196,7 @@ export class 带记忆的智能体 extends 持久化会话智能体 {
     let 已校验记忆项列表 = 批量注入记忆项Schema.array().parse(记忆项列表)
     let 缓存 = await 外部创建向量缓存(
       this.配置,
-      已校验记忆项列表.map((项) => 项.内容),
+      已校验记忆项列表.flatMap((项) => 生成记忆所需向量文本(项.内容, 项.线索)),
       回调,
     )
     await this.执行记忆变更任务(
@@ -226,7 +217,7 @@ export class 带记忆的智能体 extends 持久化会话智能体 {
     事件组id?: string,
   ): Promise<公开记忆> {
     let 已校验记忆项 = 批量注入记忆项Schema.parse(记忆项)
-    let 缓存 = await 外部创建向量缓存(this.配置, [已校验记忆项.内容], 回调)
+    let 缓存 = await 外部创建向量缓存(this.配置, 生成记忆所需向量文本(已校验记忆项.内容, 已校验记忆项.线索), 回调)
     let id = await this.执行记忆变更任务(
       '添加记忆',
       async (trx): Promise<string> => {
@@ -258,11 +249,9 @@ export class 带记忆的智能体 extends 持久化会话智能体 {
     return await this.执行无向量记忆变更任务(
       '从当前状态移除记忆',
       async (trx): Promise<boolean> => {
-        await trx
-          .deleteFrom('当前记忆关联表')
-          .where((eb) => eb.or([eb('起点id', '=', 已校验id), eb('终点id', '=', 已校验id)]))
-          .execute()
+        await trx.deleteFrom('当前记忆线索关联表').where('记忆id', '=', 已校验id).execute()
         let 结果 = await trx.deleteFrom('当前记忆表').where('id', '=', 已校验id).executeTakeFirst()
+        await 清理孤立线索(trx)
         return Number(结果.numDeletedRows) > 0
       },
       事件组id,
@@ -276,7 +265,10 @@ export class 带记忆的智能体 extends 持久化会话智能体 {
     事件组id?: string,
   ): Promise<公开记忆 | null> {
     let 已校验id = z.string().trim().min(1).parse(id)
-    let 缓存 = await 外部创建向量缓存(this.配置, typeof 选项.内容 === 'string' ? [选项.内容.trim()] : [], 回调)
+    let 原记忆 = await this.查找记忆(已校验id)
+    let 新内容 = 选项.内容?.trim() ?? 原记忆?.内容
+    let 新线索 = 选项.线索 ?? 原记忆?.线索 ?? []
+    let 缓存 = await 外部创建向量缓存(this.配置, 新内容 === undefined ? [] : 生成记忆所需向量文本(新内容, 新线索), 回调)
     let 是否存在 = await this.执行记忆变更任务(
       '更新记忆',
       async (trx) => await 外部更新记忆(外部构建操作上下文(this.上下文依赖, trx, 回调, 缓存), 已校验id, 选项),
@@ -287,9 +279,14 @@ export class 带记忆的智能体 extends 持久化会话智能体 {
     return 是否存在 ? await this.查找记忆(已校验id) : null
   }
 
-  public async 查询记忆关联(id?: string): Promise<公开记忆关联[]> {
+  public async 查询线索(): Promise<公开线索[]> {
     await this.确保已初始化()
-    return await 外部查询记忆关联(this.数据库查询器, id)
+    return await 外部查询线索(this.数据库查询器)
+  }
+
+  public async 查询记忆线索关联(记忆id?: string): Promise<公开记忆线索关联[]> {
+    await this.确保已初始化()
+    return await 外部查询记忆线索关联(this.数据库查询器, 记忆id)
   }
 
   public async 查询动态工具(): Promise<公开动态工具[]> {
@@ -375,7 +372,7 @@ export class 带记忆的智能体 extends 持久化会话智能体 {
     openai客户端: OpenAI
     模型名称: string
     当前时间?: Date
-    种子关键词?: string[]
+    种子线索?: string[]
     回调?: (事件: 智能体事件) => Promise<void>
     事件组id?: string
     是否支持函数调用?: boolean | undefined

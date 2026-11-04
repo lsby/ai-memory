@@ -9,13 +9,13 @@ export async function 初始化不可变约束(数据库查询器: Kysely<记忆
   let 执行 = async (语句: string): Promise<void> => {
     await sql.raw(语句).execute(数据库查询器)
   }
-  await 执行(`ALTER TABLE ${名('当前记忆关联表')} DROP CONSTRAINT IF EXISTS 当前记忆关联表_起点id_fkey;`)
-  await 执行(`ALTER TABLE ${名('当前记忆关联表')} DROP CONSTRAINT IF EXISTS 当前记忆关联表_终点id_fkey;`)
+  await 执行(`ALTER TABLE ${名('当前记忆线索关联表')} DROP CONSTRAINT IF EXISTS 当前记忆线索关联表_记忆id_fkey;`)
+  await 执行(`ALTER TABLE ${名('当前记忆线索关联表')} DROP CONSTRAINT IF EXISTS 当前记忆线索关联表_线索id_fkey;`)
   await 执行(
-    `ALTER TABLE ${名('当前记忆关联表')} ADD CONSTRAINT 当前记忆关联表_起点id_fkey FOREIGN KEY (起点id) REFERENCES ${名('当前记忆表')}(id) ON DELETE RESTRICT;`,
+    `ALTER TABLE ${名('当前记忆线索关联表')} ADD CONSTRAINT 当前记忆线索关联表_记忆id_fkey FOREIGN KEY (记忆id) REFERENCES ${名('当前记忆表')}(id) ON DELETE RESTRICT;`,
   )
   await 执行(
-    `ALTER TABLE ${名('当前记忆关联表')} ADD CONSTRAINT 当前记忆关联表_终点id_fkey FOREIGN KEY (终点id) REFERENCES ${名('当前记忆表')}(id) ON DELETE RESTRICT;`,
+    `ALTER TABLE ${名('当前记忆线索关联表')} ADD CONSTRAINT 当前记忆线索关联表_线索id_fkey FOREIGN KEY (线索id) REFERENCES ${名('当前线索表')}(id) ON DELETE RESTRICT;`,
   )
   await 执行(`ALTER TABLE ${名('记忆行变更表')} DROP CONSTRAINT IF EXISTS 记忆行变更表_记忆提交id_fkey;`)
   await 执行(
@@ -52,10 +52,11 @@ export async function 初始化不可变约束(数据库查询器: Kysely<记忆
     ALTER TABLE ${名('记忆行变更表')} ADD CONSTRAINT 记忆行变更表_主键形状_check CHECK (
       CASE 目标表
         WHEN 'memory' THEN 主键 ? 'id' AND 主键 - 'id' = '{}'::jsonb AND jsonb_typeof(主键->'id') = 'string'
+        WHEN 'clue' THEN 主键 ? 'id' AND 主键 - 'id' = '{}'::jsonb AND jsonb_typeof(主键->'id') = 'string'
         WHEN 'dynamic_tool' THEN 主键 ? 'id' AND 主键 - 'id' = '{}'::jsonb AND jsonb_typeof(主键->'id') = 'string'
-        WHEN 'memory_relation' THEN 主键 ? '起点id' AND 主键 ? '终点id'
-          AND 主键 - '起点id' - '终点id' = '{}'::jsonb
-          AND jsonb_typeof(主键->'起点id') = 'string' AND jsonb_typeof(主键->'终点id') = 'string'
+        WHEN 'memory_clue_relation' THEN 主键 ? '记忆id' AND 主键 ? '线索id'
+          AND 主键 - '记忆id' - '线索id' = '{}'::jsonb
+          AND jsonb_typeof(主键->'记忆id') = 'string' AND jsonb_typeof(主键->'线索id') = 'string'
         ELSE FALSE
       END
     );
@@ -66,8 +67,10 @@ export async function 初始化不可变约束(数据库查询器: Kysely<记忆
       行数据 IS NULL OR CASE 目标表
         WHEN 'memory' THEN
           行数据->>'id' = 主键->>'id'
-        WHEN 'memory_relation' THEN
-          行数据->>'起点id' = 主键->>'起点id' AND 行数据->>'终点id' = 主键->>'终点id'
+        WHEN 'clue' THEN
+          行数据->>'id' = 主键->>'id'
+        WHEN 'memory_clue_relation' THEN
+          行数据->>'记忆id' = 主键->>'记忆id' AND 行数据->>'线索id' = 主键->>'线索id'
         WHEN 'dynamic_tool' THEN
           行数据->>'id' = 主键->>'id'
         ELSE FALSE

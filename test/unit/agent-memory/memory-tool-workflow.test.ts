@@ -34,8 +34,7 @@ describe('记忆工具工作流', () => {
             名称: 'add_level_1_memory',
             参数片段: JSON.stringify({
               内容: '模型写入的记忆',
-              关键词: ['模型', '写入'],
-              标签: ['自动'],
+              线索: ['模型', '写入', '自动'],
               评分: 88,
               消息: '这条信息会影响后续回答，值得长期记忆',
             }),
@@ -60,8 +59,7 @@ describe('记忆工具工作流', () => {
     expect(结果.结果).toEqual({ 完成: true })
     expect(记忆).toMatchObject({
       内容: '模型写入的记忆',
-      关键词: ['模型', '写入'],
-      标签: ['自动'],
+      线索: ['模型', '写入', '自动'],
       等级: 记忆等级.一级,
       评分: 88,
     })
@@ -77,7 +75,7 @@ describe('记忆工具工作流', () => {
           {
             id: 'missing_message',
             名称: 'add_level_1_memory',
-            参数片段: JSON.stringify({ 内容: '不应写入', 关键词: ['无消息'], 标签: [], 评分: 88 }),
+            参数片段: JSON.stringify({ 内容: '不应写入', 线索: ['无消息'], 评分: 88 }),
           },
         ],
         已中断: false,
@@ -98,13 +96,12 @@ describe('记忆工具工作流', () => {
     expect(await 智能体实例.查询记忆提交()).toEqual([])
   })
 
-  it('在一次模型响应中顺序更新关键词和标签', async (): Promise<void> => {
+  it('在一次模型响应中顺序追加并覆盖线索', async (): Promise<void> => {
     智能体实例 = 夹具.新建智能体({ 向量模型: { 类型: '无' }, 二级记忆遗忘分数阈值: 0 })
     await 智能体实例.批量注入记忆([
       {
         内容: '待更新记忆',
-        关键词: ['旧关键词'],
-        标签: ['旧标签'],
+        线索: ['旧线索'],
         评分: 80,
         等级: 记忆等级.一级,
         创建时间: new Date('2026-01-01T00:00:00.000Z'),
@@ -133,14 +130,14 @@ describe('记忆工具工作流', () => {
         完整文本: '',
         工具调用列表: [
           {
-            id: 'append_keyword',
-            名称: 'append_memory_keywords',
-            参数片段: JSON.stringify({ id: 记忆.id, 关键词列表: ['新关键词'], 消息: '补充便于检索的新关键词' }),
+            id: 'append_clue',
+            名称: 'append_memory_clues',
+            参数片段: JSON.stringify({ id: 记忆.id, 线索: ['临时线索'], 消息: '补充便于联想的新线索' }),
           },
           {
-            id: 'overwrite_tag',
-            名称: 'overwrite_memory_tags',
-            参数片段: JSON.stringify({ id: 记忆.id, 标签列表: ['新标签'], 消息: '重新归类这条记忆' }),
+            id: 'overwrite_clue',
+            名称: 'overwrite_memory_clues',
+            参数片段: JSON.stringify({ id: 记忆.id, 线索: ['最终线索'], 消息: '重塑这条记忆的联想路径' }),
           },
         ],
         已中断: false,
@@ -148,7 +145,7 @@ describe('记忆工具工作流', () => {
       .mockResolvedValueOnce({ 完整文本: '{"完成":true}', 工具调用列表: [], 已中断: false })
 
     await 智能体实例.对话({
-      命令: '更新记忆元数据',
+      命令: '更新记忆线索',
       预期结果Schema: z.object({ 完成: z.boolean() }),
       预期结果描述: '操作是否完成',
       回调: async (): Promise<void> => {},
@@ -158,18 +155,18 @@ describe('记忆工具工作流', () => {
     })
 
     let 已更新记忆 = await 智能体实例.查找记忆(记忆.id)
-    expect(已更新记忆).toMatchObject({ 关键词: ['旧关键词', '新关键词'], 标签: ['新标签'] })
+    expect(已更新记忆).toMatchObject({ 线索: ['最终线索'] })
     let 当前会话 = await 智能体实例.读取当前会话()
     let 本轮用户消息 = (await 智能体实例.读取会话消息(当前会话.id)).find(
-      (消息) => 消息.消息.role === 'user' && 消息.消息.content === '更新记忆元数据',
+      (消息) => 消息.消息.role === 'user' && 消息.消息.content === '更新记忆线索',
     )
     if (本轮用户消息 === undefined) throw new Error('未找到工具调用前持久化的本轮用户消息')
     expect(本轮用户消息.父消息id).toBe(基线上下文消息id)
 
     let 提交列表 = await 智能体实例.查询记忆提交()
-    let 追加关键词提交 = 提交列表.find((提交) => 提交.提交说明 === '补充便于检索的新关键词')
-    let 覆盖标签提交 = 提交列表.find((提交) => 提交.提交说明 === '重新归类这条记忆')
-    if (追加关键词提交 === undefined || 覆盖标签提交 === undefined) throw new Error('未找到模型工具产生的记忆提交')
+    let 追加线索提交 = 提交列表.find((提交) => 提交.提交说明 === '补充便于联想的新线索')
+    let 覆盖线索提交 = 提交列表.find((提交) => 提交.提交说明 === '重塑这条记忆的联想路径')
+    if (追加线索提交 === undefined || 覆盖线索提交 === undefined) throw new Error('未找到模型工具产生的记忆提交')
     let 工具日志 = (await 智能体实例.查询交互日志()).filter(
       (日志) => 日志.事件类型 === '工具调用开始' || 日志.事件类型 === '工具调用结果',
     )
@@ -181,15 +178,15 @@ describe('记忆工具工作流', () => {
           Array.isArray(日志.事件内容) === false &&
           日志.事件内容['id'] === 调用id,
       )
-    expect(查询调用日志('append_keyword').map((日志) => 日志.当时记忆提交id)).toEqual([基线提交id, 追加关键词提交.id])
-    expect(查询调用日志('overwrite_tag').map((日志) => 日志.当时记忆提交id)).toEqual([
-      追加关键词提交.id,
-      覆盖标签提交.id,
+    expect(查询调用日志('append_clue').map((日志) => 日志.当时记忆提交id)).toEqual([基线提交id, 追加线索提交.id])
+    expect(查询调用日志('overwrite_clue').map((日志) => 日志.当时记忆提交id)).toEqual([
+      追加线索提交.id,
+      覆盖线索提交.id,
     ])
-    expect(查询调用日志('append_keyword').map((日志) => 日志.上下文头消息id)).toEqual([
+    expect(查询调用日志('append_clue').map((日志) => 日志.上下文头消息id)).toEqual([本轮用户消息.id, 本轮用户消息.id])
+    expect(查询调用日志('overwrite_clue').map((日志) => 日志.上下文头消息id)).toEqual([
       本轮用户消息.id,
       本轮用户消息.id,
     ])
-    expect(查询调用日志('overwrite_tag').map((日志) => 日志.上下文头消息id)).toEqual([本轮用户消息.id, 本轮用户消息.id])
   })
 })

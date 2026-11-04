@@ -13,7 +13,7 @@ export async function 执行记忆重组(
     openai客户端: OpenAI
     模型名称: string
     当前时间?: Date
-    种子关键词?: string[]
+    种子线索?: string[]
     回调?: (事件: 智能体事件) => Promise<void>
     模型语言包: 模型语言包
     是否支持函数调用?: boolean | undefined
@@ -21,18 +21,18 @@ export async function 执行记忆重组(
   },
 ): Promise<void> {
   let 随机词: string[] = []
-  if (选项.种子关键词 !== undefined && 选项.种子关键词.length > 0) {
-    随机词 = 选项.种子关键词
+  if (选项.种子线索 !== undefined && 选项.种子线索.length > 0) {
+    随机词 = 选项.种子线索
   } else {
-    // 从当前记忆表中随机捞取几个关键词
-    let 结果 = await sql<{ 关键词: string }>`
-      SELECT unnest(关键词) as 关键词
-      FROM 当前记忆表
+    // 从线索表中随机捞取几个线索
+    let 结果 = await sql<{ 内容: string }>`
+      SELECT 内容
+      FROM 当前线索表
       ORDER BY RANDOM()
       LIMIT 15
     `.execute(数据库查询器)
 
-    let 所有词 = Array.from(new Set(结果.rows.map((r) => r.关键词)))
+    let 所有词 = Array.from(new Set(结果.rows.map((r) => r.内容)))
     随机词 = 所有词.sort(() => Math.random() - 0.5).slice(0, 3)
   }
   if (随机词.length === 0) {

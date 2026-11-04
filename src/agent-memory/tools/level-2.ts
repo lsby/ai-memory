@@ -2,8 +2,8 @@ import { Kysely, sql } from 'kysely'
 import { randomUUID } from 'node:crypto'
 import { z } from 'zod'
 import { 智能体事件, 智能体工具 } from '../../agent/types'
+import { 同步记忆线索 } from '../storage/clue-storage'
 import { 内部带记忆的智能体配置, 记忆数据库, 记忆等级 } from '../types'
-import { 刷新记忆关联网络, 应用受保护标签 } from './common'
 import { 增量排版 } from './layout'
 
 type 二级记忆上下文 = {
@@ -108,12 +108,7 @@ export function 添加二级记忆工具(上下文: 二级记忆上下文): 智�
     描述: '',
     参数Schema: z.object({
       内容: z.string().describe('记忆的内容'),
-      关键词: z.array(z.string()).describe('相关关键词提取，将依据这些关键词自动构建记忆关联图谱'),
-      标签: z
-        .array(z.string())
-        .optional()
-        .default([])
-        .describe('元数据标签，用于分类和描述（例如 "经验总结"、"可复用" 等）'),
+      线索: z.array(z.string()).describe('未来可能用于联想到这条记忆的自然语言线索'),
       评分: z.number().describe('0.0 到 100.0 的浮点数，代表这条长期经验的重要度和潜力。'),
     }),
     返回值Schema: z.object({
@@ -124,13 +119,11 @@ export function 添加二级记忆工具(上下文: 二级记忆上下文): 智�
     }),
     实现: async (参数: {
       内容: string
-      关键词: string[]
-      标签: string[]
+      线索: string[]
       评分: number
     }): Promise<{ 结果: '成功' | '失败'; id?: string; 错误信息?: string; 最新状态?: string }> => {
       try {
         let id = randomUUID()
-        let 最终标签 = 应用受保护标签([], 参数.标签, 配置.受保护标签)
         let 向量 = await 获取向量(参数.内容)
         let 插入结果 = await 数据库查询器
           .insertInto('当前记忆表')
@@ -139,8 +132,6 @@ export function 添加二级记忆工具(上下文: 二级记忆上下文): 智�
             等级: 记忆等级.二级,
             评分: 参数.评分,
             内容: 参数.内容,
-            关键词: 参数.关键词,
-            标签: 最终标签,
             向量: 向量 !== null ? JSON.stringify(向量) : null,
             向量维度: 向量 !== null ? 向量.length : null,
             创建时间: new Date(),
@@ -155,7 +146,7 @@ export function 添加二级记忆工具(上下文: 二级记忆上下文): 智�
             .where('id', '=', id)
             .execute()
         }
-        await 刷新记忆关联网络(数据库查询器, id, 参数.关键词, 配置, 回调)
+        await 同步记忆线索(上下文, id, 参数.内容, 参数.线索)
         await 增量排版(数据库查询器, id)
 
         if (回调 !== undefined) {
@@ -172,8 +163,7 @@ export function 添加二级记忆工具(上下文: 二级记忆上下文): 智�
             等级: '二级',
             id,
             内容: 参数.内容,
-            关键词: 参数.关键词,
-            标签: 最终标签,
+            线索: 参数.线索,
             评分: 参数.评分,
           }),
         }

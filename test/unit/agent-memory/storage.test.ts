@@ -32,8 +32,7 @@ describe('文件存储生命周期', () => {
     await Promise.all([第一实例.初始化(), 第二实例.初始化()])
     await 第一实例.添加记忆({
       内容: '共享路径记忆',
-      关键词: ['共享'],
-      标签: [],
+      线索: ['共享'],
       评分: 80,
       等级: 记忆等级.一级,
       创建时间: new Date('2026-01-01T00:00:00.000Z'),
@@ -76,7 +75,7 @@ describe('文件存储生命周期', () => {
     }
   })
 
-  it('初始化数据库会创建 v13 行变更模型、消息向量列、强外键指针和关键索引', async (): Promise<void> => {
+  it('初始化数据库会创建 v14 行变更模型、消息向量列、强外键指针和关键索引', async (): Promise<void> => {
     let pglite = new PGlite({ extensions: { vector } })
     let 数据库查询器 = new Kysely<记忆数据库>({ dialect: new PGliteDialect({ pglite }) })
     try {
@@ -89,7 +88,7 @@ describe('文件存储生命周期', () => {
       let 指针 = await 数据库查询器.selectFrom('记忆指针表').selectAll().where('id', '=', 1).executeTakeFirst()
       let 索引结果 = await sql<{ indexname: string }>`
         SELECT indexname FROM pg_indexes
-        WHERE tablename IN ('当前记忆表', '当前记忆关联表', '记忆行变更表', '记忆提交表', '日志表', '会话表')
+        WHERE tablename IN ('当前记忆表', '当前线索表', '当前记忆线索关联表', '记忆行变更表', '记忆提交表', '日志表', '会话表')
       `.execute(数据库查询器)
       let 索引名称 = 索引结果.rows.map((行) => 行.indexname)
       let 日志内容列 = await sql<{ data_type: string }>`
@@ -112,7 +111,7 @@ describe('文件存储生命周期', () => {
         WHERE table_schema = 'public' AND table_name IN (
           '系统版本表', '记忆指针表', '记忆元数据表',
           '记忆实体表', '记忆关联实体表', '动态工具实体表',
-          '当前记忆表', '当前记忆关联表', '当前动态工具表', '记忆提交表', '记忆行变更表', '日志表',
+          '当前记忆表', '当前线索表', '当前记忆线索关联表', '当前动态工具表', '记忆提交表', '记忆行变更表', '日志表',
           '_记忆提交上下文表', '记忆表', '记忆关联表', '动态工具表', '记忆变更表', '交互日志表', '_agent_session_commit'
         )
       `.execute(数据库查询器)
@@ -147,7 +146,8 @@ describe('文件存储生命周期', () => {
         [
           '当前动态工具表',
           '当前记忆表',
-          '当前记忆关联表',
+          '当前线索表',
+          '当前记忆线索关联表',
           '记忆提交表',
           '记忆行变更表',
           '记忆指针表',
@@ -183,9 +183,7 @@ describe('文件存储生命周期', () => {
       expect(索引名称).toEqual(
         expect.arrayContaining([
           '当前记忆表_等级_创建序号_idx',
-          '当前记忆表_关键词_idx',
-          '当前记忆表_标签_idx',
-          '当前记忆关联表_终点_idx',
+          '当前记忆线索关联表_线索_idx',
           '记忆行变更表_提交内序号_idx',
           '记忆提交表_父记忆提交_idx',
           '记忆提交表_唯一根_idx',

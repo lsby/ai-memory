@@ -15,8 +15,8 @@ let 流式请求AI模拟 = vi.hoisted(() => vi.fn())
 
 vi.mock('../../../src/agent/core/stream-request', () => ({ 流式请求AI: 流式请求AI模拟 }))
 
-function 记忆项(内容: string, 关键词: string[] = [内容], 等级: 记忆等级 = 记忆等级.二级): 批量注入记忆项 {
-  return { 内容, 关键词, 标签: [], 评分: 80, 等级, 创建时间: new Date('2026-01-01T00:00:00.000Z') }
+function 记忆项(内容: string, 线索: string[] = [内容], 等级: 记忆等级 = 记忆等级.二级): 批量注入记忆项 {
+  return { 内容, 线索, 评分: 80, 等级, 创建时间: new Date('2026-01-01T00:00:00.000Z') }
 }
 
 async function 统计行数(pglite: PGlite, schema: string, 表: string): Promise<number> {
@@ -59,20 +59,19 @@ describe('共用一个 PGlite 的多 schema 并发', { timeout: 90000 }, () => {
       let 命令消息 = 消息列表.findLast(
         (消息) => 消息.role === 'user' && typeof 消息.content === 'string' && 消息.content.startsWith('写入:'),
       )
-      let 标签 = typeof 命令消息?.content === 'string' ? 命令消息.content.slice('写入:'.length) : '未知'
+      let 线索 = typeof 命令消息?.content === 'string' ? 命令消息.content.slice('写入:'.length) : '未知'
       await 等待(20)
       return {
         完整文本: '',
         工具调用列表: [
           {
-            id: `call_${标签}`,
+            id: `call_${线索}`,
             名称: 'add_level_1_memory',
             参数片段: JSON.stringify({
-              内容: `对话写入-${标签}`,
-              关键词: [标签],
-              标签: [],
+              内容: `对话写入-${线索}`,
+              线索: [线索],
               评分: 70,
-              消息: `记录 ${标签} 对话中的稳定信息`,
+              消息: `记录 ${线索} 对话中的稳定信息`,
             }),
           },
         ],
@@ -285,8 +284,7 @@ describe('共用一个 PGlite 的多 schema 并发', { timeout: 90000 }, () => {
             名称: 'add_level_2_memory',
             参数片段: JSON.stringify({
               内容: '工具写入的二级记忆',
-              关键词: ['工具'],
-              标签: [],
+              线索: ['工具'],
               评分: 60,
               消息: '保存可供以后检索的长期信息',
             }),

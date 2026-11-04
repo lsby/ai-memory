@@ -28,8 +28,7 @@ describe('带记忆的智能体对话', () => {
     await 智能体实例.批量注入记忆([
       {
         内容: '待标记的记忆',
-        关键词: ['测试'],
-        标签: ['旧标签'],
+        线索: ['测试'],
         评分: 80,
         等级: 记忆等级.一级,
         创建时间: new Date('2026-01-01T00:00:00.000Z'),
@@ -43,9 +42,9 @@ describe('带记忆的智能体对话', () => {
         完整文本: '',
         工具调用列表: [
           {
-            id: 'append_tag',
-            名称: 'append_memory_tags',
-            参数片段: JSON.stringify({ id: 记忆.id, 标签列表: ['新标签'], 消息: '补充更准确的记忆分类' }),
+            id: 'append_clue',
+            名称: 'append_memory_clues',
+            参数片段: JSON.stringify({ id: 记忆.id, 线索: ['新线索'], 消息: '补充更准确的联想线索' }),
           },
         ],
         已中断: false,
@@ -53,7 +52,7 @@ describe('带记忆的智能体对话', () => {
       .mockResolvedValueOnce({ 完整文本: '{"答案":"已完成"}', 工具调用列表: [], 已中断: false })
 
     let 结果 = await 智能体实例.对话({
-      命令: '为记忆补充标签',
+      命令: '为记忆补充线索',
       预期结果Schema: z.object({ 答案: z.string() }),
       预期结果描述: '操作结果',
       回调: async (): Promise<void> => {},
@@ -65,7 +64,7 @@ describe('带记忆的智能体对话', () => {
 
     let 已更新记忆 = await 智能体实例.查找记忆(记忆.id)
     expect(结果.结果).toEqual({ 答案: '已完成' })
-    expect(已更新记忆?.标签).toEqual(['旧标签', '新标签'])
+    expect(已更新记忆?.线索).toEqual(['测试', '新线索'])
     expect(流式请求AI模拟).toHaveBeenCalledTimes(2)
     let 日志列表 = await 智能体实例.查询交互日志({ 事件组id: 'conversation-group' })
     let 日志类型 = 日志列表.map((日志) => 日志.事件类型)
@@ -87,7 +86,7 @@ describe('带记忆的智能体对话', () => {
         typeof 日志.事件内容 === 'object' &&
         日志.事件内容 !== null &&
         Array.isArray(日志.事件内容) === false &&
-        日志.事件内容['id'] === 'append_tag',
+        日志.事件内容['id'] === 'append_clue',
     )
     expect(记忆工具事件.every((日志) => 日志.关联消息id !== undefined)).toBe(true)
     let 工具消息id = 记忆工具事件[0]?.关联消息id

@@ -93,8 +93,7 @@ describe('博闻强记模式', () => {
     实例列表.push(实例)
     await 实例.添加记忆({
       内容: 'normal alpha',
-      关键词: ['normal'],
-      标签: [],
+      线索: ['normal'],
       评分: 80,
       等级: 记忆等级.二级,
       创建时间: new Date(),
@@ -113,7 +112,7 @@ describe('博闻强记模式', () => {
           {
             id: 'normal-extend',
             名称: 'extend_memory',
-            参数: { 查询内容: 'normal' },
+            参数: { 内容: ['normal'] },
           },
         ],
       },
@@ -128,9 +127,9 @@ describe('博闻强记模式', () => {
     expect(消息文本).not.toContain('博闻强记')
     expect(消息文本).not.toContain(上游会话.id)
     let 工具结果 = JSON.parse(读取工具消息(假.请求列表[1], 'normal-extend')) as {
-      搜索结果_完整记忆?: string
+      直接联想到的记忆?: unknown[]
     }
-    let 记忆列表 = z.array(z.record(z.unknown())).parse(JSON.parse(工具结果.搜索结果_完整记忆 ?? '[]'))
+    let 记忆列表 = z.array(z.record(z.unknown())).parse(工具结果.直接联想到的记忆 ?? [])
     expect(记忆列表).toHaveLength(1)
     expect(记忆列表[0]).not.toHaveProperty('相关消息')
   })
@@ -224,7 +223,7 @@ describe('博闻强记模式', () => {
     expect(文本).toContain(`[博闻强记] 当前会话由上游会话 ${上游会话.id} 压缩而来。`)
   })
 
-  it('extend_memory 的直接命中暂时只返回新增记忆的相关消息', async (): Promise<void> => {
+  it('extend_memory 返回直接联想到的记忆且不混入聊天记录搜索结果', async (): Promise<void> => {
     let 实例 = 新建()
     let 假 = 创建假客户端([
       {
@@ -232,7 +231,7 @@ describe('博闻强记模式', () => {
           {
             id: 'add-memory',
             名称: 'add_level_2_memory',
-            参数: { 内容: 'alpha 是稳定事实', 关键词: ['alpha'], 标签: [], 评分: 80, 消息: '记住 alpha 事实' },
+            参数: { 内容: 'alpha 是稳定事实', 线索: ['alpha'], 评分: 80, 消息: '记住 alpha 事实' },
           },
         ],
       },
@@ -241,24 +240,17 @@ describe('博闻强记模式', () => {
           {
             id: 'extend-memory',
             名称: 'extend_memory',
-            参数: { 查询内容: 'alpha' },
+            参数: { 内容: ['alpha'] },
           },
         ],
       },
       提交(1),
     ])
     await 实例.对话(对话选项(假, '请记住 alpha'))
-    let 工具结果 = JSON.parse(读取工具消息(假.请求列表[2], 'extend-memory')) as {
-      搜索结果_完整记忆?: string
-    }
-    let 记忆列表 = z
-      .array(
-        z.object({
-          相关消息: z.array(z.object({ 消息id: z.string(), 关系: z.literal('新增'), 记忆提交id: z.string() })),
-        }),
-      )
-      .parse(JSON.parse(工具结果.搜索结果_完整记忆 ?? '[]'))
-    expect(记忆列表[0]?.相关消息).toHaveLength(1)
+    let 工具结果 = z
+      .object({ 结果: z.literal('成功'), 直接联想到的记忆: z.array(z.object({ 内容: z.string() })) })
+      .parse(JSON.parse(读取工具消息(假.请求列表[2], 'extend-memory')))
+    expect(工具结果.直接联想到的记忆).toMatchObject([{ 内容: 'alpha 是稳定事实' }])
   })
 
   it('英文模型语言包下消息搜索工具暴露英文字段并支持英文参数及 null 容错', async (): Promise<void> => {
@@ -313,8 +305,7 @@ describe('博闻强记模式', () => {
             名称: 'add_level_2_memory',
             参数: {
               content: 'alpha is a stable fact',
-              keywords: ['alpha'],
-              tags: ['verified'],
+              clues: ['alpha', 'verified'],
               score: 80,
               commit_message: 'Remember the stable alpha fact.',
             },
@@ -326,7 +317,7 @@ describe('博闻强记模式', () => {
           {
             id: 'extend-english-memory',
             名称: 'extend_memory',
-            参数: { query: 'alpha' },
+            参数: { content: ['alpha'] },
           },
         ],
       },
@@ -340,23 +331,18 @@ describe('博闻强记模式', () => {
     let 工具结果文本 = 读取工具消息(假.请求列表[2], 'extend-english-memory')
     expect(工具结果文本).not.toMatch(/[\u3400-\u9fff]/u)
     let 工具结果 = z
-      .object({ status: z.literal('success'), memory_results: z.string() })
+      .object({
+        status: z.literal('success'),
+        recalled_memories: z.array(
+          z.object({
+            level: z.literal('level_2'),
+            content: z.literal('alpha is a stable fact'),
+            clues: z.array(z.string()),
+          }),
+        ),
+        flashing_clues: z.array(z.string()),
+      })
       .parse(JSON.parse(工具结果文本))
-    let 记忆列表 = z
-      .array(
-        z.object({
-          level: z.literal('level_2'),
-          content: z.literal('alpha is a stable fact'),
-          keywords: z.array(z.string()),
-          tags: z.array(z.string()),
-          relevance: z.string().startsWith('overall:'),
-          created_at: z.string(),
-          related_messages: z.array(
-            z.object({ message_id: z.string(), relation: z.literal('created'), memory_commit_id: z.string() }),
-          ),
-        }),
-      )
-      .parse(JSON.parse(工具结果.memory_results))
-    expect(记忆列表[0]?.related_messages).toHaveLength(1)
+    expect(工具结果.recalled_memories[0]?.clues).toEqual(['alpha', 'verified'])
   })
 })

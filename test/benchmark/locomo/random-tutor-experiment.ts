@@ -433,16 +433,16 @@ async function runRandomTutorExperiment(): Promise<void> {
     `\n--- [一级工作记忆区 (${String(level1Memories.length)} 条) | 二级长期记忆区 (${String(level2Memories.length)} 条)] ---`,
   )
   for (let m of level1Memories) {
-    let tagStr = m.标签.length > 0 ? ` [${m.标签.join('][')}]` : ''
-    console.log(`- [${m.id}] (评分:${String(m.评分)})${tagStr} ${m.内容.slice(0, 120)}...`)
+    let clueStr = m.线索.length > 0 ? ` [${m.线索.join('][')}]` : ''
+    console.log(`- [${m.id}] (评分:${String(m.评分)})${clueStr} ${m.内容.slice(0, 120)}...`)
   }
 
   let allTags = new Set<string>()
   for (let m of finalMemories) {
-    for (let t of m.标签) allTags.add(t)
+    for (let t of m.线索) allTags.add(t)
   }
-  console.log(`\n🏷️ 记忆网络中的所有标签 (${String(allTags.size)} 种):`)
-  console.log(allTags.size > 0 ? Array.from(allTags).join(', ') : '(无标签)')
+  console.log(`\n🏷️ 记忆网络中的所有线索 (${String(allTags.size)} 种):`)
+  console.log(allTags.size > 0 ? Array.from(allTags).join(', ') : '(无线索)')
 
   let reportPath = path.join(runDir, 'random-practice-report.json')
   fs.writeFileSync(
@@ -469,8 +469,7 @@ async function runRandomTutorExperiment(): Promise<void> {
           level: m.等级,
           content: m.内容,
           score: m.评分,
-          tags: m.标签,
-          keywords: m.关键词,
+          clues: m.线索,
           createdAt: m.创建时间,
         })),
       },

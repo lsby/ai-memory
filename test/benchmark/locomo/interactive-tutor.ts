@@ -295,8 +295,7 @@ async function runInteractiveTutor(): Promise<void> {
       '   - Parameters for `add_level_1_memory`:',
       '     * content: The generalized heuristic rule (NO specific test answers).',
       '     * score: 85 to 95.',
-      '     * keywords: 2 to 4 conceptual terms (e.g., ["search_strategy", "speaker_verification"] or ["date_reasoning", "relative_time"]).',
-      '     * tags: MUST include "经验总结" (or "experience_summary") and relevant category tags like "search_strategy", "speaker_attribution", "temporal_reasoning".',
+      '     * clues: Natural associative phrases covering the reusable idea, such as "experience summary", "search strategy", "speaker attribution", or "temporal reasoning".',
       '     * commit_message: Short reason (e.g., "Distill general search tactic from question feedback").',
       '   - Only after calling `add_level_1_memory` (or confirming this exact heuristic is already stored in memory), return your final reflection result.',
     ].join('\n')
@@ -344,8 +343,7 @@ async function runInteractiveTutor(): Promise<void> {
           等级: 记忆等级.一级,
           内容: heuristic,
           评分: 85,
-          关键词: ['heuristic', 'strategy', `category_${qa.category}`],
-          标签: ['经验总结', 'experience_summary', `cat_${qa.category}`],
+          线索: ['heuristic', 'strategy', `category_${qa.category}`],
           创建时间: new Date(),
         })
         memoryAddedInTurn = true
@@ -389,25 +387,25 @@ async function runInteractiveTutor(): Promise<void> {
 
   console.log(`\n--- [一级工作记忆区 (${String(level1Memories.length)} 条)] ---`)
   for (let m of level1Memories) {
-    let tagStr = m.标签.length > 0 ? ` [${m.标签.join('][')}]` : ''
-    let kwStr = m.关键词.length > 0 ? ` (关键词: ${m.关键词.join(', ')})` : ''
+    let tagStr = m.线索.length > 0 ? ` [${m.线索.join('][')}]` : ''
+    let kwStr = m.线索.length > 0 ? ` (线索: ${m.线索.join(', ')})` : ''
     console.log(`- [${m.id}] (评分:${String(m.评分)})${tagStr} ${m.内容}${kwStr}`)
   }
 
   console.log(`\n--- [二级长期记忆区 (${String(level2Memories.length)} 条)] ---`)
   for (let m of level2Memories) {
-    let tagStr = m.标签.length > 0 ? ` [${m.标签.join('][')}]` : ''
-    let kwStr = m.关键词.length > 0 ? ` (关键词: ${m.关键词.join(', ')})` : ''
+    let tagStr = m.线索.length > 0 ? ` [${m.线索.join('][')}]` : ''
+    let kwStr = m.线索.length > 0 ? ` (线索: ${m.线索.join(', ')})` : ''
     console.log(`- [${m.id}] (评分:${String(m.评分)})${tagStr} ${m.内容}${kwStr}`)
   }
 
-  // 标签聚类分析
+  // 线索聚类分析
   let allTags = new Set<string>()
   for (let m of finalMemories) {
-    for (let t of m.标签) allTags.add(t)
+    for (let t of m.线索) allTags.add(t)
   }
-  console.log(`\n🏷️ 记忆网络中的所有标签 (${String(allTags.size)} 种):`)
-  console.log(allTags.size > 0 ? Array.from(allTags).join(', ') : '(无标签)')
+  console.log(`\n🏷️ 记忆网络中的所有线索 (${String(allTags.size)} 种):`)
+  console.log(allTags.size > 0 ? Array.from(allTags).join(', ') : '(无线索)')
 
   // 保存评测与反思总结到 JSON
   let reportPath = path.join(runDir, 'tutoring-report.json')
@@ -430,8 +428,7 @@ async function runInteractiveTutor(): Promise<void> {
           level: m.等级,
           content: m.内容,
           score: m.评分,
-          tags: m.标签,
-          keywords: m.关键词,
+          clues: m.线索,
           createdAt: m.创建时间,
         })),
       },
