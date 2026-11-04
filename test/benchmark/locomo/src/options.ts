@@ -9,6 +9,8 @@ export interface CliOptions {
   note?: string | undefined
   fromDb?: string | undefined
   reorganizeRounds?: number | undefined
+  funesMode?: boolean | undefined
+  funesSearchLimit?: number | undefined
 }
 
 export function formatDuration(ms: number): string {
@@ -39,6 +41,9 @@ export function parseCliOptions(): CliOptions {
   let note = process.env['NOTE'] ?? process.env['RUN_NOTE'] ?? process.env['COMMENT']
   let fromDb = process.env['FROM_DB'] ?? process.env['SOURCE_DB']
   let reorganizeRounds = process.env['REORGANIZE'] !== undefined ? Number(process.env['REORGANIZE']) : undefined
+  let funesMode =
+    process.env['FUNES'] === 'true' || process.env['FUNES_MODE'] === 'true' || process.env['BO_WEN_QIANG_JI'] === 'true'
+  let funesSearchLimit = process.env['FUNES_LIMIT'] !== undefined ? Number(process.env['FUNES_LIMIT']) : undefined
 
   let args = process.argv.slice(2)
   for (let i = 0; i < args.length; i++) {
@@ -75,13 +80,20 @@ export function parseCliOptions(): CliOptions {
       }
     } else if (arg.startsWith('--reorganize-rounds=')) {
       reorganizeRounds = Number(arg.slice('--reorganize-rounds='.length).trim())
+    } else if (arg === '--funes' || arg === '--funes-mode' || arg === '--bowenqiangji') {
+      funesMode = true
+    } else if (arg.startsWith('--funes-limit=')) {
+      funesSearchLimit = Number(arg.slice('--funes-limit='.length).trim())
+    } else if (arg === '--funes-limit' && args[i + 1] !== undefined) {
+      funesSearchLimit = Number(args[i + 1]?.trim())
+      i++
     } else if (arg.startsWith('-') === false && arg.includes('=') === false && configName === undefined) {
       // 首个非选项裸参数视为配置名称，例如 `npx tsx index.ts deepseek`
       configName = arg.trim()
     }
   }
 
-  return { configName, note, fromDb, reorganizeRounds }
+  return { configName, note, fromDb, reorganizeRounds, funesMode, funesSearchLimit }
 }
 
 export function loadBenchmarkEnv(configName?: string): { loadedPath?: string; configName?: string } {

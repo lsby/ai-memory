@@ -75,6 +75,13 @@ export class LocomoJudge {
       '(3) a generated answer which you will score as CORRECT/WRONG.',
       '',
       'The point of the question is to ask about something one user should know about the other user based on their prior conversations. The gold answer will usually be a concise and short answer that includes the referenced topic. If the generated answer captures the essence of the gold answer, mark it CORRECT.',
+      '',
+      'EVALUATION CRITERIA & LENIENCY GUIDELINES:',
+      '- Temporal & Relative Equivalence: Accept equivalent date expressions. If the ground truth specifies a relative timeframe (e.g. "X years ago" or "last month") and the conversation timeline provides an explicit anchor year or date, an accurately calculated absolute date or year is considered equivalent and CORRECT (and vice versa).',
+      '- Calendar Arithmetic Tolerance: Do not penalize minor calculation discrepancies of 1-2 days if the reference week, month, and year are clearly correct.',
+      '- Leniency on Surrounding Context: The gold answer is often a very short fragment. If the generated answer includes the correct entity, fact, action, or date, do NOT mark it WRONG merely because it provides surrounding conversational context or minor elaboration, as long as it is not excessively verbose and does not directly contradict the ground truth.',
+      '- Adversarial & Unmentioned: If the gold answer indicates the topic was not mentioned, never happened, or has no record, and the generated answer accurately identifies that there is no record, it was not mentioned, or is unknown, mark it CORRECT.',
+      '- Rejection Threshold: Only mark WRONG if the core entity/fact is missing, incorrect, contradictory, or an outright hallucination.',
       ...(isAdversarialOrEmpty === true
         ? [
             '',

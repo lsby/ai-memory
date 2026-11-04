@@ -74,6 +74,8 @@ export interface LocomoBenchmarkSummary {
   note?: string | undefined
   fromDb?: string | undefined
   reorganizeRounds?: number | undefined
+  funesMode?: boolean | undefined
+  funesSearchLimit?: number | undefined
   totalQuestions: number
   correctCount: number
   accuracy: number

@@ -10,10 +10,23 @@ export interface PrintBenchmarkReportOptions {
   note?: string | undefined
   reorganizeRounds?: number | undefined
   reorganizeTimeMs?: number | undefined
+  funesMode?: boolean | undefined
+  funesSearchLimit?: number | undefined
 }
 
 export function printBenchmarkReport(options: PrintBenchmarkReportOptions): void {
-  let { summary, timing, auditStats, configName, sourceDbDir, note, reorganizeRounds, reorganizeTimeMs } = options
+  let {
+    summary,
+    timing,
+    auditStats,
+    configName,
+    sourceDbDir,
+    note,
+    reorganizeRounds,
+    reorganizeTimeMs,
+    funesMode,
+    funesSearchLimit,
+  } = options
 
   console.log('\n=====================================================')
   console.log('📊 LoCoMo 记忆评测成绩单')
@@ -26,6 +39,9 @@ export function printBenchmarkReport(options: PrintBenchmarkReportOptions): void
   }
   if (note !== undefined && note !== '') {
     console.log(`本次备注: ${note}`)
+  }
+  if (funesMode === true) {
+    console.log(`博闻强记模式: 开启 (消息检索上限: ${String(funesSearchLimit ?? 20)})`)
   }
   if (reorganizeRounds !== undefined && reorganizeRounds > 0) {
     console.log(`潜意识重组: 开启 (${String(reorganizeRounds)} 轮梦境重组)`)

@@ -4,17 +4,20 @@ import { 带记忆的智能体 } from '../../../../src/agent-memory/agent-memory
 import { 记忆等级 } from '../../../../src/agent-memory/types'
 import { 英文模型语言包 } from '../../../../src/agent/model-language'
 import type { 智能体事件, 模型审计汇总, 模型请求审计记录 } from '../../../../src/agent/types'
+import { dateCalculatorTool } from './date-calculator'
 import type { LocomoAuditStats, LocomoParsedSession, LocomoQA, LocomoQAResult } from './types'
 
 export interface LocomoRunnerOptions {
   baseURL: string
   apiKey: string
   modelName: string
-  firstLevelCapacity?: number
-  logEvents?: boolean
-  timezone?: string
-  useNativeToolCalls?: boolean
-  storageDir?: string
+  firstLevelCapacity?: number | undefined
+  logEvents?: boolean | undefined
+  timezone?: string | undefined
+  useNativeToolCalls?: boolean | undefined
+  storageDir?: string | undefined
+  funesMode?: boolean | undefined
+  funesSearchLimit?: number | undefined
 }
 
 export class LocomoRunner {
@@ -23,6 +26,8 @@ export class LocomoRunner {
   private modelName: string
   private logEvents: boolean
   private useNativeToolCalls: boolean
+  private funesMode: boolean
+  private funesSearchLimit: number
 
   private handleEvent = async (event: 智能体事件): Promise<void> => {
     if (this.logEvents === false) return
@@ -45,6 +50,8 @@ export class LocomoRunner {
     this.modelName = options.modelName
     this.logEvents = options.logEvents ?? false
     this.useNativeToolCalls = options.useNativeToolCalls ?? false
+    this.funesMode = options.funesMode ?? false
+    this.funesSearchLimit = options.funesSearchLimit ?? 20
 
     // 开放全套记忆存取与检索工具（排除动态代码编写工具）
     let 内存记忆工具筛选 = (工具名: string): boolean =>
@@ -65,11 +72,23 @@ export class LocomoRunner {
       向量模型: { 类型: '本地', 模型名称: 'Xenova/paraphrase-multilingual-MiniLM-L12-v2' },
       // 支持本地文件持久化存储（存本地数据库）
       ...(options.storageDir !== undefined ? { 存储: { 模式: '文件' as const, 路径: options.storageDir } } : {}),
+      ...(this.funesMode === true ? { 博闻强记模式: true, 博闻强记消息搜索数量: this.funesSearchLimit } : {}),
     })
+  }
+
+  private clearInMemoryHistory(): void {
+    ;(this.agent as unknown as { 对话历史: unknown[] }).对话历史 = []
   }
 
   public async init(): Promise<void> {
     await this.agent.初始化()
+    if (this.funesMode === true) {
+      let 会话列表 = await this.agent.查询会话列表()
+      if (会话列表.length === 0) {
+        await this.agent.创建会话({ 标题: 'LoCoMo Benchmark Sessions' })
+      }
+      this.clearInMemoryHistory()
+    }
   }
 
   /**
@@ -109,6 +128,39 @@ export class LocomoRunner {
         '- Do not aggressively filter or discard information; err on the side of preserving useful details.',
       ].join('\n')
 
+      if (this.funesMode === true) {
+        let currentConv = await this.agent.读取当前会话()
+        let parentMessageId = currentConv.当前消息id
+
+        let headerMsg = await this.agent.追加会话消息({
+          会话id: currentConv.id,
+          预期父消息id: parentMessageId,
+          消息: {
+            role: 'user',
+            content: `[Session ${String(i + 1)} Date/Time: ${session.dateTime}]`,
+          },
+        })
+        parentMessageId = headerMsg.id
+
+        for (let t of session.turns) {
+          let line = `${t.speaker}: ${t.text}`
+          if (typeof t.blip_caption === 'string' && t.blip_caption !== '') {
+            line += ` [Shared Image: ${t.blip_caption}]`
+          }
+          let turnMsg = await this.agent.追加会话消息({
+            会话id: currentConv.id,
+            预期父消息id: parentMessageId,
+            消息: {
+              role: 'user',
+              content: line,
+            },
+          })
+          parentMessageId = turnMsg.id
+        }
+
+        this.clearInMemoryHistory()
+      }
+
       await this.agent.私有反思({
         命令: sessionPrompt,
         预期结果Schema: z.object({
@@ -121,6 +173,7 @@ export class LocomoRunner {
         模型名称: this.modelName,
         温度: 0,
         是否支持函数调用: this.useNativeToolCalls,
+        临时追加工具列表: [dateCalculatorTool],
       })
     }
   }
@@ -153,23 +206,37 @@ export class LocomoRunner {
     onProgress?: (current: number, total: number) => void,
   ): Promise<LocomoQAResult[]> {
     let results: LocomoQAResult[] = []
+    this.clearInMemoryHistory()
 
     for (let i = 0; i < qaList.length; i++) {
       let qa = qaList[i]
       if (qa === undefined) continue
 
+      this.clearInMemoryHistory()
+
       if (onProgress !== undefined) {
         onProgress(i + 1, qaList.length)
       }
 
+      let funesGuidance =
+        this.funesMode === true
+          ? [
+              '- Active Dialogue Search: You have full access to original dialogue turns via `search_conversation_messages`. If your retrieved memories do not explicitly contain the specific detail, exact quote, name, or fact, DO NOT immediately guess or conclude "no record".',
+              '- Multi-Angle Search Strategy: If an initial search query returns no results or ambiguous matches, try alternative keyword variants, synonyms, root forms of words, or simpler noun/verb queries before concluding that something was unmentioned.',
+              '- Speaker Attribution Verification: In two-person dialogues, be attentive to speaker attribution. Ensure traits, events, and actions mentioned in conversation are attributed to the correct participant rather than confusing one with the other.',
+            ]
+          : []
+
       let queryPrompt = [
         `Question: ${qa.question}`,
         'Instructions:',
-        '- Retrieve and review all relevant memories concerning the people, events, and timeline asked about.',
-        '- Directness & Conciseness: State the factual answer directly and concisely. Provide the specific names, entities, or key terms requested without unnecessary introductory padding.',
-        '- Explicit Timelines: When answering questions about when something occurred or is scheduled, provide the explicit calendar date, month, or year.',
+        '- Review Memories & Gather Facts: Review all memories concerning the people, events, and timeline asked about. Actively use your available tools (`search_conversation_messages` and `date_calculator`) to verify details or discover original context before submitting the final answer.',
+        '- Date & Calendar Calculations: When questions ask for specific dates, day of the week, elapsed durations, or relative times (e.g., "last week", "3 days ago", "X years ago"), use the `date_calculator` tool to perform or verify calendar math instead of relying solely on mental estimation.',
+        '- Targeted & Direct: State the specific fact, name, date, or answer directly and avoid lengthy unrelated conversation recitals.',
+        '- Explicit Timelines: When answering questions about when something occurred or is scheduled, state the explicit calendar date, month, or year when available.',
         '- Synthesis: If an answer requires connecting clues across multiple events or listing several items, aggregate them completely.',
-        '- Unmentioned Topics: If your memory contains no information about the asked event or topic, clearly state that there is no record or it was not mentioned.',
+        '- Unmentioned Topics: If both your memories and original dialogue searches confirm no information about the asked event or topic, clearly state that there is no record or it was not mentioned.',
+        ...funesGuidance,
       ].join('\n')
 
       let startMs = Date.now()
@@ -185,6 +252,7 @@ export class LocomoRunner {
         模型名称: this.modelName,
         温度: 0,
         是否支持函数调用: this.useNativeToolCalls,
+        临时追加工具列表: [dateCalculatorTool],
       })
       let elapsedMs = Date.now() - startMs
 

@@ -125,6 +125,9 @@ async function runBenchmarkSample(): Promise<void> {
     console.log(`[配置] 预置数据库: 来源 ${sourceDbDir}`)
   }
   console.log(`[配置] 一级记忆容量: ${String(firstLevelCapacity)}`)
+  if (cliOptions.funesMode === true) {
+    console.log(`[配置] 博闻强记模式: 开启 (消息检索上限: ${String(cliOptions.funesSearchLimit ?? 20)})`)
+  }
   console.log(`[配置] 裁判模型: ${judgeModel} @ ${judgeBaseURL}`)
   console.log(
     `[范围] 测试 Sample 索引: ${String(sampleIndex)} | 限制会话数: ${maxSessions !== undefined ? String(maxSessions) : '全量'} | 限制问答数: ${maxQA !== undefined ? String(maxQA) : '全量'}`,
@@ -153,6 +156,8 @@ async function runBenchmarkSample(): Promise<void> {
     useNativeToolCalls,
     storageDir,
     firstLevelCapacity,
+    funesMode: cliOptions.funesMode,
+    funesSearchLimit: cliOptions.funesSearchLimit,
   })
   await runner.init()
 
@@ -238,6 +243,10 @@ async function runBenchmarkSample(): Promise<void> {
   if (reorganizeRounds !== undefined && reorganizeRounds > 0) {
     summary.reorganizeRounds = reorganizeRounds
   }
+  if (cliOptions.funesMode === true) {
+    summary.funesMode = true
+    summary.funesSearchLimit = cliOptions.funesSearchLimit ?? 20
+  }
 
   let evaluationFile = path.join(runDir, 'evaluation.json')
   fs.writeFileSync(evaluationFile, JSON.stringify({ summary, evaluations }, null, 2), 'utf-8')
@@ -253,6 +262,8 @@ async function runBenchmarkSample(): Promise<void> {
     note,
     reorganizeRounds,
     reorganizeTimeMs,
+    funesMode: cliOptions.funesMode,
+    funesSearchLimit: cliOptions.funesSearchLimit,
   })
 
   await runner.destroy()
