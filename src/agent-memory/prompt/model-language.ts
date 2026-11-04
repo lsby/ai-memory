@@ -85,7 +85,13 @@ export function 转换Schema(值: unknown, 模型语言包: 模型语言包, 保
   if (值 === null || typeof 值 !== 'object') return 值
   let 结果: Record<string, unknown> = {}
   for (let [键, 项] of Object.entries(值)) {
-    if (键 === 'description' && 保留描述 === false) continue
+    if (键 === 'description') {
+      if (保留描述 === false) continue
+      if (typeof 项 === 'string') {
+        结果[键] = 模型语言包.模型字段描述(项)
+        continue
+      }
+    }
     if (键 === 'properties' && 项 !== null && typeof 项 === 'object') {
       结果[键] = Object.fromEntries(
         Object.entries(项).map(([字段, 定义]) => [

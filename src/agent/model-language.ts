@@ -1,4 +1,5 @@
 import { 生成中文默认记忆提示词, 生成英文默认记忆提示词 } from './default-memory-prompts'
+import { 英文字段映射, 英文工具描述, 英文描述映射 } from './model-language-en-mappings'
 
 export type 模型语言包 = {
   工具调用格式标题: () => string
@@ -28,6 +29,7 @@ export type 模型语言包 = {
   提交结果成功: () => string
   提交结果格式错误: (错误: string, 提交函数名: string) => string
   模型字段名: (内部字段名: string) => string
+  模型字段描述: (描述: string) => string
   模型枚举值: (内部值: string) => string
   记忆工具描述: (工具名: string, 默认描述: string) => string
   默认记忆提示词: (启用工具名: readonly string[]) => string
@@ -104,61 +106,6 @@ export type 模型语言包 = {
   代码执行输出: (日志: string[], 返回值: unknown) => string
 }
 
-let 英文字段映射: Record<string, string> = {
-  结果: 'status',
-  信息: 'message',
-  消息: 'commit_message',
-  错误信息: 'error',
-  内容: 'content',
-  关键词: 'keywords',
-  标签: 'tags',
-  评分: 'score',
-  新内容: 'new_content',
-  新关键词: 'new_keywords',
-  新标签: 'new_tags',
-  新评分: 'new_score',
-  关键词列表: 'keywords',
-  标签列表: 'tags',
-  最新状态: 'current_state',
-  查询内容: 'query',
-  过滤内容: 'filters',
-  过滤内容模式: 'filter_mode',
-  会话id: 'conversation_id',
-  消息id: 'message_id',
-  记忆id: 'memory_id',
-  角色: 'role',
-  上下文消息数: 'context_count',
-  时间范围: 'time_range',
-  基准: 'base_time',
-  开始相对天数: 'start_relative_days',
-  结束相对天数: 'end_relative_days',
-  关键词过滤: 'keyword_filter',
-  标签过滤: 'tag_filter',
-  内容过滤正则表达式: 'content_regex',
-  搜索结果_完整记忆: 'memory_results',
-  搜索结果_发散关键词: 'related_keywords',
-  工具标识: 'tool_ref',
-  工具名称: 'tool_name',
-  名称: 'name',
-  描述: 'description',
-  代码: 'code',
-  新代码: 'new_code',
-  测试参数_json: 'test_arguments_json',
-  测试执行输出: 'test_output',
-  执行输出: 'output',
-  日志输出: 'logs',
-  运行结果: 'value',
-  推演任务: 'task',
-  专家设定: 'expert_role',
-  先验知识: 'prior_knowledge',
-  纯净模式: 'clean_mode',
-  推演结论: 'conclusion',
-  结论: 'conclusion',
-  置信度: 'confidence',
-  重组完成: 'completed',
-  拦截提示: 'interception_notice',
-}
-
 let 中文工具描述: Record<string, () => string> = {
   execute_code: (): string =>
     '在严格隔离的 JavaScript 沙盒中执行纯 JavaScript 实验、计算或数据验证。沙盒不支持 require、文件读写或网络请求；代码运行在 async function 中，可以使用 await，并应通过 return 返回结果。',
@@ -187,34 +134,6 @@ let 中文工具描述: Record<string, () => string> = {
   update_dynamic_tool: (): string => '更新已有动态工具；新代码通过冒烟测试后才会替换当前版本。',
   remove_dynamic_tool: (): string => '从当前工具状态移除不再需要的动态工具。',
   call_dynamic_tool: (): string => '按名称调用已有动态工具，并传入 JSON 格式的参数字符串。',
-}
-
-let 英文工具描述: Record<string, () => string> = {
-  execute_code: (): string => 'Run JavaScript in a strictly isolated sandbox for calculations and data validation.',
-  deep_deduction: (): string => 'Run an isolated expert reasoning process to test a complex hypothesis.',
-  add_level_0_memory: (): string => 'Add a core rule or persona memory. Use with extreme care.',
-  edit_level_0_memory: (): string => 'Edit an existing core rule or persona memory.',
-  remove_level_0_memory: (): string => 'Remove a core rule from the current memory state.',
-  add_level_1_memory: (): string => 'Add important current-task information to working memory.',
-  edit_level_1_memory: (): string => 'Edit an existing working memory.',
-  remove_level_1_memory: (): string => 'Remove an item from the current working-memory state.',
-  add_level_2_memory: (): string => 'Store a durable rule, experience, or theory in long-term memory.',
-  demote_memory: (): string => 'Move a working memory to long-term memory and reassess its score.',
-  promote_memory: (): string => 'Move a long-term memory into working memory and reassess its score.',
-  extend_memory: (): string =>
-    'Search long-term memory by natural-language vector similarity, optionally filter by relative time, keywords, tags, or a regex over memory content, then traverse related concepts. Filters use AND by default and may use OR.',
-  append_memory_keywords: (): string => 'Append graph-indexing keywords to a memory.',
-  remove_memory_keywords: (): string => 'Remove graph-indexing keywords from a memory.',
-  overwrite_memory_keywords: (): string => 'Replace all graph-indexing keywords on a memory.',
-  append_memory_tags: (): string => 'Append metadata tags to a memory.',
-  remove_memory_tags: (): string => 'Remove metadata tags from a memory.',
-  overwrite_memory_tags: (): string => 'Replace all metadata tags on a memory.',
-  create_dynamic_tool: (): string =>
-    'Create and persist a JavaScript tool. The code must declare `tool = { name, description, parametersSchema, returnSchema, execute }`, where both schemas are object JSON Schemas and `execute` is an async function. The sandbox has no network, file-system, import, or require access. Provide smoke-test arguments; the tool is stored only after the test passes.',
-  view_dynamic_tool_code: (): string => 'Read the complete source of an existing dynamic tool.',
-  update_dynamic_tool: (): string => 'Update a dynamic tool after a smoke test succeeds.',
-  remove_dynamic_tool: (): string => 'Remove a dynamic tool from the current tool state.',
-  call_dynamic_tool: (): string => 'Call an existing dynamic tool with JSON arguments.',
 }
 
 export let 中文模型语言包: 模型语言包 = {
@@ -250,6 +169,7 @@ export let 中文模型语言包: 模型语言包 = {
   提交结果成功: (): string => '结果提交成功',
   提交结果格式错误: (错误, 名称): string => `提交的数据不符合预期格式:\n${错误}\n\n请修复后重新调用 ${名称}`,
   模型字段名: (名称): string => 名称,
+  模型字段描述: (描述): string => 描述,
   模型枚举值: (值): string => 值,
   记忆工具描述: (名称, 默认描述): string => 中文工具描述[名称]?.() ?? 默认描述,
   默认记忆提示词: (启用工具名): string => 生成中文默认记忆提示词(启用工具名),
@@ -383,6 +303,7 @@ export let 英文模型语言包: 模型语言包 = {
   提交结果格式错误: (错误, 名称): string =>
     `Submitted data does not match the expected format:\n${错误}\n\nFix it and call ${名称} again.`,
   模型字段名: (名称): string => 英文字段映射[名称] ?? 名称,
+  模型字段描述: (描述): string => 英文描述映射[描述] ?? 描述,
   模型枚举值: (值): string =>
     值 === '成功' ? 'success' : 值 === '失败' ? 'failure' : 值 === '与' ? 'and' : 值 === '或' ? 'or' : 值,
   记忆工具描述: (名称, _默认描述): string => 英文工具描述[名称]?.() ?? `Use the ${名称} tool.`,

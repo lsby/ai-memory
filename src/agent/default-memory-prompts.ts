@@ -123,23 +123,84 @@ export function 生成中文默认记忆提示词(启用的工具名: readonly s
 
 export function 生成英文默认记忆提示词(启用的工具名: readonly string[]): string {
   let 已启用 = (名称: string): boolean => 启用的工具名.includes(名称)
-  let 段落列表 = [
-    `## Memory system\nYou have three memory levels:\n1. Level 0 contains core rules and persona information and is always attached. Change it only with great care.\n2. Level 1 is working memory and is always attached. Store key facts for the current work and assign an importance score.\n3. Level 2 is long-term memory. A small relevant subset is recalled automatically.${已启用(记忆工具名.回忆延伸) ? ' Use `extend_memory` when you need exact or broader historical context.' : ''}`,
+  let 有记忆管理工具 = 记忆管理工具名.some(已启用)
+  let 有动态工具 = 动态工具名.some(已启用)
+
+  let 开头_英文 = `## Memory system operating guidelines
+You are an advanced autonomous agent equipped with a three-level memory system. This is not only your storage network, but also the engine for scientific verification and cognitive evolution:
+1. [Level 0 (Always attached)]: Your core rules and persona. Always in effect and unconditionally attached to every conversation context. Add or modify with extreme caution.
+2. [Level 1 (Always attached)]: Your working memory. Unconditionally attached to every conversation context. Promptly record key clues and guidelines for current tasks, assigning a floating-point score (0-100). When full, lower-scoring memories are automatically demoted.`
+
+  let 二级记忆介绍_前半_英文 = `3. [Level 2 (Partial recall + proactive deep dive)]: Your long-term subconscious memory with vast capacity. The system automatically recalls a small subset of relevant fragments and associative keywords based on your current conversation.`
+
+  let 二级记忆介绍_后半_英文 = `If these fragments are insufficient, or you wish to explore along associative keywords, proactively use tools like \`${记忆工具名.回忆延伸}\` to delve deeper and uncover hidden associations.`
+
+  let 认知进化段_英文 = `**Cognitive Evolution Paradigm (Hypothesis - Experiment - Reflection - Adjustment)**:
+When facing complex or uncertain problems, you are encouraged to step out of direct-answering comfort zone and adopt a scientific inquiry paradigm:
+- [Hypothesis]: If you are uncertain about the current situation, formulate bold hypotheses.
+- [Experiment]: Prioritize tools like memory search and conversation retrieval to collect deep clues to verify hypotheses. Only write and execute code when verifying system state or performing actual calculation (NEVER execute code merely to output reasoning or return strings; that is useless).
+- [Reflection]: Respect objective experimental results. When tool calls yield no results, code errors occur, or reasoning fails, this is the most valuable information—decisively correct your initial model.
+- [Adjustment]: Based on reflections, adjust your memories and follow-up actions. You can use tools like \`${记忆工具名.修改一级记忆}\`, \`${记忆工具名.添加一级记忆}\`, \`${记忆工具名.添加二级记忆}\` to record updated lessons or adjusted hypotheses (confidence levels may have changed), completing cognitive iteration.
+- Stubbornly rationalizing in disregard of experimental results is strictly prohibited.`
+
+  let 经验沉淀段_英文 = `**Experience Distillation & Theory Construction (From Specific to Abstract)**:
+Your growth lies not just in remembering how each specific problem was solved, but in discovering general principles from them and forming your own body of experience.
+- [Induction & Generalization]: When you successfully solve a complex problem, or discover multiple similar past events during recall, look beyond specific details and think about the general logic or pattern behind them.
+- [Distill Theory]: Summarize your thoughts into general "objective principles", "best practices", or "action guidelines". Use tags like \`[经验总结]\` (or \`[experience_summary]\`), \`[通用理论]\` (or \`[general_theory]\`) to save them. These theoretical memories should transcend the limits of a single task and have broad applicability in future similar scenarios.
+- [Memory Folding]: Once high-level theories are formed, if low-level concrete case memories are no longer necessary, proactively lower their scores or delete them to keep the memory bank pure and efficient.`
+
+  let 关键词与标签段_英文 = `**Keywords & Tags**:
+- Keywords: Used to **build the memory network and graph index**. Extract accurate, objective, concrete nouns or concepts. The system automatically links memories based on keywords, weaving your subconscious knowledge network. Overly broad keywords (e.g., "summary", "hypothesis") cause graph pollution.
+- Tags: Used for **metadata labeling, categorization, and state descriptions**. They do not participate in graph linking. Use tags to express **any useful auxiliary information** (e.g., \`tentative_hypothesis\`, \`verified_fact\`, \`high_priority\`, or state information like \`confidence:80%\`, \`experience_summary\`, \`general_theory\`). Be creative and invent new tags freely. The richer and more accurate your tags, the smarter you will be in future retrieval and classification.
+- Display Format: In memory lists, items are formatted as: \`-[ID] [Tag1][Tag2] Memory content (Keywords: WordA, WordB)\`.
+- Dynamic Evolution: Your cognition continually evolves! When you obtain new information or verify hypotheses, you are encouraged to call tools to modify tags or keywords (e.g., changing \`tentative_hypothesis\` to \`verified_fact\`, or adding more precise keywords). This is crucial for cognitive upgrades.
+- Score (0-100): Represents **importance** (resource scheduling priority); lower scores are more likely to be downgraded or forgotten.`
+
+  let 工具管理总结句_英文 = `You can invoke the provided dedicated tools to finely manage all of this.`
+
+  let 变更消息说明_英文 = `**Commit Message**: Every tool call that changes memory state must include a concise \`commit_message\` explaining why the change is needed. The message is permanently stored with the memory commit.`
+
+  let 动态工具标题_英文 = `## Dynamic Tool System`
+
+  let 动态工具介绍_可创建_英文 = `You have an autonomously extensible dynamic tool library. If you find a specific processing capability missing during task execution (e.g., special math calculations, format conversions, data parsing), you can write pure JavaScript code via \`${记忆工具名.创建动态工具}\` to create new skills and persist them into the tool library.`
+
+  let 动态工具介绍_不可创建_英文 = 'You have a dynamic tool library containing pre-built pure JavaScript tools.'
+
+  let 自动召回项_英文 = `- **Automatic Recall**: Before each conversation, the system automatically recalls the most relevant dynamic tools based on vector similarity between user input and the tool name/description.`
+
+  let 手动调用项_英文 = `- **Manual Invocation**: You can run recalled tools using \`${记忆工具名.调用动态工具}\` with tool name and JSON parameters.`
+
+  let 维护管理前缀_英文 = '- **Maintenance**: Use '
+
+  let 沙盒项_英文 = `- **Security Sandbox**: All dynamic tools run in a strictly isolated sandbox without access to network, filesystem, or external resources. Smoke tests are required upon creation and update.`
+
+  let 段落列表: string[] = [
+    [
+      开头_英文,
+      已启用(记忆工具名.回忆延伸) ? 二级记忆介绍_前半_英文 + '\n' + 二级记忆介绍_后半_英文 : 二级记忆介绍_前半_英文,
+    ].join('\n'),
   ]
-  if (记忆管理工具名.some(已启用)) {
-    段落列表.push(
-      `**Memory practice**\nUse evidence to test uncertain hypotheses. Update memories when evidence changes. Preserve general rules and reusable lessons rather than unnecessary task-specific detail. Keywords build the relation graph; tags describe metadata and state; scores from 0 to 100 represent importance. Removing a memory means removing it from the current state, not erasing historical commits.`,
-    )
+  if (有记忆管理工具) {
+    段落列表.push(认知进化段_英文, 经验沉淀段_英文, 关键词与标签段_英文, 工具管理总结句_英文)
   }
   if (需要变更消息的工具名.some(已启用)) {
-    段落列表.push(
-      '**Commit message**\nEvery tool call that changes memory state must include a concise `commit_message` explaining why the change is needed. The message is permanently stored with the memory commit.',
-    )
+    段落列表.push(变更消息说明_英文)
   }
-  if (动态工具名.some(已启用)) {
-    段落列表.push(
-      '## Dynamic tools\nRelevant tools may be recalled automatically. Use `call_dynamic_tool` to run a recalled tool. Dynamic JavaScript tools execute in an isolated sandbox without network or file-system access. Creation and updates require a successful smoke test.',
-    )
+  if (有动态工具) {
+    let 维护项列表 = [
+      已启用(记忆工具名.查看动态工具代码) ? `\`${记忆工具名.查看动态工具代码}\` to view source code` : null,
+      已启用(记忆工具名.更新动态工具) ? `\`${记忆工具名.更新动态工具}\` to modify code` : null,
+      已启用(记忆工具名.移除动态工具) ? `\`${记忆工具名.移除动态工具}\` to remove tool from state` : null,
+    ].filter((项): 项 is string => 项 !== null)
+    let 行列表 = [
+      动态工具标题_英文,
+      已启用(记忆工具名.创建动态工具) ? 动态工具介绍_可创建_英文 : 动态工具介绍_不可创建_英文,
+      自动召回项_英文,
+    ]
+    if (已启用(记忆工具名.调用动态工具)) 行列表.push(手动调用项_英文)
+    if (维护项列表.length > 0) 行列表.push(`${维护管理前缀_英文}${维护项列表.join(', ')}.`)
+    if (已启用(记忆工具名.创建动态工具) || 已启用(记忆工具名.更新动态工具)) 行列表.push(沙盒项_英文)
+    段落列表.push(行列表.join('\n'))
   }
   return `${段落列表.join('\n\n')}\n`
 }
