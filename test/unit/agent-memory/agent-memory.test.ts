@@ -43,7 +43,7 @@ describe('带记忆的智能体的本地记忆', () => {
 
     let 快照 = await 智能体实例.保存快照()
     let 快照数据 = 快照数据Schema.parse(JSON.parse(快照))
-    expect(快照数据.格式版本).toBe(3)
+    expect(快照数据.格式版本).toBe(4)
     expect(快照数据.记忆列表.map((记忆) => 记忆.内容)).toEqual(['第一条本地记忆', '第二条本地记忆'])
     expect(快照数据.线索列表.map((线索) => 线索.内容).sort()).toEqual(['本地', '第一条', '第二条'])
     let 消息历史: 智能体消息类型[] = [{ role: 'user', content: '请记住这些内容' }]
@@ -85,12 +85,12 @@ describe('带记忆的智能体的本地记忆', () => {
     expect(恢复后的记忆列表.map((记忆) => 记忆.内容).sort()).toEqual(['第一条本地记忆', '第二条本地记忆'])
   })
 
-  it('可以在隔离环境中注册并调用动态工具', async (): Promise<void> => {
+  it('可以在隔离环境中注册并执行技能', async (): Promise<void> => {
     智能体实例 = 夹具.新建智能体({ 向量模型: { 类型: '无' } })
 
-    let 注册结果 = await 智能体实例.注册动态工具(
+    let 注册结果 = await 智能体实例.创建技能(
       `
-tool = {
+skill = {
   name: 'multiply',
   description: '计算两个数字的乘积',
   parametersSchema: { type: 'object', properties: { a: { type: 'number' }, b: { type: 'number' } }, required: ['a', 'b'] },
@@ -99,25 +99,26 @@ tool = {
 }
       `,
       '{"a": 6, "b": 7}',
+      ['数学', '乘法'],
     )
 
     expect(注册结果.结果).toBe('成功')
 
-    let 调用结果 = await 智能体实例.调用动态工具('multiply', '{"a": 6, "b": 7}')
+    let 调用结果 = await 智能体实例.执行技能('multiply', '{"a": 6, "b": 7}')
     expect(调用结果).toMatchObject({ 结果: '成功' })
     expect(调用结果.执行输出).toContain('42')
 
-    let 非法调用结果 = await 智能体实例.调用动态工具('multiply', '{"a": "bad", "b": 7}')
+    let 非法调用结果 = await 智能体实例.执行技能('multiply', '{"a": "bad", "b": 7}')
     expect(非法调用结果.结果).toBe('失败')
     expect(非法调用结果.错误信息).toContain('输入参数')
 
-    let 查看结果 = await 智能体实例.查看动态工具('multiply')
+    let 查看结果 = await 智能体实例.查看技能('multiply')
     expect(查看结果).toMatchObject({ 结果: '成功', 名称: 'multiply' })
 
-    let 更新结果 = await 智能体实例.更新动态工具(
+    let 更新结果 = await 智能体实例.更新技能(
       'multiply',
       `
-tool = {
+skill = {
   name: 'multiply',
   description: '计算两个数字的和',
   parametersSchema: { type: 'object', properties: { a: { type: 'number' }, b: { type: 'number' } }, required: ['a', 'b'] },
@@ -126,16 +127,17 @@ tool = {
 }
       `,
       '{"a": 6, "b": 7}',
+      ['数学', '加法'],
     )
     expect(更新结果.结果).toBe('成功')
 
-    let 更新后的调用结果 = await 智能体实例.调用动态工具('multiply', '{"a": 6, "b": 7}')
+    let 更新后的调用结果 = await 智能体实例.执行技能('multiply', '{"a": 6, "b": 7}')
     expect(更新后的调用结果.执行输出).toContain('13')
 
-    let 删除结果 = await 智能体实例.移除动态工具('multiply')
+    let 删除结果 = await 智能体实例.移除技能('multiply')
     expect(删除结果.结果).toBe('成功')
 
-    let 删除后的调用结果 = await 智能体实例.调用动态工具('multiply', '{"a": 6, "b": 7}')
+    let 删除后的调用结果 = await 智能体实例.执行技能('multiply', '{"a": 6, "b": 7}')
     expect(删除后的调用结果.结果).toBe('失败')
   })
 

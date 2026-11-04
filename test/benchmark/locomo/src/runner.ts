@@ -54,8 +54,7 @@ export class LocomoRunner {
     this.funesSearchLimit = options.funesSearchLimit ?? 20
 
     // 开放全套记忆存取与检索工具（排除动态代码编写工具）
-    let 内存记忆工具筛选 = (工具名: string): boolean =>
-      工具名.includes('dynamic_tool') === false && 工具名 !== 'execute_code'
+    let 内存记忆工具筛选 = (工具名: string): boolean => 工具名.includes('skill') === false && 工具名 !== 'execute_code'
 
     this.agent = new 带记忆的智能体({
       系统提示词:

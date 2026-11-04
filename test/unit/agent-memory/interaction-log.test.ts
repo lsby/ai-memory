@@ -102,10 +102,10 @@ describe('交互事件日志', () => {
     expect(日志列表[1]?.事件内容).toEqual({ 请求: { 目标提交id: 基线提交id }, 结果: true, 当前提交id: 基线提交id })
   })
 
-  it('编程调用动态工具时记录同组的开始和结果事件', async (): Promise<void> => {
+  it('编程执行技能时记录同组的开始和结果事件', async (): Promise<void> => {
     智能体实例 = 夹具.新建智能体()
-    let 注册结果 = await 智能体实例.注册动态工具(
-      `tool = {
+    let 注册结果 = await 智能体实例.创建技能(
+      `skill = {
   name: 'telemetry_echo',
   description: '返回输入值',
   parametersSchema: { type: 'object', properties: { value: { type: 'number' } }, required: ['value'] },
@@ -113,15 +113,16 @@ describe('交互事件日志', () => {
   execute: async function(args) { return { value: args.value }; }
 }`,
       '{"value":7}',
+      ['回显'],
     )
     expect(注册结果.结果).toBe('成功')
 
-    let 调用结果 = await 智能体实例.调用动态工具('telemetry_echo', '{"value":7}', undefined, 'tool-group')
+    let 调用结果 = await 智能体实例.执行技能('telemetry_echo', '{"value":7}', undefined, 'tool-group')
     expect(调用结果.结果).toBe('成功')
     let 日志列表 = await 智能体实例.查询交互日志({ 事件组id: 'tool-group' })
     expect(日志列表.map((日志) => 日志.事件类型)).toEqual(['工具调用开始', '工具调用结果'])
-    expect(日志列表[0]?.事件内容).toEqual({ 工具名称: 'telemetry_echo' })
-    expect(日志列表[1]?.事件内容).toEqual({ 工具名称: 'telemetry_echo', 状态: '成功' })
+    expect(日志列表[0]?.事件内容).toEqual({ 技能名称: 'telemetry_echo' })
+    expect(日志列表[1]?.事件内容).toEqual({ 技能名称: 'telemetry_echo', 状态: '成功' })
   })
 
   it('记忆操作失败时同一事务里的日志也会回滚', async (): Promise<void> => {

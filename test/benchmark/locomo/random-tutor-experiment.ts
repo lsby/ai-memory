@@ -70,11 +70,11 @@ async function runRandomTutorExperiment(): Promise<void> {
   console.log(`[轮次] 计划随机抽取轮次: ${String(cliOptions.totalRounds)} 次`)
 
   let 内存记忆工具筛选 = (工具名: string): boolean =>
-    工具名 !== 'create_dynamic_tool' &&
-    工具名 !== 'update_dynamic_tool' &&
-    工具名 !== 'remove_dynamic_tool' &&
-    工具名 !== 'call_dynamic_tool' &&
-    工具名 !== 'view_dynamic_tool_code'
+    工具名 !== 'create_skill' &&
+    工具名 !== 'update_skill' &&
+    工具名 !== 'remove_skill' &&
+    工具名 !== 'execute_skill' &&
+    工具名 !== 'view_skill_code'
 
   let studentAgent = new 带记忆的智能体({
     一级记忆容量: 30,
@@ -158,7 +158,7 @@ async function runRandomTutorExperiment(): Promise<void> {
         `Question to Solve: ${qa.question}`,
         'Instructions for Question Analysis & Theory Activation:',
         '- Identify the question type (e.g. relative date calculation, speaker attribution, career/qualification details, relationship inference, event timing).',
-        '- Call `extend_memory` to search your Level 2 long-term memory for any previously stored heuristics, lessons, or guidelines that apply to this pattern.',
+        '- Call `search_memories` with natural-language contents to search Level 2 long-term memory for applicable heuristics, lessons, or guidelines.',
         '- Summarize the recalled heuristics and formulate your strategic action plan for solving this question.',
       ].join('\n')
 
@@ -170,12 +170,12 @@ async function runRandomTutorExperiment(): Promise<void> {
           recalled_heuristics: z
             .string()
             .describe(
-              'Rules, heuristics, or lessons retrieved from long-term memory via extend_memory, or "None" if new',
+              'Rules, heuristics, or lessons retrieved from long-term memory via search_memories, or "None" if new',
             ),
           action_plan: z.string().describe('Strategic plan for searching and reasoning on this specific question'),
         }),
         预期结果描述:
-          'Analyze the question, retrieve applicable heuristics from long-term memory via extend_memory, and form an action plan',
+          'Analyze the question, retrieve applicable heuristics from long-term memory via search_memories, and form an action plan',
         回调: async (事件): Promise<void> => {
           if (事件.类型 === '工具调用开始') {
             console.log(`      🧠 [审题调取] ${事件.工具名称} -> ${JSON.stringify(事件.参数).slice(0, 150)}`)
@@ -309,7 +309,7 @@ async function runRandomTutorExperiment(): Promise<void> {
         '     * Premature Surrender: Did you give up after one failed keyword search instead of expanding synonyms?',
         '3. Theory Construction & Memory Persistence:',
         '   - Synthesize a general, reusable reasoning rule, search tactic, or verification heuristic.',
-        '   - Call `add_level_2_memory` to commit this general heuristic to your Level 2 long-term memory with an importance score (e.g. 90-99), appropriate descriptive tags, and conceptual keywords, so you can retrieve it in future questions via `extend_memory`.',
+        '   - Call `add_level_2_memory` to commit this general heuristic to Level 2 memory with an importance score (e.g. 90-99) and natural associative clues, so you can retrieve it later via `search_memories`.',
         '   - If this exact heuristic is already present in your memory and verified, you do not need to add duplicate entries.',
         '',
         'Return your root cause diagnosis and generalized heuristic.',

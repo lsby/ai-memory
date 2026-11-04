@@ -110,8 +110,8 @@ describe('博闻强记模式', () => {
       {
         工具调用: [
           {
-            id: 'normal-extend',
-            名称: 'extend_memory',
+            id: 'normal-search',
+            名称: 'search_memories',
             参数: { 内容: ['normal'] },
           },
         ],
@@ -126,10 +126,10 @@ describe('博闻强记模式', () => {
     expect(工具定义).not.toContain('read_conversation_history')
     expect(消息文本).not.toContain('博闻强记')
     expect(消息文本).not.toContain(上游会话.id)
-    let 工具结果 = JSON.parse(读取工具消息(假.请求列表[1], 'normal-extend')) as {
-      直接联想到的记忆?: unknown[]
+    let 工具结果 = JSON.parse(读取工具消息(假.请求列表[1], 'normal-search')) as {
+      完整记忆?: unknown[]
     }
-    let 记忆列表 = z.array(z.record(z.unknown())).parse(工具结果.直接联想到的记忆 ?? [])
+    let 记忆列表 = z.array(z.record(z.unknown())).parse(工具结果.完整记忆 ?? [])
     expect(记忆列表).toHaveLength(1)
     expect(记忆列表[0]).not.toHaveProperty('相关消息')
   })
@@ -223,7 +223,7 @@ describe('博闻强记模式', () => {
     expect(文本).toContain(`[博闻强记] 当前会话由上游会话 ${上游会话.id} 压缩而来。`)
   })
 
-  it('extend_memory 返回直接联想到的记忆且不混入聊天记录搜索结果', async (): Promise<void> => {
+  it('search_memories 返回完整记忆且不混入聊天记录搜索结果', async (): Promise<void> => {
     let 实例 = 新建()
     let 假 = 创建假客户端([
       {
@@ -238,8 +238,8 @@ describe('博闻强记模式', () => {
       {
         工具调用: [
           {
-            id: 'extend-memory',
-            名称: 'extend_memory',
+            id: 'search-memory',
+            名称: 'search_memories',
             参数: { 内容: ['alpha'] },
           },
         ],
@@ -248,9 +248,51 @@ describe('博闻强记模式', () => {
     ])
     await 实例.对话(对话选项(假, '请记住 alpha'))
     let 工具结果 = z
-      .object({ 结果: z.literal('成功'), 直接联想到的记忆: z.array(z.object({ 内容: z.string() })) })
-      .parse(JSON.parse(读取工具消息(假.请求列表[2], 'extend-memory')))
-    expect(工具结果.直接联想到的记忆).toMatchObject([{ 内容: 'alpha 是稳定事实' }])
+      .object({
+        结果: z.literal('成功'),
+        完整记忆: z.array(z.object({ 内容: z.string(), 线索: z.array(z.string()) })),
+        闪现出的线索: z.array(z.string()),
+      })
+      .parse(JSON.parse(读取工具消息(假.请求列表[2], 'search-memory')))
+    expect(工具结果.完整记忆).toMatchObject([{ 内容: 'alpha 是稳定事实', 线索: ['alpha'] }])
+    expect(工具结果.闪现出的线索).toContain('alpha')
+  })
+
+  it('技能与线索可以分别用自然语言查询并互相桥接', async (): Promise<void> => {
+    let 实例 = 新建()
+    let 假 = 创建假客户端([
+      {
+        工具调用: [
+          {
+            id: 'create-skill',
+            名称: 'create_skill',
+            参数: {
+              代码: `skill = { name: 'sum_numbers', description: '计算一组数字的总和', parametersSchema: { type: 'object', properties: { values: { type: 'array', items: { type: 'number' } } }, required: ['values'] }, returnSchema: { type: 'object', properties: { total: { type: 'number' } }, required: ['total'] }, execute: async function(args) { return { total: args.values.reduce((sum, value) => sum + value, 0) }; } }`,
+              测试参数_json: '{"values":[1,2]}',
+              线索: ['数学求和', '数字统计'],
+              消息: '创建求和技能',
+            },
+          },
+        ],
+      },
+      { 工具调用: [{ id: 'search-skill', 名称: 'search_skills', 参数: { 内容: ['统计数字'] } }] },
+      { 工具调用: [{ id: 'search-clue', 名称: 'search_clues', 参数: { 内容: ['数学求和'] } }] },
+      提交(1),
+    ])
+    await 实例.对话(对话选项(假, '创建并查询求和能力'))
+    let 技能结果 = z
+      .object({
+        完整技能: z.array(z.object({ 名称: z.string(), 代码: z.never().optional(), 线索: z.array(z.string()) })),
+        闪现出的线索: z.array(z.string()),
+      })
+      .parse(JSON.parse(读取工具消息(假.请求列表[2], 'search-skill')))
+    expect(技能结果.完整技能).toMatchObject([{ 名称: 'sum_numbers', 线索: ['数学求和', '数字统计'] }])
+    expect(技能结果.闪现出的线索).toEqual(expect.arrayContaining(['数学求和', '数字统计']))
+    let 线索结果 = z
+      .object({ 匹配的线索: z.array(z.string()), 相关技能: z.array(z.object({ 名称: z.string() })) })
+      .parse(JSON.parse(读取工具消息(假.请求列表[3], 'search-clue')))
+    expect(线索结果.匹配的线索).toContain('数学求和')
+    expect(线索结果.相关技能).toMatchObject([{ 名称: 'sum_numbers' }])
   })
 
   it('英文模型语言包下消息搜索工具暴露英文字段并支持英文参数及 null 容错', async (): Promise<void> => {
@@ -289,7 +331,7 @@ describe('博闻强记模式', () => {
     expect(工具结果.messages?.length).toBeGreaterThan(0)
   })
 
-  it('英文模型语言包完整本地化回忆延伸的定义和嵌套结果', async (): Promise<void> => {
+  it('英文模型语言包完整本地化记忆查询的定义和嵌套结果', async (): Promise<void> => {
     let 实例 = 夹具.新建智能体({
       向量模型: { 类型: '在线', openai客户端: 创建假向量客户端({}), 模型名称: 'fake' },
       博闻强记模式: true,
@@ -315,8 +357,8 @@ describe('博闻强记模式', () => {
       {
         工具调用: [
           {
-            id: 'extend-english-memory',
-            名称: 'extend_memory',
+            id: 'search-english-memory',
+            名称: 'search_memories',
             参数: { content: ['alpha'] },
           },
         ],
@@ -325,15 +367,15 @@ describe('博闻强记模式', () => {
     ])
     await 实例.对话(对话选项(假, 'remember alpha'))
     let 工具列表 = 假.请求列表[0]?.tools as Array<{ function?: { name?: string } }> | undefined
-    let 工具定义 = 工具列表?.find((工具) => 工具.function?.name === 'extend_memory')
+    let 工具定义 = 工具列表?.find((工具) => 工具.function?.name === 'search_memories')
     expect(JSON.stringify(工具定义)).not.toMatch(/[\u3400-\u9fff]/u)
 
-    let 工具结果文本 = 读取工具消息(假.请求列表[2], 'extend-english-memory')
+    let 工具结果文本 = 读取工具消息(假.请求列表[2], 'search-english-memory')
     expect(工具结果文本).not.toMatch(/[\u3400-\u9fff]/u)
     let 工具结果 = z
       .object({
         status: z.literal('success'),
-        recalled_memories: z.array(
+        complete_memories: z.array(
           z.object({
             level: z.literal('level_2'),
             content: z.literal('alpha is a stable fact'),
@@ -343,6 +385,6 @@ describe('博闻强记模式', () => {
         flashing_clues: z.array(z.string()),
       })
       .parse(JSON.parse(工具结果文本))
-    expect(工具结果.recalled_memories[0]?.clues).toEqual(['alpha', 'verified'])
+    expect(工具结果.complete_memories[0]?.clues).toEqual(['alpha', 'verified'])
   })
 })

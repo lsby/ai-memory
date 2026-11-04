@@ -2,8 +2,8 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { 完整状态Schema, 带记忆的智能体, 快照数据Schema, 记忆等级 } from '../../../src/index'
 import { 使用共享PGlite } from '../../helpers/shared-pglite-fixture'
 
-let 动态工具代码 = `
-tool = {
+let 技能代码 = `
+skill = {
   name: 'snapshot_tool',
   description: '用于验证快照恢复',
   parametersSchema: { type: 'object', properties: { value: { type: 'number' } }, required: ['value'] },
@@ -74,7 +74,7 @@ describe('记忆应用管理接口', () => {
     await expect(智能体实例.更新记忆('id', {})).rejects.toThrow('至少提供一个')
   })
 
-  it('记忆快照和完整状态往返恢复动态工具、前缀及完整会话', async (): Promise<void> => {
+  it('记忆快照和完整状态往返恢复技能、前缀及完整会话', async (): Promise<void> => {
     智能体实例 = 夹具.新建智能体({ 向量模型: { 类型: '无' } })
     await 智能体实例.添加记忆({
       内容: '需要恢复的记忆',
@@ -83,7 +83,7 @@ describe('记忆应用管理接口', () => {
       等级: 记忆等级.一级,
       创建时间: new Date('2026-01-01T00:00:00.000Z'),
     })
-    expect((await 智能体实例.注册动态工具(动态工具代码, '{"value":3}')).结果).toBe('成功')
+    expect((await 智能体实例.创建技能(技能代码, '{"value":3}', ['测试技能'])).结果).toBe('成功')
     let 会话 = await 智能体实例.创建会话({ 标题: '完整状态会话' })
     let 系统消息 = await 智能体实例.追加会话消息({
       会话id: 会话.id,
@@ -97,14 +97,17 @@ describe('记忆应用管理接口', () => {
     })
 
     let 快照 = await 智能体实例.保存快照()
-    expect(快照数据Schema.parse(JSON.parse(快照))).toMatchObject({
-      格式版本: 3,
-      动态工具列表: [{ 名称: 'snapshot_tool' }],
+    let 快照数据 = 快照数据Schema.parse(JSON.parse(快照))
+    expect(快照数据).toMatchObject({
+      格式版本: 4,
+      技能列表: [{ 名称: 'snapshot_tool' }],
     })
-    await 智能体实例.移除动态工具('snapshot_tool')
+    expect(快照数据.线索列表.map((线索) => 线索.内容)).toContain('测试技能')
+    expect(快照数据.技能线索关联列表).toHaveLength(1)
+    await 智能体实例.移除技能('snapshot_tool')
     await 智能体实例.载入快照(快照)
-    expect(await 智能体实例.查询动态工具()).toMatchObject([{ 名称: 'snapshot_tool' }])
-    expect(await 智能体实例.调用动态工具('snapshot_tool', '{"value":4}')).toMatchObject({ 结果: '成功' })
+    expect(await 智能体实例.查询技能()).toMatchObject([{ 名称: 'snapshot_tool', 线索: ['测试技能'] }])
+    expect(await 智能体实例.执行技能('snapshot_tool', '{"value":4}')).toMatchObject({ 结果: '成功' })
 
     let 完整状态文本 = await 智能体实例.导出完整状态()
     let 完整状态 = 完整状态Schema.parse(JSON.parse(完整状态文本))
@@ -119,7 +122,7 @@ describe('记忆应用管理接口', () => {
     智能体实例 = 夹具.新建智能体({ 向量模型: { 类型: '无' } })
     await 智能体实例.导入完整状态(完整状态文本)
     expect(智能体实例.读取对话历史()).toEqual(完整状态.消息列表.map((消息) => 消息.消息))
-    expect(await 智能体实例.查询动态工具()).toMatchObject([{ 名称: 'snapshot_tool' }])
+    expect(await 智能体实例.查询技能()).toMatchObject([{ 名称: 'snapshot_tool', 线索: ['测试技能'] }])
     await expect(智能体实例.导入完整状态('{"消息历史":[]}')).rejects.toThrow()
   })
 
@@ -146,26 +149,32 @@ describe('记忆应用管理接口', () => {
     expect(await 智能体实例.查询记忆提交()).toHaveLength(回退前提交数)
   })
 
-  it('动态工具变更进入提交历史并且可以回退', async (): Promise<void> => {
+  it('技能变更进入提交历史并且可以回退', async (): Promise<void> => {
     智能体实例 = 夹具.新建智能体({ 向量模型: { 类型: '无' } })
     await 智能体实例.添加记忆({
-      内容: '动态工具分支基线',
+      内容: '技能分支基线',
       线索: ['基线'],
       评分: 50,
       等级: 记忆等级.一级,
       创建时间: new Date('2026-01-01T00:00:00.000Z'),
     })
-    expect((await 智能体实例.注册动态工具(动态工具代码, '{"value":3}')).结果).toBe('成功')
+    expect((await 智能体实例.创建技能(技能代码, '{"value":3}', ['测试技能'])).结果).toBe('成功')
 
-    let 注册提交 = (await 智能体实例.查询记忆提交()).find((提交) => 提交.提交说明 === '编程接入: 注册动态工具')
-    expect(注册提交?.变更列表).toHaveLength(1)
-    expect(注册提交?.变更列表[0]).toMatchObject({ 操作类型: 'insert', 目标表: 'dynamic_tool' })
+    let 注册提交 = (await 智能体实例.查询记忆提交()).find((提交) => 提交.提交说明 === '技能管理: 创建技能')
+    expect(注册提交?.变更列表).toHaveLength(3)
+    expect(注册提交?.变更列表).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ 操作类型: 'insert', 目标表: 'skill' }),
+        expect.objectContaining({ 操作类型: 'insert', 目标表: 'clue' }),
+        expect.objectContaining({ 操作类型: 'insert', 目标表: 'skill_clue_relation' }),
+      ]),
+    )
 
     expect(await 智能体实例.回退最近记忆提交()).toBe(true)
-    expect(await 智能体实例.查询动态工具()).toEqual([])
-    if (注册提交 === undefined) throw new Error('动态工具提交未生成')
+    expect(await 智能体实例.查询技能()).toEqual([])
+    if (注册提交 === undefined) throw new Error('技能提交未生成')
     expect(await 智能体实例.切换记忆提交(注册提交.id)).toBe(true)
-    expect(await 智能体实例.查询动态工具()).toMatchObject([{ 名称: 'snapshot_tool' }])
+    expect(await 智能体实例.查询技能()).toMatchObject([{ 名称: 'snapshot_tool' }])
   })
 
   it('允许给提交设置一次唯一状态名称', async (): Promise<void> => {

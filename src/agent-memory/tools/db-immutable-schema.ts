@@ -17,6 +17,14 @@ export async function 初始化不可变约束(数据库查询器: Kysely<记忆
   await 执行(
     `ALTER TABLE ${名('当前记忆线索关联表')} ADD CONSTRAINT 当前记忆线索关联表_线索id_fkey FOREIGN KEY (线索id) REFERENCES ${名('当前线索表')}(id) ON DELETE RESTRICT;`,
   )
+  await 执行(`ALTER TABLE ${名('当前技能线索关联表')} DROP CONSTRAINT IF EXISTS 当前技能线索关联表_技能id_fkey;`)
+  await 执行(`ALTER TABLE ${名('当前技能线索关联表')} DROP CONSTRAINT IF EXISTS 当前技能线索关联表_线索id_fkey;`)
+  await 执行(
+    `ALTER TABLE ${名('当前技能线索关联表')} ADD CONSTRAINT 当前技能线索关联表_技能id_fkey FOREIGN KEY (技能id) REFERENCES ${名('当前技能表')}(id) ON DELETE RESTRICT;`,
+  )
+  await 执行(
+    `ALTER TABLE ${名('当前技能线索关联表')} ADD CONSTRAINT 当前技能线索关联表_线索id_fkey FOREIGN KEY (线索id) REFERENCES ${名('当前线索表')}(id) ON DELETE RESTRICT;`,
+  )
   await 执行(`ALTER TABLE ${名('记忆行变更表')} DROP CONSTRAINT IF EXISTS 记忆行变更表_记忆提交id_fkey;`)
   await 执行(
     `ALTER TABLE ${名('记忆行变更表')} ADD CONSTRAINT 记忆行变更表_记忆提交id_fkey FOREIGN KEY (记忆提交id) REFERENCES ${名('记忆提交表')}(id) ON DELETE RESTRICT;`,
@@ -53,10 +61,13 @@ export async function 初始化不可变约束(数据库查询器: Kysely<记忆
       CASE 目标表
         WHEN 'memory' THEN 主键 ? 'id' AND 主键 - 'id' = '{}'::jsonb AND jsonb_typeof(主键->'id') = 'string'
         WHEN 'clue' THEN 主键 ? 'id' AND 主键 - 'id' = '{}'::jsonb AND jsonb_typeof(主键->'id') = 'string'
-        WHEN 'dynamic_tool' THEN 主键 ? 'id' AND 主键 - 'id' = '{}'::jsonb AND jsonb_typeof(主键->'id') = 'string'
+        WHEN 'skill' THEN 主键 ? 'id' AND 主键 - 'id' = '{}'::jsonb AND jsonb_typeof(主键->'id') = 'string'
         WHEN 'memory_clue_relation' THEN 主键 ? '记忆id' AND 主键 ? '线索id'
           AND 主键 - '记忆id' - '线索id' = '{}'::jsonb
           AND jsonb_typeof(主键->'记忆id') = 'string' AND jsonb_typeof(主键->'线索id') = 'string'
+        WHEN 'skill_clue_relation' THEN 主键 ? '技能id' AND 主键 ? '线索id'
+          AND 主键 - '技能id' - '线索id' = '{}'::jsonb
+          AND jsonb_typeof(主键->'技能id') = 'string' AND jsonb_typeof(主键->'线索id') = 'string'
         ELSE FALSE
       END
     );
@@ -71,8 +82,10 @@ export async function 初始化不可变约束(数据库查询器: Kysely<记忆
           行数据->>'id' = 主键->>'id'
         WHEN 'memory_clue_relation' THEN
           行数据->>'记忆id' = 主键->>'记忆id' AND 行数据->>'线索id' = 主键->>'线索id'
-        WHEN 'dynamic_tool' THEN
+        WHEN 'skill' THEN
           行数据->>'id' = 主键->>'id'
+        WHEN 'skill_clue_relation' THEN
+          行数据->>'技能id' = 主键->>'技能id' AND 行数据->>'线索id' = 主键->>'线索id'
         ELSE FALSE
       END
     );

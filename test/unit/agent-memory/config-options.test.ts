@@ -71,60 +71,62 @@ describe('P1 记忆工具筛选', () => {
 
   it('常量导出了全部记忆工具名且没有重复', () => {
     expect(new Set(全部记忆工具名).size).toBe(全部记忆工具名.length)
-    expect(全部记忆工具名).toContain(记忆工具名.回忆延伸)
+    expect(全部记忆工具名).toContain(记忆工具名.查询记忆)
     expect(记忆工具名.添加零级记忆).toBe('add_level_0_memory')
   })
 
-  it('被筛掉的工具不出现在工具定义里, 提示词也不再提动态工具', async (): Promise<void> => {
-    let 动态工具名 = new Set<string>([
-      记忆工具名.创建动态工具,
-      记忆工具名.查看动态工具代码,
-      记忆工具名.更新动态工具,
-      记忆工具名.移除动态工具,
-      记忆工具名.调用动态工具,
+  it('被筛掉的工具不出现在工具定义里, 提示词也不再提技能', async (): Promise<void> => {
+    let 技能名 = new Set<string>([
+      记忆工具名.查询技能,
+      记忆工具名.创建技能,
+      记忆工具名.查看技能代码,
+      记忆工具名.更新技能,
+      记忆工具名.移除技能,
+      记忆工具名.执行技能,
     ])
-    let { 假 } = await 跑一轮(创建记忆实例({ 记忆工具筛选: (名称) => 动态工具名.has(名称) === false }))
+    let { 假 } = await 跑一轮(创建记忆实例({ 记忆工具筛选: (名称) => 技能名.has(名称) === false }))
     let 请求 = 假.请求列表[0]
     let 工具名 = 取工具名列表(请求)
-    for (let 名称 of 动态工具名) expect(工具名).not.toContain(名称)
+    for (let 名称 of 技能名) expect(工具名).not.toContain(名称)
     expect(工具名).toContain(记忆工具名.添加零级记忆)
     let 系统提示词 = 取系统提示词(请求)
-    expect(系统提示词).not.toContain('动态工具系统')
-    expect(系统提示词).not.toContain('create_dynamic_tool')
+    expect(系统提示词).not.toContain('技能系统')
+    expect(系统提示词).not.toContain('create_skill')
     expect(系统提示词).toContain('记忆系统操作指南')
     expect(系统提示词).toContain('认知进化范式')
   })
 
-  it('筛掉回忆延伸后, 提示词不再让模型用回忆延伸深挖', async (): Promise<void> => {
-    let { 假 } = await 跑一轮(创建记忆实例({ 记忆工具筛选: (名称) => 名称 !== 记忆工具名.回忆延伸 }))
+  it('筛掉联想查询后, 提示词不再让模型主动深挖', async (): Promise<void> => {
+    let 查询工具名 = new Set<string>([记忆工具名.查询记忆, 记忆工具名.查询线索, 记忆工具名.查询技能])
+    let { 假 } = await 跑一轮(创建记忆实例({ 记忆工具筛选: (名称) => 查询工具名.has(名称) === false }))
     let 请求 = 假.请求列表[0]
-    expect(取工具名列表(请求)).not.toContain('extend_memory')
+    expect(取工具名列表(请求)).not.toContain('search_memories')
     let 系统提示词 = 取系统提示词(请求)
-    expect(系统提示词).not.toContain('回忆延伸')
+    expect(系统提示词).not.toContain('search_memories')
     expect(系统提示词).toContain('3. [二级记忆 (部分唤起 + 主动深挖)]')
   })
 
-  it('只保留回忆延伸时, 不写需要修改记忆的几段, 也不写动态工具', async (): Promise<void> => {
-    let { 假 } = await 跑一轮(创建记忆实例({ 记忆工具筛选: (名称) => 名称 === 记忆工具名.回忆延伸 }))
+  it('只保留记忆查询时, 不写需要修改记忆的几段, 也不写技能', async (): Promise<void> => {
+    let { 假 } = await 跑一轮(创建记忆实例({ 记忆工具筛选: (名称) => 名称 === 记忆工具名.查询记忆 }))
     let 请求 = 假.请求列表[0]
-    expect(取工具名列表(请求).sort()).toEqual(['__submit_result__', 'extend_memory'])
+    expect(取工具名列表(请求).sort()).toEqual(['__submit_result__', 'search_memories'])
     let 工具定义 = JSON.stringify(请求?.tools ?? [])
     expect(工具定义).toContain('内容')
-    expect(工具定义).toContain('线索')
+    expect(工具定义).toContain('完整记忆数量')
     expect(工具定义).not.toContain('过滤内容')
     let 系统提示词 = 取系统提示词(请求)
     expect(系统提示词).not.toContain('认知进化范式')
     expect(系统提示词).not.toContain('经验沉淀')
     expect(系统提示词).not.toContain('线索与线索')
-    expect(系统提示词).not.toContain('动态工具系统')
-    expect(系统提示词).toContain('「回忆延伸」')
+    expect(系统提示词).not.toContain('技能系统')
+    expect(系统提示词).toContain('search_memories')
   })
 
-  it('动态工具只留一部分时, 维护管理那一条只列出还在的工具', () => {
-    let 文本 = 生成默认记忆提示词([记忆工具名.创建动态工具, 记忆工具名.移除动态工具, 记忆工具名.添加零级记忆])
-    expect(文本).toContain('- **维护管理**: 使用 `remove_dynamic_tool` 从当前状态移除工具。')
-    expect(文本).not.toContain('view_dynamic_tool_code')
-    expect(文本).not.toContain('call_dynamic_tool')
+  it('技能只留一部分时, 维护管理那一条只列出还在的工具', () => {
+    let 文本 = 生成默认记忆提示词([记忆工具名.创建技能, 记忆工具名.移除技能, 记忆工具名.添加零级记忆])
+    expect(文本).toContain('- **维护管理**: 使用 `remove_skill` 从当前状态移除技能。')
+    expect(文本).not.toContain('view_skill_code')
+    expect(文本).not.toContain('execute_skill')
     expect(文本).toContain('- **安全沙盒**')
   })
 
@@ -215,7 +217,7 @@ describe('模型语言包', () => {
     expect(系统提示词).toContain('Memory system')
     expect(系统提示词).not.toContain('记忆系统操作指南')
     expect(系统提示词).toContain('historical commits remain preserved')
-    expect(系统提示词).toContain('must provide test arguments for a smoke test')
+    expect(系统提示词).toContain('Creation and updates require smoke-test arguments')
     expect(系统提示词).not.toMatch(/[\u3400-\u9fff]/u)
     let 工具列表 = (请求?.tools ?? []) as Array<{ function: { name: string } }>
     let 添加记忆工具 = 工具列表.find((工具) => 工具.function.name === 'add_level_1_memory')
@@ -538,7 +540,7 @@ describe('P5 遗忘豁免', () => {
     let 实例 = 创建记忆实例({ 只读模式: true })
     let { 假 } = await 跑一轮(实例)
     let 工具名 = 取工具名列表(假.请求列表[0])
-    expect(工具名).toContain(记忆工具名.回忆延伸)
+    expect(工具名).toContain(记忆工具名.查询记忆)
     expect(工具名).not.toContain(记忆工具名.添加一级记忆)
     expect(工具名).not.toContain(记忆工具名.修改一级记忆)
     expect(工具名).not.toContain(记忆工具名.移除一级记忆)

@@ -3,13 +3,13 @@ import { 带记忆的智能体 } from '../../../src/agent-memory/agent-memory'
 import { model, 事件处理, 创建客户端, 打印分隔线, 检查环境变量 } from '../test-helper'
 
 // ============================================================
-// 测试场景: 动态工具系统 (Autonomous Tool System)
+// 测试场景: 技能系统 (Autonomous Tool System)
 //
 // 目标:
-// 1. 验证 AI 是否能根据需求自动生成代码并创建动态工具 (create_dynamic_tool)
-// 2. 验证新对话中，系统能否基于向量相似度自动召回该动态工具
-// 3. 验证 AI 是否能直接调用被召回的动态工具进行业务处理 (call_dynamic_tool)
-// 4. 验证 AI 是否能读取源码 (view_dynamic_tool_code) 并完成代码升级 (update_dynamic_tool)
+// 1. 验证 AI 是否能根据需求自动生成代码并创建技能 (create_skill)
+// 2. 验证新对话中，系统能否基于向量相似度自动召回该技能
+// 3. 验证 AI 是否能直接调用被召回的技能进行业务处理 (execute_skill)
+// 4. 验证 AI 是否能读取源码 (view_skill_code) 并完成代码升级 (update_skill)
 // ============================================================
 
 async function 运行测试(): Promise<void> {
@@ -23,15 +23,15 @@ async function 运行测试(): Promise<void> {
     最大循环轮次: 5,
     向量模型: { 类型: '本地' },
     存储: { 模式: '内存' },
-    自动检索动态工具数量: 3,
+    自动检索技能数量: 3,
   })
 
   // 必须初始化
   await 智能体.初始化()
 
-  打印分隔线('第一步：让大模型创造一个专门计算商品折扣的动态工具')
+  打印分隔线('第一步：让大模型创造一个专门计算商品折扣的技能')
   let 创建结果 = await 智能体.对话({
-    命令: '我最近要算很多商品打折后的价格，你能不能帮我创建一个动态工具 `calculate_discount`。它接收 原价(price, number) 和 折扣率(discountRate, number, 例如 0.8表示8折)。返回 折后价(finalPrice, number) 和 节省金额(saved, number)。测试用例请传 100 和 0.8。',
+    命令: '我最近要算很多商品打折后的价格，你能不能帮我创建一个技能 `calculate_discount`。它接收 原价(price, number) 和 折扣率(discountRate, number, 例如 0.8表示8折)。返回 折后价(finalPrice, number) 和 节省金额(saved, number)。测试用例请传 100 和 0.8。',
     预期结果Schema: z.object({ 回复: z.string().describe('对用户的回复') }),
     预期结果描述: '工具创建成功后的回复',
     回调: 事件处理,
@@ -59,7 +59,7 @@ async function 运行测试(): Promise<void> {
 
   console.log('\n🌟 阶段二完成:', 调用结果.结果)
 
-  打印分隔线('第三步：查看工具库，甚至让大模型自行读取代码并更新 (修正bug或加功能)')
+  打印分隔线('第三步：查看技能库，甚至让大模型自行读取代码并更新 (修正bug或加功能)')
   // 我们可以在这里继续对话，要求大模型查看并更新该工具，比如支持“是否满减”之类的功能，来验证查看和更新工具的链路。
   await 智能体.创建会话({ 标题: '第三步: 更新折扣工具' })
   let 升级结果 = await 智能体.对话({

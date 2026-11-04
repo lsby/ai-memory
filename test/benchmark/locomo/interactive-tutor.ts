@@ -129,11 +129,11 @@ async function runInteractiveTutor(): Promise<void> {
   )
 
   let 内存记忆工具筛选 = (工具名: string): boolean =>
-    工具名 !== 'create_dynamic_tool' &&
-    工具名 !== 'update_dynamic_tool' &&
-    工具名 !== 'remove_dynamic_tool' &&
-    工具名 !== 'call_dynamic_tool' &&
-    工具名 !== 'view_dynamic_tool_code'
+    工具名 !== 'create_skill' &&
+    工具名 !== 'update_skill' &&
+    工具名 !== 'remove_skill' &&
+    工具名 !== 'execute_skill' &&
+    工具名 !== 'view_skill_code'
 
   let studentAgent = new 带记忆的智能体({
     一级记忆容量: 30,

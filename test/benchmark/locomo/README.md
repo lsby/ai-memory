@@ -23,32 +23,34 @@ test/benchmark/locomo/
 ## 运行前准备
 
 ### 1. 启动本地模型服务
+
 确保本地模型服务（如 Ollama、vLLM 或 LM Studio 驱动的 GPT-OSS 20B / Qwen2.5 等）已启动，且支持 OpenAI 兼容接口。
 
 ### 2. 设置环境变量（可选）
+
 脚本支持以下环境变量配置：
 
-| 环境变量名 | 默认值 | 说明 |
-| :--- | :--- | :--- |
-| `AI_BASE_URL` | `http://localhost:11434/v1` | 被测模型的 API 地址 |
-| `AI_KEY` | `local` | 被测模型的 API Key |
-| `AI_MODEL` | `gpt-oss-20b` | 被测模型名称 |
-| `JUDGE_BASE_URL` | 同 `AI_BASE_URL` | 裁判模型的 API 地址（建议配置更聪明的模型，如 DeepSeek/GPT-4o-mini） |
-| `JUDGE_API_KEY` | 同 `AI_KEY` | 裁判模型的 API Key |
-| `JUDGE_MODEL` | 同 `AI_MODEL` | 裁判模型名称 |
-| `LOCOMO_SAMPLE_INDEX` | `0` | 测试的 Conversation 样本索引（0~9） |
-| `LOCOMO_MAX_SESSIONS` | `全量` | 限制灌入的会话数量（用于快速冒烟测试，如 `3`） |
-| `LOCOMO_MAX_QA` | `全量` | 限制测试的问题数量（用于快速冒烟测试，如 `5`） |
-| `VERBOSE` | `0` | 设为 `1` 时输出详细的智能体内部工具调用日志 |
-| `FUNES` | `false` | 开启博闻强记模式（对话原始消息持久化与检索） |
+| 环境变量名            | 默认值                      | 说明                                                                 |
+| :-------------------- | :-------------------------- | :------------------------------------------------------------------- |
+| `AI_BASE_URL`         | `http://localhost:11434/v1` | 被测模型的 API 地址                                                  |
+| `AI_KEY`              | `local`                     | 被测模型的 API Key                                                   |
+| `AI_MODEL`            | `gpt-oss-20b`               | 被测模型名称                                                         |
+| `JUDGE_BASE_URL`      | 同 `AI_BASE_URL`            | 裁判模型的 API 地址（建议配置更聪明的模型，如 DeepSeek/GPT-4o-mini） |
+| `JUDGE_API_KEY`       | 同 `AI_KEY`                 | 裁判模型的 API Key                                                   |
+| `JUDGE_MODEL`         | 同 `AI_MODEL`               | 裁判模型名称                                                         |
+| `LOCOMO_SAMPLE_INDEX` | `0`                         | 测试的 Conversation 样本索引（0~9）                                  |
+| `LOCOMO_MAX_SESSIONS` | `全量`                      | 限制灌入的会话数量（用于快速冒烟测试，如 `3`）                       |
+| `LOCOMO_MAX_QA`       | `全量`                      | 限制测试的问题数量（用于快速冒烟测试，如 `5`）                       |
+| `VERBOSE`             | `0`                         | 设为 `1` 时输出详细的智能体内部工具调用日志                          |
+| `FUNES`               | `false`                     | 开启博闻强记模式（对话原始消息持久化与检索）                         |
 
 ## 命令行常用参数
 
-* `--funes`: 开启博闻强记模式（允许模型在作答时通过消息搜索工具回溯原始对话细节）
-* `--funes-limit <n>`: 设置博闻强记消息单次搜索上限（默认 20）
-* `--reorganize <n>`: 阶段 1.5 梦境重组轮数
-* `--from-db <dir>`: 复用已有记忆数据库，跳过阶段一灌入
-* `--note "<text>"`: 为本次评测实验添加说明备注
+- `--funes`: 开启博闻强记模式（允许模型在作答时通过消息搜索工具回溯原始对话细节）
+- `--funes-limit <n>`: 设置博闻强记消息单次搜索上限（默认 20）
+- `--reorganize <n>`: 阶段 1.5 梦境重组轮数
+- `--from-db <dir>`: 复用已有记忆数据库，跳过阶段一灌入
+- `--note "<text>"`: 为本次评测实验添加说明备注
 
 ## 快速开始
 
@@ -76,5 +78,6 @@ pnpm tsx test/benchmark/locomo/index.ts
 ## 输出产物
 
 评测完成后，结果文件将自动保存在 `test/benchmark/locomo/output/` 目录下：
-* `predictions-sample-{i}.json`：智能体针对每道题生成的原始回忆回答与对应标准答案。
-* `evaluation-sample-{i}.json`：裁判模型出具的详细评判原因、标签以及各题型（Multi-hop, Temporal, Single-hop, Adversarial）的得分率统计。
+
+- `predictions-sample-{i}.json`：智能体针对每道题生成的原始回忆回答与对应标准答案。
+- `evaluation-sample-{i}.json`：裁判模型出具的详细评判原因、标签以及各题型（Multi-hop, Temporal, Single-hop, Adversarial）的得分率统计。

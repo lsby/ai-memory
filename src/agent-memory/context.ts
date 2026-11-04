@@ -5,7 +5,7 @@ import { 创建事件组id, 记录交互日志 } from './logger'
 import { 获取当前提交ID } from './operations/commit'
 import { 保存快照 as 外部保存快照 } from './storage/snapshot'
 import { type 向量缓存, 向量未预取错误, 新向量缓存, 预取向量 } from './storage/vector-cache'
-import type { 动态工具上下文 } from './tools/dynamic-tool-api'
+import type { 技能上下文 } from './tools/skill-api'
 import type { 公开交互日志, 内部带记忆的智能体配置, 获取向量结果, 记忆操作上下文, 记忆数据库 } from './types'
 
 /** 构建上下文所需的、由实例提供的能力。 */
@@ -78,13 +78,13 @@ export function 构建操作上下文(
   }
 }
 
-export function 构建动态操作上下文(
+export function 构建技能操作上下文(
   依赖: 上下文依赖,
   trx: Kysely<记忆数据库>,
   回调?: (事件: 智能体事件) => Promise<void>,
   缓存?: 向量缓存,
   事件组id?: string,
-): 动态工具上下文 {
+): 技能上下文 {
   let 上下文 = 构建操作上下文(依赖, trx, 回调, 缓存, 事件组id)
   return {
     ...上下文,

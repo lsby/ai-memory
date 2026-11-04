@@ -48,8 +48,8 @@ export type 模型语言包 = {
   自动召回记忆说明: () => string
   自动召回线索: (线索: string[]) => string
   当前记忆状态: (内容: string) => string
-  自动召回动态工具标题: () => string
-  自动召回动态工具说明: () => string
+  自动召回技能标题: () => string
+  自动召回技能说明: () => string
   未提供: () => string
   参数Schema名称: () => string
   返回值Schema名称: () => string
@@ -86,20 +86,20 @@ export type 模型语言包 = {
   记忆已捞起: (id: string, 评分: number) => string
   记忆线索状态: (id: string, 线索: string[]) => string
   找不到记忆: (id: string) => string
-  动态工具参数JSON错误: (字段名: string) => string
-  动态工具代码校验失败: (错误: string) => string
-  动态工具名称已存在: (名称: string) => string
-  动态工具冒烟测试失败: (错误: string) => string
-  未找到动态工具: (标识类型: '标识' | '名称', 值: string) => string
-  动态工具新代码校验失败: (错误: string) => string
-  动态工具更新名称冲突: (名称: string) => string
-  动态工具执行出错: (错误: string) => string
-  动态工具定义错误: (
+  技能参数JSON错误: (字段名: string) => string
+  技能代码校验失败: (错误: string) => string
+  技能名称已存在: (名称: string) => string
+  技能冒烟测试失败: (错误: string) => string
+  未找到技能: (标识类型: '标识' | '名称', 值: string) => string
+  技能新代码校验失败: (错误: string) => string
+  技能更新名称冲突: (名称: string) => string
+  技能执行出错: (错误: string) => string
+  技能定义错误: (
     问题: '缺少变量' | '名称' | '描述' | '参数Schema' | '参数Schema形状' | '返回值Schema' | '返回值Schema形状' | '实现',
   ) => string
-  动态工具Schema校验失败: (位置: '输入参数' | '返回值', 错误: string) => string
-  动态工具执行超时: (毫秒: number) => string
-  动态工具编译执行出错: (错误: string) => string
+  技能Schema校验失败: (位置: '输入参数' | '返回值', 错误: string) => string
+  技能执行超时: (毫秒: number) => string
+  技能编译执行出错: (错误: string) => string
   代码执行超时: (毫秒: number) => string
   代码执行输出: (日志: string[], 返回值: unknown) => string
 }
@@ -118,16 +118,18 @@ let 中文工具描述: Record<string, () => string> = {
   add_level_2_memory: (): string => '将规律、经验或长期理论直接存入可自动召回的长期记忆。',
   demote_memory: (): string => '将一条工作记忆转移到长期记忆，并重新评估评分。',
   promote_memory: (): string => '将一条长期记忆捞回工作记忆，并重新评估重要度。',
-  extend_memory: (): string => '根据想到的内容和线索进行联想，返回直接想起的长期记忆与新闪现的线索。',
+  search_memories: (): string => '用一个或多个自然语言内容联想长期记忆，返回少量完整记忆和更多闪现线索。',
+  search_clues: (): string => '用一个或多个自然语言内容联想线索，并返回与这些线索相关的记忆和技能。',
+  search_skills: (): string => '用一个或多个自然语言内容联想技能，返回少量完整技能信息和更多闪现线索。',
   append_memory_clues: (): string => '向指定记忆追加联想线索。',
   remove_memory_clues: (): string => '从指定记忆移除联想线索。',
   overwrite_memory_clues: (): string => '覆盖指定记忆的联想线索。',
-  create_dynamic_tool: (): string =>
-    '创建并持久化 JavaScript 动态工具。代码必须声明 `tool = { name, description, parametersSchema, returnSchema, execute }`；两个 Schema 都必须是 object 类型的标准 JSON Schema，`execute` 必须是 async function。沙盒不能访问网络、文件系统、import 或 require。还必须提供测试参数，只有冒烟测试通过后才会保存。',
-  view_dynamic_tool_code: (): string => '读取已有动态工具的完整源代码，以便排查或修改。',
-  update_dynamic_tool: (): string => '更新已有动态工具；新代码通过冒烟测试后才会替换当前版本。',
-  remove_dynamic_tool: (): string => '从当前工具状态移除不再需要的动态工具。',
-  call_dynamic_tool: (): string => '按名称调用已有动态工具，并传入 JSON 格式的参数字符串。',
+  create_skill: (): string =>
+    '创建并持久化 JavaScript 技能。代码必须声明 `skill = { name, description, parametersSchema, returnSchema, execute }`；两个 Schema 都必须是 object 类型的标准 JSON Schema，`execute` 必须是 async function。还需提供自然语言线索和测试参数，只有冒烟测试通过后才会保存。',
+  view_skill_code: (): string => '读取已有技能的完整源代码，以便排查或修改。',
+  update_skill: (): string => '更新已有技能；新代码通过冒烟测试后才会替换当前版本。',
+  remove_skill: (): string => '从当前技能状态移除不再需要的技能。',
+  execute_skill: (): string => '按名称调用已有技能，并传入 JSON 格式的参数字符串。',
 }
 
 export let 中文模型语言包: 模型语言包 = {
@@ -184,8 +186,8 @@ export let 中文模型语言包: 模型语言包 = {
     `闪现出的线索: [${线索.join(', ')}]\n这些只是联想线索；在读取准确记忆前，不要把它们归属于当前对象。`,
   当前记忆状态: (内容): string =>
     `### 本轮最新记忆状态\n以下是当前完整状态，如果与历史中更早的记忆状态冲突，以本条为准。\n\n${内容}`,
-  自动召回动态工具标题: (): string => '### 自动召回的动态工具',
-  自动召回动态工具说明: (): string => '系统召回了以下可能相关的工具。如需使用，请调用 `call_dynamic_tool`。',
+  自动召回技能标题: (): string => '### 自动召回的技能',
+  自动召回技能说明: (): string => '系统召回了以下可能相关的技能。如需使用，请调用 `execute_skill`。',
   未提供: (): string => '未提供',
   参数Schema名称: (): string => '参数Schema',
   返回值Schema名称: (): string => '返回值Schema',
@@ -198,7 +200,7 @@ export let 中文模型语言包: 模型语言包 = {
     `将下面的对话压缩为不超过 ${String(数量)} 个字符的摘要。保留决定、约束、未完成事项、精确标识符和重要事实。只返回摘要。`,
   压缩会话标题: (): string => '压缩会话',
   博闻强记提示词: (): string =>
-    '## 博闻强记模式\n你可以使用 `search_conversation_messages` 搜索当前会话及其压缩前驱链的原始消息，但不能访问其他会话或分支。`extend_memory` 直接命中的记忆可能附带与新增记忆相关的消息 ID，可用消息搜索工具查看原文。',
+    '## 博闻强记模式\n你可以使用 `search_conversation_messages` 搜索当前会话及其压缩前驱链的原始消息，但不能访问其他会话或分支。`search_memories` 直接命中的记忆可能附带与新增记忆相关的消息 ID，可用消息搜索工具查看原文。',
   博闻强记消息搜索工具描述: (): string =>
     '使用必填的自然语言查询对当前会话谱系中的消息进行向量检索，再按会话、消息、记忆来源、角色、相对时间或消息内容正则表达式过滤。过滤条件默认全部满足，也可选择任一满足；默认附带每条命中消息前后各5条上下文。命中数由系统配置限制。',
   博闻强记上游会话: (会话id): string => `[博闻强记] 当前会话由上游会话 ${会话id} 压缩而来。`,
@@ -225,16 +227,16 @@ export let 中文模型语言包: 模型语言包 = {
   记忆已捞起: (id, 评分): string => `[记忆 ID: ${id}] 已成功捞回至一级工作记忆区 (新评分: ${String(评分)})`,
   记忆线索状态: (id, 线索): string => `[记忆 ID: ${id}] 最新线索: ${线索.join(', ')}`,
   找不到记忆: (id): string => `找不到指定 ID (${id}) 的记忆。`,
-  动态工具参数JSON错误: (字段): string =>
+  技能参数JSON错误: (字段): string =>
     `参数格式错误：${字段} 不是合法的 JSON 字符串，且自动修复失败。请检查格式后重试。`,
-  动态工具代码校验失败: (错误): string => `代码校验失败: ${错误}`,
-  动态工具名称已存在: (名称): string => `名称「${名称}」已存在，请使用其他名称或更新已有工具`,
-  动态工具冒烟测试失败: (错误): string => `冒烟测试失败: ${错误}`,
-  未找到动态工具: (类型, 值): string => `未找到${类型}为「${值}」的动态工具`,
-  动态工具新代码校验失败: (错误): string => `新代码校验失败: ${错误}`,
-  动态工具更新名称冲突: (名称): string => `更新失败: 新代码中的名称「${名称}」已被其他工具占用`,
-  动态工具执行出错: (错误): string => `执行出错: ${错误}`,
-  动态工具定义错误: (问题): string => {
+  技能代码校验失败: (错误): string => `代码校验失败: ${错误}`,
+  技能名称已存在: (名称): string => `名称「${名称}」已存在，请使用其他名称或更新已有技能`,
+  技能冒烟测试失败: (错误): string => `冒烟测试失败: ${错误}`,
+  未找到技能: (类型, 值): string => `未找到${类型}为「${值}」的技能`,
+  技能新代码校验失败: (错误): string => `新代码校验失败: ${错误}`,
+  技能更新名称冲突: (名称): string => `更新失败: 新代码中的名称「${名称}」已被其他技能占用`,
+  技能执行出错: (错误): string => `执行出错: ${错误}`,
+  技能定义错误: (问题): string => {
     let 文案 = {
       缺少变量: '代码中必须声明一个名为 `tool` 的变量',
       名称: '`tool` 必须包含非空的 `name` 字段 (string)',
@@ -247,9 +249,9 @@ export let 中文模型语言包: 模型语言包 = {
     }
     return 文案[问题]
   },
-  动态工具Schema校验失败: (位置, 错误): string => `${位置} 不符合 JSON Schema: ${错误}`,
-  动态工具执行超时: (毫秒): string => `动态工具执行超时（${String(毫秒)}ms）`,
-  动态工具编译执行出错: (错误): string => `代码编译/执行出错: ${错误}`,
+  技能Schema校验失败: (位置, 错误): string => `${位置} 不符合 JSON Schema: ${错误}`,
+  技能执行超时: (毫秒): string => `技能执行超时（${String(毫秒)}ms）`,
+  技能编译执行出错: (错误): string => `代码编译/执行出错: ${错误}`,
   代码执行超时: (毫秒): string => `代码执行超时（${String(毫秒)}ms）`,
   代码执行输出: (日志, 返回值): string => {
     let 日志文本 = 日志.length > 0 ? `【Console 输出】:\n${日志.join('\n')}\n\n` : ''
@@ -317,8 +319,8 @@ export let 英文模型语言包: 模型语言包 = {
     `Flashed clues: [${线索.join(', ')}]\nThese are associative clues. Do not attribute them to the current subject without reading the exact memory.`,
   当前记忆状态: (内容): string =>
     `### Current memory state\nThis is the complete current state. If it conflicts with an older memory-state message, use this one.\n\n${内容}`,
-  自动召回动态工具标题: (): string => '### Automatically recalled dynamic tools',
-  自动召回动态工具说明: (): string => 'The following tools may be relevant. Use `call_dynamic_tool` to run one.',
+  自动召回技能标题: (): string => '### Automatically recalled skills',
+  自动召回技能说明: (): string => 'The following skills may be relevant. Use `execute_skill` to run one.',
   未提供: (): string => 'not provided',
   参数Schema名称: (): string => 'parameter schema',
   返回值Schema名称: (): string => 'return schema',
@@ -331,7 +333,7 @@ export let 英文模型语言包: 模型语言包 = {
     `Summarize the conversation below in at most ${String(数量)} characters. Preserve decisions, constraints, unresolved work, exact identifiers, and important facts. Return only the summary.`,
   压缩会话标题: (): string => 'Compressed conversation',
   博闻强记提示词: (): string =>
-    '## Funes mode\nYou may use `search_conversation_messages` to search exact original messages from the current conversation and its compressed ancestor lineage, but never from unrelated conversations or sibling branches. Direct hits returned by `extend_memory` may include message IDs related to the creation of that memory; use the message-search tool to inspect the original text.',
+    '## Funes mode\nYou may use `search_conversation_messages` to search exact original messages from the current conversation and its compressed ancestor lineage, but never from unrelated conversations or sibling branches. Direct hits returned by `search_memories` may include message IDs related to the creation of that memory; use the message-search tool to inspect the original text.',
   博闻强记消息搜索工具描述: (): string =>
     'Search the current conversation lineage using a required natural-language vector query, then filter by conversation, message, memory origin, role, absolute time range, or a regex over message content. Filters use "and" by default and may use "or". Five messages before and after each hit are included by default. The configured hit limit cannot be raised.',
   博闻强记上游会话: (会话id): string =>
@@ -360,17 +362,15 @@ export let 英文模型语言包: 模型语言包 = {
   记忆已捞起: (id, 评分): string => `[Memory ID: ${id}] moved to level 1 working memory (new score: ${String(评分)})`,
   记忆线索状态: (id, 线索): string => `[Memory ID: ${id}] current clues: ${线索.join(', ')}`,
   找不到记忆: (id): string => `Memory ID ${id} was not found.`,
-  动态工具参数JSON错误: (字段): string => `${字段} is not valid JSON and could not be repaired. Fix it and try again.`,
-  动态工具代码校验失败: (错误): string => `Code validation failed: ${错误}`,
-  动态工具名称已存在: (名称): string =>
-    `The name "${名称}" already exists. Use another name or update the existing tool.`,
-  动态工具冒烟测试失败: (错误): string => `Smoke test failed: ${错误}`,
-  未找到动态工具: (类型, 值): string =>
-    `No dynamic tool was found with ${类型 === '标识' ? 'reference' : 'name'} "${值}".`,
-  动态工具新代码校验失败: (错误): string => `New code validation failed: ${错误}`,
-  动态工具更新名称冲突: (名称): string => `Update failed because the name "${名称}" is already used by another tool.`,
-  动态工具执行出错: (错误): string => `Execution failed: ${错误}`,
-  动态工具定义错误: (问题): string => {
+  技能参数JSON错误: (字段): string => `${字段} is not valid JSON and could not be repaired. Fix it and try again.`,
+  技能代码校验失败: (错误): string => `Code validation failed: ${错误}`,
+  技能名称已存在: (名称): string => `The name "${名称}" already exists. Use another name or update the existing tool.`,
+  技能冒烟测试失败: (错误): string => `Smoke test failed: ${错误}`,
+  未找到技能: (类型, 值): string => `No skill was found with ${类型 === '标识' ? 'reference' : 'name'} "${值}".`,
+  技能新代码校验失败: (错误): string => `New code validation failed: ${错误}`,
+  技能更新名称冲突: (名称): string => `Update failed because the name "${名称}" is already used by another tool.`,
+  技能执行出错: (错误): string => `Execution failed: ${错误}`,
+  技能定义错误: (问题): string => {
     let 文案 = {
       缺少变量: 'The code must declare a variable named tool.',
       名称: 'The tool must have a non-empty name field (string).',
@@ -383,10 +383,10 @@ export let 英文模型语言包: 模型语言包 = {
     }
     return 文案[问题]
   },
-  动态工具Schema校验失败: (位置, 错误): string =>
+  技能Schema校验失败: (位置, 错误): string =>
     `${位置 === '输入参数' ? 'Input arguments' : 'Return value'} do not match the JSON Schema: ${错误}`,
-  动态工具执行超时: (毫秒): string => `Dynamic tool execution timed out after ${String(毫秒)} ms.`,
-  动态工具编译执行出错: (错误): string => `Code compilation or execution failed: ${错误}`,
+  技能执行超时: (毫秒): string => `Skill execution timed out after ${String(毫秒)} ms.`,
+  技能编译执行出错: (错误): string => `Code compilation or execution failed: ${错误}`,
   代码执行超时: (毫秒): string => `Code execution timed out after ${String(毫秒)} ms.`,
   代码执行输出: (日志, 返回值): string => {
     let 日志文本 = 日志.length > 0 ? `Console output:\n${日志.join('\n')}\n\n` : ''

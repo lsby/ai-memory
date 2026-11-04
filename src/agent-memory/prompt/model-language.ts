@@ -35,7 +35,19 @@ let 内部字段名 = [
   '结束时间',
   '内容过滤正则表达式',
   '直接联想到的记忆',
+  '完整记忆',
+  '完整技能',
+  '匹配的线索',
+  '相关记忆',
+  '相关技能',
   '闪现出的线索',
+  '完整记忆数量',
+  '完整技能数量',
+  '线索来源数量',
+  '记忆数量',
+  '技能数量',
+  '技能标识',
+  '技能名称',
   '工具标识',
   '工具名称',
   '名称',
@@ -127,11 +139,11 @@ export function 转换Schema(值: unknown, 模型语言包: 模型语言包, 保
 }
 
 export function 本地化记忆工具(工具: 智能体工具, 模型语言包: 模型语言包): 智能体工具 {
-  let 是否回忆延伸 = 工具.名称 === 'extend_memory'
-  let 原始Schema = 是否回忆延伸
+  let 是否联想查询 = ['search_memories', 'search_clues', 'search_skills'].includes(工具.名称)
+  let 原始Schema = 是否联想查询
     ? zodToJsonSchema(工具.参数Schema)
     : zodToJsonSchema(工具.参数Schema, { target: 'openAi' })
-  let schema = 转换Schema(原始Schema, 模型语言包, 是否回忆延伸)
+  let schema = 转换Schema(原始Schema, 模型语言包, 是否联想查询)
   if (schema === null || typeof schema !== 'object' || Array.isArray(schema))
     throw new Error('工具 JSON Schema 不是对象')
   return 智能体工具.创建模型适配(工具, {

@@ -1,11 +1,12 @@
 import type { Kysely } from 'kysely'
 import { z } from 'zod'
-import { 同步记忆线索, 读取记忆线索映射 } from '../storage/clue-storage'
+import { 同步记忆线索, 读取技能线索映射, 读取记忆线索映射 } from '../storage/clue-storage'
 import { 增量排版 } from '../tools/layout'
 import {
   更新记忆选项Schema,
   记忆等级,
-  type 公开动态工具,
+  type 公开技能,
+  type 公开技能线索关联,
   type 公开线索,
   type 公开记忆,
   type 公开记忆提交,
@@ -104,12 +105,23 @@ export async function 查询记忆线索关联(数据库查询器: Kysely<记忆
   return await 查询.execute()
 }
 
-export async function 查询动态工具(数据库查询器: Kysely<记忆数据库>): Promise<公开动态工具[]> {
-  return await 数据库查询器
-    .selectFrom('当前动态工具表')
+export async function 查询技能(数据库查询器: Kysely<记忆数据库>): Promise<公开技能[]> {
+  let 技能列表 = await 数据库查询器
+    .selectFrom('当前技能表')
     .select(['id', '名称', '描述', '代码', '创建时间'])
     .orderBy('创建时间', 'asc')
     .execute()
+  let 线索映射 = await 读取技能线索映射(
+    数据库查询器,
+    技能列表.map((技能) => 技能.id),
+  )
+  return 技能列表.map((技能): 公开技能 => ({ ...技能, 线索: 线索映射.get(技能.id) ?? [] }))
+}
+
+export async function 查询技能线索关联(数据库查询器: Kysely<记忆数据库>, 技能id?: string): Promise<公开技能线索关联[]> {
+  let 查询 = 数据库查询器.selectFrom('当前技能线索关联表').select(['技能id', '线索id'])
+  if (技能id !== undefined) 查询 = 查询.where('技能id', '=', z.string().trim().min(1).parse(技能id))
+  return await 查询.execute()
 }
 
 export async function 查询记忆提交(数据库查询器: Kysely<记忆数据库>, 数量: number = 50): Promise<公开记忆提交[]> {

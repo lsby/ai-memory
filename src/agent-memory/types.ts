@@ -63,7 +63,7 @@ export let 记忆提交表Schema = z.object({
 })
 export type 记忆提交表 = z.infer<typeof 记忆提交表Schema>
 
-export let 记忆变更目标表Schema = z.enum(['memory', 'clue', 'memory_clue_relation', 'dynamic_tool'])
+export let 记忆变更目标表Schema = z.enum(['memory', 'clue', 'memory_clue_relation', 'skill', 'skill_clue_relation'])
 export type 记忆变更目标表 = z.infer<typeof 记忆变更目标表Schema>
 
 export let 记忆行操作类型Schema = z.enum(['insert', 'update', 'delete'])
@@ -90,7 +90,7 @@ export type 记忆指针表 = {
   当前记忆提交id: string | null
 }
 
-export let 当前动态工具表Schema = z.object({
+export let 当前技能表Schema = z.object({
   id: z.string(),
   名称: z.string(),
   描述: z.string(),
@@ -99,7 +99,15 @@ export let 当前动态工具表Schema = z.object({
   向量维度: z.number().nullish(),
   创建时间: z.union([z.string(), z.date()]).transform((val) => new Date(val)),
 })
-export type 当前动态工具表 = z.infer<typeof 当前动态工具表Schema>
+export type 当前技能表 = z.infer<typeof 当前技能表Schema>
+
+export let 当前技能线索关联表Schema = z.object({
+  技能id: z.string(),
+  线索id: z.string(),
+  向量: z.union([z.string(), z.array(z.number())]).nullish(),
+  向量维度: z.number().nullish(),
+})
+export type 当前技能线索关联表 = z.infer<typeof 当前技能线索关联表Schema>
 
 export type JSON值 = string | number | boolean | null | JSON值[] | { [键: string]: JSON值 }
 
@@ -215,7 +223,8 @@ export type 记忆数据库 = {
   记忆行变更表: 记忆行变更表
   系统版本表: 系统版本表
   记忆指针表: 记忆指针表
-  当前动态工具表: 当前动态工具表
+  当前技能表: 当前技能表
+  当前技能线索关联表: 当前技能线索关联表
   前缀快照表: 前缀快照表
   日志表: 日志表
   会话表: 会话表
@@ -255,7 +264,7 @@ export type 带记忆的智能体选项 = 智能体选项 &
     /**
      * 是否开启只读模式，默认 false。
      * 开启后：
-     * 1. 过滤所有修改记忆的写工具，仅保留只读检索工具（如回忆延伸），大幅缩减系统提示词；
+     * 1. 过滤所有修改记忆的写工具，仅保留只读联想查询工具，大幅缩减系统提示词；
      * 2. 底层拦截任何记忆修改操作并直接抛错，彻底杜绝记忆库被污染或被模型幻觉篡改。
      */
     只读模式?: boolean | undefined
@@ -298,7 +307,7 @@ export type 带记忆的智能体选项 = 智能体选项 &
     自动检索二级记忆数量?: number
     自动检索线索数量?: number
     自动检索关联数量?: number
-    自动检索动态工具数量?: number
+    自动检索技能数量?: number
     向量召回相似度阈值?: number
     /**
      * 存储位置。默认内存。三种模式都可以带 schema（默认 public，和旧版本的数据布局一致）。
@@ -418,7 +427,8 @@ export type 查询记忆选项 = {
 export type 公开线索 = { id: string; 内容: string; 创建时间: Date }
 export type 公开记忆线索关联 = { 记忆id: string; 线索id: string }
 
-export type 公开动态工具 = { id: string; 名称: string; 描述: string; 代码: string; 创建时间: Date }
+export type 公开技能 = { id: string; 名称: string; 描述: string; 代码: string; 线索: string[]; 创建时间: Date }
+export type 公开技能线索关联 = { 技能id: string; 线索id: string }
 
 export type 公开记忆行变更 = {
   id: string
@@ -513,11 +523,12 @@ export type 查询交互日志选项 = {
 }
 
 export let 快照数据Schema = z.object({
-  格式版本: z.literal(3),
+  格式版本: z.literal(4),
   记忆列表: z.array(当前记忆表Schema),
   线索列表: z.array(当前线索表Schema),
   记忆线索关联列表: z.array(当前记忆线索关联表Schema),
-  动态工具列表: z.array(当前动态工具表Schema),
+  技能列表: z.array(当前技能表Schema),
+  技能线索关联列表: z.array(当前技能线索关联表Schema),
 })
 export type 快照数据 = z.infer<typeof 快照数据Schema>
 

@@ -1,4 +1,3 @@
-import { sql } from 'kysely'
 import { createHash } from 'node:crypto'
 import { z } from 'zod'
 import { 构造前缀已变结果 } from '../../agent/message/prefix'
@@ -10,22 +9,15 @@ import { 转为JSON值 } from '../logger'
 import { 记忆工具名 } from '../prompt/memory-tool-names'
 import { 本地化记忆工具 } from '../prompt/model-language'
 import { 生成记忆所需向量文本, 读取记忆线索映射 } from '../storage/clue-storage'
+import { 查询技能工具, 查询线索工具, 查询记忆工具 } from '../tools/associative-search'
 import { 移除记忆线索工具, 覆盖记忆线索工具, 追加记忆线索工具 } from '../tools/clue'
 import { 深度推演工具 } from '../tools/deep-deduction'
-import { 加载并校验动态工具 } from '../tools/dynamic-loader'
-import { 提取动态工具向量文本 } from '../tools/dynamic-tool-api'
-import {
-  创建动态工具工具,
-  更新动态工具工具,
-  查看动态工具代码工具,
-  移除动态工具工具,
-  调用动态工具工具,
-} from '../tools/dynamic-tools'
 import { 创建执行代码工具 } from '../tools/execute-code'
-import { 回忆延伸工具 } from '../tools/graph-rag'
 import { 修改零级记忆工具, 添加零级记忆工具, 移除零级记忆工具 } from '../tools/level-0'
 import { 修改一级记忆工具, 添加一级记忆工具, 移除一级记忆工具 } from '../tools/level-1'
 import { 捞起记忆到一级工具, 添加二级记忆工具, 降级记忆为二级工具 } from '../tools/level-2'
+import { 提取技能向量文本 } from '../tools/skill-api'
+import { 创建技能工具, 执行技能工具, 更新技能工具, 查看技能代码工具, 移除技能工具 } from '../tools/skill-tools'
 import {
   格式化为本地时间字符串,
   记忆等级,
@@ -95,14 +87,14 @@ async function 提取工具向量文本(
     edit_level_0_memory: '新内容',
     edit_level_1_memory: '新内容',
   }
-  let 代码字段: Record<string, string> = { create_dynamic_tool: '代码', update_dynamic_tool: '新代码' }
+  let 代码字段: Record<string, string> = { create_skill: '代码', update_skill: '新代码' }
   let 文本字段 = 内容字段[工具名称]
   if (文本字段 !== undefined) {
     let 内容 = 读取文本参数(参数, 文本字段)[0]
     if (内容 === undefined) return []
     return 生成记忆所需向量文本(内容, 读取文本参数(参数, 工具名称.startsWith('edit_') ? '新线索' : '线索'))
   }
-  if (工具名称 === 'extend_memory') return [...读取文本参数(参数, '内容'), ...读取文本参数(参数, '线索')]
+  if (['search_memories', 'search_clues', 'search_skills'].includes(工具名称)) return 读取文本参数(参数, '内容')
   if (工具名称.endsWith('_memory_clues')) {
     let id = 读取文本参数(参数, 'id')[0]
     if (id === undefined) return []
@@ -124,15 +116,17 @@ async function 提取工具向量文本(
     let 最终线索 = 变换(旧线索, 请求线索)
     return 生成记忆所需向量文本(记忆.内容, 最终线索)
   }
-  let 动态工具代码字段 = 代码字段[工具名称]
-  if (动态工具代码字段 === undefined) return []
-  let 文本 = await 提取动态工具向量文本(读取文本参数(参数, 动态工具代码字段)[0] ?? '')
-  return 文本 === null ? [] : [文本]
+  let 技能代码字段 = 代码字段[工具名称]
+  if (技能代码字段 === undefined) return []
+  return await 提取技能向量文本(读取文本参数(参数, 技能代码字段)[0] ?? '', 读取文本参数(参数, '线索'))
 }
 
 function 创建事务化记忆工具(上下文: 记忆工具上下文, 工厂: 记忆工具工厂): 智能体工具 {
   let 模板 = 工厂(上下文)
-  let 需要模型提供消息 = 模板.名称 !== 记忆工具名.回忆延伸
+  let 需要模型提供消息 =
+    [记忆工具名.查询记忆, 记忆工具名.查询线索, 记忆工具名.查询技能].includes(
+      模板.名称 as 'search_memories' | 'search_clues' | 'search_skills',
+    ) === false
   let 参数Schema = 需要模型提供消息
     ? 模板.参数Schema.extend({
         消息: z.string().trim().min(1).describe('说明为什么要执行这次记忆变更'),
@@ -148,6 +142,9 @@ function 创建事务化记忆工具(上下文: 记忆工具上下文, 工厂: �
       // 两段式：先在事务外把向量算好，再开事务；事务期间互斥锁一直被占着，不能在里面等网络
       let 带缓存上下文 = await 上下文.带向量缓存(await 提取工具向量文本(上下文.数据库查询器, 模板.名称, 参数))
       let 提交消息 = 需要模型提供消息 ? String(参数['消息']) : 'AI 请求记忆召回'
+      if (需要模型提供消息 === false && 带缓存上下文.配置.只读模式 === true) {
+        return await 工厂(带缓存上下文).实现(参数)
+      }
       return await 带缓存上下文.执行记忆变更(提交消息, async (事务上下文) => await 工厂(事务上下文).实现(参数))
     },
   })
@@ -205,20 +202,22 @@ export async function 解决问题<T extends z.ZodType>(
     [记忆工具名.降级记忆为二级, (): 智能体工具 => 创建事务化记忆工具(记忆工具上下文, 降级记忆为二级工具)],
     [记忆工具名.捞起记忆到一级, (): 智能体工具 => 创建事务化记忆工具(记忆工具上下文, 捞起记忆到一级工具)],
 
-    // ---- 图谱检索工具 ----
-    [记忆工具名.回忆延伸, (): 智能体工具 => 创建事务化记忆工具(记忆工具上下文, 回忆延伸工具)],
+    // ---- 联想检索工具 ----
+    [记忆工具名.查询记忆, (): 智能体工具 => 创建事务化记忆工具(记忆工具上下文, 查询记忆工具)],
+    [记忆工具名.查询线索, (): 智能体工具 => 创建事务化记忆工具(记忆工具上下文, 查询线索工具)],
+    [记忆工具名.查询技能, (): 智能体工具 => 创建事务化记忆工具(记忆工具上下文, 查询技能工具)],
 
     // ---- 线索管理工具 ----
     [记忆工具名.追加记忆线索, (): 智能体工具 => 创建事务化记忆工具(记忆工具上下文, 追加记忆线索工具)],
     [记忆工具名.移除记忆线索, (): 智能体工具 => 创建事务化记忆工具(记忆工具上下文, 移除记忆线索工具)],
     [记忆工具名.覆盖记忆线索, (): 智能体工具 => 创建事务化记忆工具(记忆工具上下文, 覆盖记忆线索工具)],
 
-    // ---- 动态工具管理 ----
-    [记忆工具名.创建动态工具, (): 智能体工具 => 创建事务化记忆工具(记忆工具上下文, 创建动态工具工具)],
-    [记忆工具名.查看动态工具代码, (): 智能体工具 => 查看动态工具代码工具(记忆工具上下文)],
-    [记忆工具名.更新动态工具, (): 智能体工具 => 创建事务化记忆工具(记忆工具上下文, 更新动态工具工具)],
-    [记忆工具名.移除动态工具, (): 智能体工具 => 创建事务化记忆工具(记忆工具上下文, 移除动态工具工具)],
-    [记忆工具名.调用动态工具, (): 智能体工具 => 调用动态工具工具(记忆工具上下文)],
+    // ---- 技能管理 ----
+    [记忆工具名.创建技能, (): 智能体工具 => 创建事务化记忆工具(记忆工具上下文, 创建技能工具)],
+    [记忆工具名.查看技能代码, (): 智能体工具 => 查看技能代码工具(记忆工具上下文)],
+    [记忆工具名.更新技能, (): 智能体工具 => 创建事务化记忆工具(记忆工具上下文, 更新技能工具)],
+    [记忆工具名.移除技能, (): 智能体工具 => 创建事务化记忆工具(记忆工具上下文, 移除技能工具)],
+    [记忆工具名.执行技能, (): 智能体工具 => 执行技能工具(记忆工具上下文)],
   ]
   let 记忆专用工具列表 =
     执行模式 === '推演'
@@ -248,7 +247,7 @@ export async function 解决问题<T extends z.ZodType>(
 
   let 本轮召回内容片段: string[] = []
   let 自动召回记忆实体id列表: string[] = []
-  let 自动召回动态工具实体id列表: string[] = []
+  let 自动召回技能实体id列表: string[] = []
   let 自动召回线索数量 = 0
   let 记忆状态文本 = `${零级记忆文本}\n${模型语言包.当前一级记忆标题()}\n`
 
@@ -271,7 +270,7 @@ export async function 解决问题<T extends z.ZodType>(
     执行模式 !== '推演' &&
     选项.是否自动召回 !== false &&
     预取文本列表.length > 0 &&
-    (自动检索二级记忆数量 > 0 || 配置.自动检索线索数量 > 0 || 配置.自动检索动态工具数量 > 0)
+    (自动检索二级记忆数量 > 0 || 配置.自动检索线索数量 > 0 || 配置.自动检索技能数量 > 0)
       ? await 上下文.带向量缓存(预取文本列表)
       : 上下文
 
@@ -279,90 +278,88 @@ export async function 解决问题<T extends z.ZodType>(
     执行模式 !== '推演' &&
     选项.是否自动召回 !== false &&
     召回文本 !== '' &&
-    (自动检索二级记忆数量 > 0 || 配置.自动检索线索数量 > 0)
+    (自动检索二级记忆数量 > 0 || 配置.自动检索线索数量 > 0 || 配置.自动检索技能数量 > 0)
   ) {
-    let 结果 = await 自动召回上下文.执行记忆变更(
-      '自动记忆召回',
-      async (事务上下文) => await 回忆延伸工具(构建记忆工具上下文(事务上下文)).实现({ 内容: [召回文本], 线索: [] }),
-    )
-
-    if (结果.结果 === '成功') {
-      let 解析结果 = z
-        .object({
-          直接联想到的记忆: z
-            .array(
-              z.object({
-                id: z.string(),
-                等级: z.nativeEnum(记忆等级),
-                评分: z.number(),
-                内容: z.string(),
-                线索: z.array(z.string()),
-              }),
-            )
-            .optional(),
-          闪现出的线索: z.array(z.string()).optional(),
-        })
-        .safeParse(结果)
-
-      if (解析结果.success) {
-        let 数据 = 解析结果.data
-        let 记忆片段 = 数据.直接联想到的记忆 ?? []
-        let 线索片段 = 数据.闪现出的线索 ?? []
-
-        let 二级记忆片段 = 记忆片段.filter((m) => m.等级 === 记忆等级.二级)
-        自动召回记忆实体id列表.push(...二级记忆片段.map((记忆) => 记忆.id))
-        自动召回线索数量 += 线索片段.length
-
-        if (二级记忆片段.length > 0 || 线索片段.length > 0) {
-          let 召回内容文本 = `${模型语言包.自动召回记忆标题()}\n`
-          if (二级记忆片段.length > 0) {
-            召回内容文本 += `${模型语言包.自动召回记忆说明()}\n`
-            for (let 记忆 of 二级记忆片段) {
-              召回内容文本 += `- [${记忆.id}] (${模型语言包.评分名称()}:${String(记忆.评分)}) ${记忆.内容} (${模型语言包.线索名称()}: ${记忆.线索.join(', ')})\n`
-            }
-          }
-          if (线索片段.length > 0) {
-            召回内容文本 += `${模型语言包.自动召回线索(线索片段)}\n`
-          }
-          本轮召回内容片段.push(召回内容文本)
-        }
+    let 执行自动召回 = async (
+      事务上下文: 记忆操作上下文,
+    ): Promise<{ 记忆: Record<string, unknown>; 技能: Record<string, unknown> }> => {
+      let 工具上下文 = 构建记忆工具上下文(事务上下文)
+      return {
+        记忆: await 查询记忆工具(工具上下文).实现({
+          内容: [召回文本],
+          完整记忆数量: 自动检索二级记忆数量,
+          线索来源数量: 配置.自动检索关联数量,
+        }),
+        技能: await 查询技能工具(工具上下文).实现({
+          内容: [召回文本],
+          完整技能数量: 配置.自动检索技能数量,
+          线索来源数量: 配置.自动检索关联数量,
+        }),
       }
     }
-  }
-
-  // ---- 动态工具自动召回 ----
-  let 自动检索动态工具数量 = 配置.自动检索动态工具数量
-  if (执行模式 !== '推演' && 选项.是否自动召回 !== false && 召回文本 !== '' && 自动检索动态工具数量 > 0) {
-    let 查询向量 = 解包向量结果(await 自动召回上下文.获取向量(召回文本))
-    if (查询向量 !== null) {
-      let 当前维度 = 查询向量.length
-      let 向量字符串 = JSON.stringify(查询向量)
-      let 相似度表达式 = sql<number>`1 - (向量 <=> ${向量字符串}::vector)`
-      let 召回的工具 = await 数据库查询器
-        .selectFrom('当前动态工具表')
-        .select(['id', '名称', '描述', '代码', 相似度表达式.as('相似度')])
-        .where('向量', 'is not', null)
-        .where('向量维度', '=', 当前维度)
-        .where(相似度表达式, '>', 配置.向量召回相似度阈值)
-        .orderBy(相似度表达式, 'desc')
-        .limit(自动检索动态工具数量)
-        .execute()
-
-      if (召回的工具.length > 0) {
-        自动召回动态工具实体id列表.push(...召回的工具.map((工具) => 工具.id))
-        let 动态工具提示文本 = `${模型语言包.自动召回动态工具标题()}\n${模型语言包.自动召回动态工具说明()}\n`
-        for (let 工具 of 召回的工具) {
-          let 加载结果 = await 加载并校验动态工具(工具.代码, 模型语言包)
-          let 参数Schema = 模型语言包.未提供()
-          let 返回值Schema = 模型语言包.未提供()
-          if (加载结果.成功) {
-            参数Schema = JSON.stringify(加载结果.工具.参数Schema)
-            返回值Schema = JSON.stringify(加载结果.工具.返回值Schema)
-          }
-          动态工具提示文本 += `- **${工具.名称}**: ${工具.描述} (${模型语言包.参数Schema名称()}: ${参数Schema}) (${模型语言包.返回值Schema名称()}: ${返回值Schema}) (${模型语言包.相似度名称()}: ${(工具.相似度 * 100).toFixed(1)}%)\n`
-        }
-        本轮召回内容片段.push(动态工具提示文本)
+    let 结果 =
+      自动召回上下文.配置.只读模式 === true
+        ? await 执行自动召回(自动召回上下文)
+        : await 自动召回上下文.执行记忆变更('自动记忆召回', 执行自动召回)
+    let 记忆解析 = z
+      .object({
+        完整记忆: z
+          .array(
+            z.object({
+              id: z.string(),
+              等级: z.nativeEnum(记忆等级),
+              评分: z.number(),
+              内容: z.string(),
+              线索: z.array(z.string()),
+            }),
+          )
+          .optional(),
+        闪现出的线索: z.array(z.string()).optional(),
+      })
+      .safeParse(结果.记忆)
+    let 技能解析 = z
+      .object({
+        完整技能: z
+          .array(
+            z.object({
+              id: z.string(),
+              名称: z.string(),
+              描述: z.string(),
+              线索: z.array(z.string()),
+              参数Schema: z.record(z.unknown()).optional(),
+              返回值Schema: z.record(z.unknown()).optional(),
+            }),
+          )
+          .optional(),
+        闪现出的线索: z.array(z.string()).optional(),
+      })
+      .safeParse(结果.技能)
+    let 记忆片段 = 记忆解析.success ? (记忆解析.data.完整记忆 ?? []) : []
+    let 技能片段 = 技能解析.success ? (技能解析.data.完整技能 ?? []) : []
+    let 线索片段 = Array.from(
+      new Set([
+        ...(记忆解析.success ? (记忆解析.data.闪现出的线索 ?? []) : []),
+        ...(技能解析.success ? (技能解析.data.闪现出的线索 ?? []) : []),
+      ]),
+    ).slice(0, 配置.自动检索线索数量)
+    自动召回记忆实体id列表.push(...记忆片段.map((记忆) => 记忆.id))
+    自动召回技能实体id列表.push(...技能片段.map((技能) => 技能.id))
+    自动召回线索数量 += 线索片段.length
+    if (记忆片段.length > 0 || 线索片段.length > 0) {
+      let 召回内容文本 = `${模型语言包.自动召回记忆标题()}\n`
+      if (记忆片段.length > 0) {
+        召回内容文本 += `${模型语言包.自动召回记忆说明()}\n`
+        for (let 记忆 of 记忆片段)
+          召回内容文本 += `- [${记忆.id}] (${模型语言包.评分名称()}:${String(记忆.评分)}) ${记忆.内容} (${模型语言包.线索名称()}: ${记忆.线索.join(', ')})\n`
       }
+      if (线索片段.length > 0) 召回内容文本 += `${模型语言包.自动召回线索(线索片段)}\n`
+      本轮召回内容片段.push(召回内容文本)
+    }
+    if (技能片段.length > 0) {
+      let 技能提示文本 = `${模型语言包.自动召回技能标题()}\n${模型语言包.自动召回技能说明()}\n`
+      for (let 技能 of 技能片段)
+        技能提示文本 += `- **${技能.名称}**: ${技能.描述} (${模型语言包.线索名称()}: ${技能.线索.join(', ')}) (${模型语言包.参数Schema名称()}: ${JSON.stringify(技能.参数Schema ?? 模型语言包.未提供())}) (${模型语言包.返回值Schema名称()}: ${JSON.stringify(技能.返回值Schema ?? 模型语言包.未提供())})\n`
+      本轮召回内容片段.push(技能提示文本)
     }
   }
 
@@ -401,7 +398,7 @@ export async function 解决问题<T extends z.ZodType>(
     耗时ms: Date.now() - 召回开始时间.getTime(),
     内容: 转为JSON值({
       记忆实体id列表: 自动召回记忆实体id列表,
-      动态工具实体id列表: 自动召回动态工具实体id列表,
+      技能实体id列表: 自动召回技能实体id列表,
       闪现线索数量: 自动召回线索数量,
     }),
   })

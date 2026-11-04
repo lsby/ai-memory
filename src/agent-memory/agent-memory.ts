@@ -23,11 +23,10 @@ import {
 } from './operations/commit'
 import { 尝试自动压缩, 确定对话事件组 } from './operations/conversation-compression'
 import { 会话控制器 } from './operations/conversation-controller'
-import * as 动态工具管理 from './operations/dynamic-management'
 import { 准备博闻强记选项 } from './operations/funes-mode'
 import {
   更新记忆 as 外部更新记忆,
-  查询动态工具 as 外部查询动态工具,
+  查询技能 as 外部查询技能,
   查询线索 as 外部查询线索,
   查询记忆 as 外部查询记忆,
   查询记忆提交 as 外部查询记忆提交,
@@ -35,6 +34,7 @@ import {
 } from './operations/management'
 import { 生成查询向量, 生成消息向量 } from './operations/message-vector'
 import { 定时任务入口 as 外部定时任务入口, 执行记忆重组 as 外部执行记忆重组 } from './operations/reorganization'
+import * as 技能管理 from './operations/skill-management'
 import { 解决问题 as 外部解决问题 } from './operations/solve'
 import { 清理孤立线索, 生成记忆所需向量文本 } from './storage/clue-storage'
 import { 带互斥的PGlite方言, 默认schema } from './storage/connection'
@@ -53,7 +53,7 @@ import {
   type 交互日志事件,
   type 公开交互日志,
   type 公开前缀快照,
-  type 公开动态工具,
+  type 公开技能,
   type 公开线索,
   type 公开记忆,
   type 公开记忆提交,
@@ -178,7 +178,7 @@ export class 带记忆的智能体 extends 持久化会话智能体 {
     return await this.执行记忆变更任务(消息, 操作, undefined, 回调, 事件组id)
   }
 
-  private 获取动态工具管理依赖(): 动态工具管理.动态工具管理依赖 {
+  private 获取技能管理依赖(): 技能管理.技能管理依赖 {
     return {
       配置: this.配置,
       上下文依赖: this.上下文依赖,
@@ -289,9 +289,9 @@ export class 带记忆的智能体 extends 持久化会话智能体 {
     return await 外部查询记忆线索关联(this.数据库查询器, 记忆id)
   }
 
-  public async 查询动态工具(): Promise<公开动态工具[]> {
+  public async 查询技能(): Promise<公开技能[]> {
     await this.确保已初始化()
-    return await 外部查询动态工具(this.数据库查询器)
+    return await 外部查询技能(this.数据库查询器)
   }
 
   public async 查询记忆提交(数量: number = 50): Promise<公开记忆提交[]> {
@@ -516,44 +516,46 @@ export class 带记忆的智能体 extends 持久化会话智能体 {
     await this.执行无向量记忆变更任务('整理布局', async (trx) => await 外部全局排版(trx), 事件组id)
   }
 
-  public async 注册动态工具(
+  public async 创建技能(
     代码: string,
     测试参数_json: string,
+    线索: string[],
     回调?: (事件: 智能体事件) => Promise<void>,
     事件组id?: string,
-  ): Promise<动态工具管理.注册动态工具结果> {
-    return await 动态工具管理.注册动态工具(this.获取动态工具管理依赖(), 代码, 测试参数_json, 回调, 事件组id)
+  ): Promise<技能管理.创建技能结果> {
+    return await 技能管理.创建技能(this.获取技能管理依赖(), 代码, 测试参数_json, 线索, 回调, 事件组id)
   }
 
-  public async 查看动态工具(工具标识: string): Promise<动态工具管理.查看动态工具结果> {
-    return await 动态工具管理.查看动态工具(this.获取动态工具管理依赖(), 工具标识)
+  public async 查看技能(技能标识: string): Promise<技能管理.查看技能结果> {
+    return await 技能管理.查看技能(this.获取技能管理依赖(), 技能标识)
   }
 
-  public async 更新动态工具(
-    工具标识: string,
+  public async 更新技能(
+    技能标识: string,
     新代码: string,
     测试参数_json: string,
+    线索: string[],
     回调?: (事件: 智能体事件) => Promise<void>,
     事件组id?: string,
-  ): Promise<动态工具管理.更新动态工具结果> {
-    return await 动态工具管理.更新动态工具(this.获取动态工具管理依赖(), 工具标识, 新代码, 测试参数_json, 回调, 事件组id)
+  ): Promise<技能管理.更新技能结果> {
+    return await 技能管理.更新技能(this.获取技能管理依赖(), 技能标识, 新代码, 测试参数_json, 线索, 回调, 事件组id)
   }
 
-  public async 移除动态工具(
-    工具标识: string,
+  public async 移除技能(
+    技能标识: string,
     回调?: (事件: 智能体事件) => Promise<void>,
     事件组id?: string,
-  ): Promise<动态工具管理.移除动态工具结果> {
-    return await 动态工具管理.移除动态工具(this.获取动态工具管理依赖(), 工具标识, 回调, 事件组id)
+  ): Promise<技能管理.移除技能结果> {
+    return await 技能管理.移除技能(this.获取技能管理依赖(), 技能标识, 回调, 事件组id)
   }
 
-  public async 调用动态工具(
-    工具名称: string,
+  public async 执行技能(
+    技能名称: string,
     参数json: string,
     回调?: (事件: 智能体事件) => Promise<void>,
     事件组id?: string,
-  ): Promise<动态工具管理.调用动态工具结果> {
-    return await 动态工具管理.调用动态工具(this.获取动态工具管理依赖(), 工具名称, 参数json, 回调, 事件组id)
+  ): Promise<技能管理.执行技能结果> {
+    return await 技能管理.执行技能(this.获取技能管理依赖(), 技能名称, 参数json, 回调, 事件组id)
   }
 
   public async 销毁(): Promise<void> {

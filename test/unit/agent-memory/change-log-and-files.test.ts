@@ -88,7 +88,7 @@ describe('变更记录', { timeout: 90000 }, () => {
       )
       await expect(
         pglite.query(
-          `INSERT INTO 当前动态工具表 (id, 名称, 描述, 代码, 创建时间) VALUES ('bypass', 'bypass', '', '', now())`,
+          `INSERT INTO 当前技能表 (id, 名称, 描述, 代码, 创建时间) VALUES ('bypass', 'bypass', '', '', now())`,
         ),
       ).rejects.toThrow('只能在活动记忆提交中修改')
       let 提交列表 = await 实例.查询记忆提交()

@@ -5,7 +5,7 @@ import { 中文模型语言包, type 模型语言包 } from '../../agent/model-l
 
 let 沙盒执行超时毫秒 = 5000
 
-export type 加载后的动态工具 = {
+export type 加载后的技能 = {
   名称: string
   描述: string
   参数Schema: Record<string, unknown>
@@ -14,13 +14,13 @@ export type 加载后的动态工具 = {
 }
 
 /**
- * 在 QuickJS 沙盒中加载并校验动态工具代码。
+ * 在 QuickJS 沙盒中加载并校验技能代码。
  *
- * 工具代码约定格式（纯 JavaScript，协议字段固定为英文）:
+ * 技能代码约定格式（纯 JavaScript，协议字段固定为英文）:
  * ```js
- * tool = {
- *   name: "tool_name",
- *   description: "这个工具做什么",
+ * skill = {
+ *   name: "skill_name",
+ *   description: "这个技能做什么",
  *   parametersSchema: { type: "object", properties: {} },
  *   returnSchema: { type: "object", properties: {} },
  *   execute: async function(args) { return { temperature: 25 }; }
@@ -28,10 +28,10 @@ export type 加载后的动态工具 = {
  * ```
  * 沙盒中没有 require/import、无文件系统、无网络访问。
  */
-export async function 加载并校验动态工具(
+export async function 加载并校验技能(
   代码字符串: string,
   模型语言包: 模型语言包 = 中文模型语言包,
-): Promise<{ 成功: true; 工具: 加载后的动态工具 } | { 成功: false; 错误信息: string }> {
+): Promise<{ 成功: true; 技能: 加载后的技能 } | { 成功: false; 错误信息: string }> {
   let QuickJS = await getQuickJS()
   let runtime = QuickJS.newRuntime()
   let 开始时间 = Date.now()
@@ -39,39 +39,39 @@ export async function 加载并校验动态工具(
   let context = runtime.newContext()
 
   try {
-    // 包装代码：执行用户代码后提取工具元信息
+    // 包装代码：执行用户代码后提取技能元信息
     let 包装代码 = `
       (function() {
-        let tool;
+        let skill;
         ${代码字符串}
-        if (typeof tool === 'undefined' || tool === null) {
-          return JSON.stringify({ 错误: ${JSON.stringify(模型语言包.动态工具定义错误('缺少变量'))} });
+        if (typeof skill === 'undefined' || skill === null) {
+          return JSON.stringify({ 错误: ${JSON.stringify(模型语言包.技能定义错误('缺少变量'))} });
         }
-        let 名称 = tool.name;
-        let 描述 = tool.description;
-        let 参数Schema = tool.parametersSchema;
-        let 返回值Schema = tool.returnSchema;
-        let 实现 = tool.execute;
+        let 名称 = skill.name;
+        let 描述 = skill.description;
+        let 参数Schema = skill.parametersSchema;
+        let 返回值Schema = skill.returnSchema;
+        let 实现 = skill.execute;
         if (typeof 名称 !== 'string' || 名称 === '') {
-          return JSON.stringify({ 错误: ${JSON.stringify(模型语言包.动态工具定义错误('名称'))} });
+          return JSON.stringify({ 错误: ${JSON.stringify(模型语言包.技能定义错误('名称'))} });
         }
         if (typeof 描述 !== 'string' || 描述 === '') {
-          return JSON.stringify({ 错误: ${JSON.stringify(模型语言包.动态工具定义错误('描述'))} });
+          return JSON.stringify({ 错误: ${JSON.stringify(模型语言包.技能定义错误('描述'))} });
         }
         if (typeof 参数Schema !== 'object' || 参数Schema === null) {
-          return JSON.stringify({ 错误: ${JSON.stringify(模型语言包.动态工具定义错误('参数Schema'))} });
+          return JSON.stringify({ 错误: ${JSON.stringify(模型语言包.技能定义错误('参数Schema'))} });
         }
         if (参数Schema.type !== 'object' || typeof 参数Schema.properties !== 'object') {
-          return JSON.stringify({ 错误: ${JSON.stringify(模型语言包.动态工具定义错误('参数Schema形状'))} });
+          return JSON.stringify({ 错误: ${JSON.stringify(模型语言包.技能定义错误('参数Schema形状'))} });
         }
         if (typeof 返回值Schema !== 'object' || 返回值Schema === null) {
-          return JSON.stringify({ 错误: ${JSON.stringify(模型语言包.动态工具定义错误('返回值Schema'))} });
+          return JSON.stringify({ 错误: ${JSON.stringify(模型语言包.技能定义错误('返回值Schema'))} });
         }
         if (返回值Schema.type !== 'object' || typeof 返回值Schema.properties !== 'object') {
-          return JSON.stringify({ 错误: ${JSON.stringify(模型语言包.动态工具定义错误('返回值Schema形状'))} });
+          return JSON.stringify({ 错误: ${JSON.stringify(模型语言包.技能定义错误('返回值Schema形状'))} });
         }
         if (typeof 实现 !== 'function') {
-          return JSON.stringify({ 错误: ${JSON.stringify(模型语言包.动态工具定义错误('实现'))} });
+          return JSON.stringify({ 错误: ${JSON.stringify(模型语言包.技能定义错误('实现'))} });
         }
         return JSON.stringify({
           名称,
@@ -86,7 +86,7 @@ export async function 加载并校验动态工具(
     if (元信息结果.error !== undefined) {
       let 错误信息: unknown = context.dump(元信息结果.error)
       元信息结果.error.dispose()
-      return { 成功: false, 错误信息: 模型语言包.动态工具编译执行出错(String(错误信息)) }
+      return { 成功: false, 错误信息: 模型语言包.技能编译执行出错(String(错误信息)) }
     }
 
     let 元信息JSON = context.getString(元信息结果.value)
@@ -105,18 +105,18 @@ export async function 加载并校验动态工具(
     }
 
     // 构建一个可重复调用的执行器
-    let 工具实例: 加载后的动态工具 = {
+    let 技能实例: 加载后的技能 = {
       名称: 元信息.名称 ?? '',
       描述: 元信息.描述 ?? '',
       参数Schema: 元信息.参数Schema ?? {},
       返回值Schema: 元信息.返回值Schema ?? {},
       实现: async (参数json: string): Promise<string> => {
         // 每次调用都创建新的沙盒上下文，确保隔离
-        return await 在沙盒中执行工具(代码字符串, 参数json, 元信息.参数Schema, 元信息.返回值Schema, 模型语言包)
+        return await 在沙盒中执行技能(代码字符串, 参数json, 元信息.参数Schema, 元信息.返回值Schema, 模型语言包)
       },
     }
 
-    return { 成功: true, 工具: 工具实例 }
+    return { 成功: true, 技能: 技能实例 }
   } catch (error: unknown) {
     return { 成功: false, 错误信息: String(error instanceof Error ? (error.stack ?? error.message) : error) }
   } finally {
@@ -131,14 +131,14 @@ function validateJsonSchema(schema: unknown, data: unknown, 位置: '输入参�
   let 校验函数 = 校验器.compile(JSON模式)
   if (校验函数(data) === false) {
     let 错误信息 = 校验器.errorsText(校验函数.errors, { separator: '; ' })
-    throw new Error(模型语言包.动态工具Schema校验失败(位置, 错误信息))
+    throw new Error(模型语言包.技能Schema校验失败(位置, 错误信息))
   }
 }
 
 /**
- * 在全新的沙盒中执行动态工具的实现函数，传入参数 JSON 并返回结果 JSON。
+ * 在全新的沙盒中执行技能的实现函数，传入参数 JSON 并返回结果 JSON。
  */
-export async function 在沙盒中执行工具(
+export async function 在沙盒中执行技能(
   代码字符串: string,
   参数json: string,
   参数Schema?: unknown,
@@ -158,10 +158,10 @@ export async function 在沙盒中执行工具(
   try {
     let 执行代码 = `
       (async function() {
-        let tool;
+        let skill;
         ${代码字符串}
         let 参数 = JSON.parse(${JSON.stringify(参数json)});
-        let 结果 = await tool.execute(参数);
+        let 结果 = await skill.execute(参数);
         return JSON.stringify(结果);
       })()
     `
@@ -191,7 +191,7 @@ export async function 在沙盒中执行工具(
     初始执行结果.value.dispose()
 
     if (解决后的结果 === undefined) {
-      throw new Error(模型语言包.动态工具执行超时(沙盒执行超时毫秒))
+      throw new Error(模型语言包.技能执行超时(沙盒执行超时毫秒))
     }
 
     if (解决后的结果.error !== undefined) {

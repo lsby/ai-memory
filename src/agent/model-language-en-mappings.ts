@@ -34,7 +34,19 @@ export let 英文字段映射: Record<string, string> = {
   结束时间: 'end_time',
   内容过滤正则表达式: 'content_regex',
   直接联想到的记忆: 'recalled_memories',
+  完整记忆: 'complete_memories',
+  完整技能: 'complete_skills',
+  匹配的线索: 'matched_clues',
+  相关记忆: 'related_memories',
+  相关技能: 'related_skills',
   闪现出的线索: 'flashing_clues',
+  完整记忆数量: 'complete_memory_count',
+  完整技能数量: 'complete_skill_count',
+  线索来源数量: 'clue_source_count',
+  记忆数量: 'memory_count',
+  技能数量: 'skill_count',
+  技能标识: 'skill_ref',
+  技能名称: 'skill_name',
   工具标识: 'tool_ref',
   工具名称: 'tool_name',
   名称: 'name',
@@ -58,6 +70,7 @@ export let 英文字段映射: Record<string, string> = {
 }
 
 export let 英文描述映射: Record<string, string> = {
+  用于联想的一个或多个自然语言内容: 'One or more natural-language contents used for association',
   // conversation-search.ts
   限定当前会话谱系中的某个会话: 'Limit search to a specific conversation within the current conversation lineage',
   精确限定一条消息: 'Pinpoint an exact single message',
@@ -88,7 +101,7 @@ export let 英文描述映射: Record<string, string> = {
   // solve.ts
   说明为什么要执行这次记忆变更: 'Explain why this memory change is needed',
 
-  // dynamic-tools.ts
+  // skills.ts
   '符合规范的纯 JavaScript 代码字符串': 'Standard compliant pure JavaScript code string',
   '用于冒烟测试的参数 JSON 字符串，必须符合工具定义的参数结构':
     'JSON string of arguments for smoke testing, matching the tool parameter schema',
@@ -97,7 +110,7 @@ export let 英文描述映射: Record<string, string> = {
   新的工具代码: 'New tool code',
   '用于冒烟测试的参数 JSON 字符串': 'JSON string of arguments for smoke testing',
   '要删除的工具的 ID 或名称': 'ID or name of the tool to remove',
-  要调用的动态工具的名称: 'Name of the dynamic tool to call',
+  要调用的技能的名称: 'Name of the skill to call',
   '传给工具的参数，JSON 字符串格式': 'Arguments passed to the tool, in JSON string format',
 
   // execute-code.ts
@@ -166,15 +179,18 @@ export let 英文工具描述: Record<string, () => string> = {
     'Directly store durable rules, experiences, or theoretical guidelines into automatically recalled long-term memory.',
   demote_memory: (): string => 'Demote a working memory to long-term memory and reassess its importance score.',
   promote_memory: (): string => 'Promote a long-term memory back to working memory and reassess its importance score.',
-  extend_memory: (): string =>
-    'Recall long-term memories from one or more natural-language thoughts or clues. Returns directly recalled memories and flashing clue strings that can be followed with another call.',
+  search_memories: (): string =>
+    'Associate from natural-language contents and return a few complete memories plus broader flashing clues.',
+  search_clues: (): string => 'Associate clues from natural-language contents and return related memories and skills.',
+  search_skills: (): string =>
+    'Associate from natural-language contents and return a few complete skills plus broader flashing clues.',
   append_memory_clues: (): string => 'Append associative clues to a specified memory.',
   remove_memory_clues: (): string => 'Remove associative clues from a specified memory.',
   overwrite_memory_clues: (): string => 'Overwrite the associative clues of a specified memory.',
-  create_dynamic_tool: (): string =>
-    'Create and persist a JavaScript tool. The code must declare `tool = { name, description, parametersSchema, returnSchema, execute }`, where both schemas are object JSON Schemas and `execute` is an async function. The sandbox has no network, file-system, import, or require access. Provide smoke-test arguments; the tool is stored only after the test passes.',
-  view_dynamic_tool_code: (): string => 'Read the complete source of an existing dynamic tool.',
-  update_dynamic_tool: (): string => 'Update a dynamic tool after a smoke test succeeds.',
-  remove_dynamic_tool: (): string => 'Remove a dynamic tool from the current tool state.',
-  call_dynamic_tool: (): string => 'Call an existing dynamic tool with JSON arguments.',
+  create_skill: (): string =>
+    'Create and persist a JavaScript skill. The code must declare `skill = { name, description, parametersSchema, returnSchema, execute }`. Provide natural-language clues and smoke-test arguments; the skill is stored only after the test passes.',
+  view_skill_code: (): string => 'Read the complete source of an existing skill.',
+  update_skill: (): string => 'Update a skill after a smoke test succeeds.',
+  remove_skill: (): string => 'Remove a skill from the current skill state.',
+  execute_skill: (): string => 'Call an existing skill with JSON arguments.',
 }

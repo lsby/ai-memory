@@ -15,15 +15,17 @@ export let 记忆工具名 = {
   添加二级记忆: 'add_level_2_memory',
   降级记忆为二级: 'demote_memory',
   捞起记忆到一级: 'promote_memory',
-  回忆延伸: 'extend_memory',
+  查询记忆: 'search_memories',
+  查询线索: 'search_clues',
+  查询技能: 'search_skills',
   追加记忆线索: 'append_memory_clues',
   移除记忆线索: 'remove_memory_clues',
   覆盖记忆线索: 'overwrite_memory_clues',
-  创建动态工具: 'create_dynamic_tool',
-  查看动态工具代码: 'view_dynamic_tool_code',
-  更新动态工具: 'update_dynamic_tool',
-  移除动态工具: 'remove_dynamic_tool',
-  调用动态工具: 'call_dynamic_tool',
+  创建技能: 'create_skill',
+  查看技能代码: 'view_skill_code',
+  更新技能: 'update_skill',
+  移除技能: 'remove_skill',
+  执行技能: 'execute_skill',
 } as const
 
 export type 记忆工具名类型 = (typeof 记忆工具名)[keyof typeof 记忆工具名]
@@ -45,9 +47,9 @@ export let 记忆写工具名: readonly 记忆工具名类型[] = [
   记忆工具名.追加记忆线索,
   记忆工具名.移除记忆线索,
   记忆工具名.覆盖记忆线索,
-  记忆工具名.创建动态工具,
-  记忆工具名.更新动态工具,
-  记忆工具名.移除动态工具,
+  记忆工具名.创建技能,
+  记忆工具名.更新技能,
+  记忆工具名.移除技能,
 ]
 
 export let 记忆写工具名集合 = new Set<string>(记忆写工具名)

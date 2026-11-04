@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { 线索信息权重 } from '../../../src/agent-memory/tools/graph-rag'
+import { 线索信息权重 } from '../../../src/agent-memory/tools/associative-search'
 
 describe('线索 IDF 权重', () => {
   it('不削弱唯一线索，只逐步降低重复线索的权重', (): void => {

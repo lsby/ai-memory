@@ -5,7 +5,7 @@ import { 记忆数据库 } from '../types'
 import { 确保在事务中执行 } from './common'
 import { 初始化不可变约束 } from './db-immutable-schema'
 
-export let 记忆数据库架构版本 = 14
+export let 记忆数据库架构版本 = 15
 
 /**
  * 在指定 schema 里建表（默认 public，和旧版本的数据布局一致）。
@@ -28,10 +28,10 @@ async function 在事务中初始化数据库(数据库查询器: Kysely<记忆�
       AND table_name IN ('记忆元数据表', '系统版本表', '记忆表', '当前记忆表', '记忆提交表')
   `.execute(数据库查询器)
   let 现有表 = new Set(现有表结果.rows.map((记录) => 记录.table_name))
-  if (现有表.has('记忆元数据表')) throw new Error('检测到旧版记忆数据库；v14 不支持自动迁移，请使用全新 schema')
+  if (现有表.has('记忆元数据表')) throw new Error('检测到旧版记忆数据库；v15 不支持自动迁移，请使用全新 schema')
   let 全新数据库 = 现有表.has('系统版本表') === false
   if (全新数据库 && (现有表.has('记忆表') || 现有表.has('当前记忆表') || 现有表.has('记忆提交表'))) {
-    throw new Error('检测到没有系统版本的记忆数据表，拒绝将其当作全新 v14 数据库')
+    throw new Error('检测到没有系统版本的记忆数据表，拒绝将其当作全新 v15 数据库')
   }
   if (全新数据库 === false) {
     let 版本结果 = await sql<{ 内核架构版本: number }>`
@@ -72,7 +72,7 @@ async function 在事务中初始化数据库(数据库查询器: Kysely<记忆�
   `.execute(数据库查询器)
   if (记忆变更目标表枚举检查.rows.length === 0) {
     await 执行(
-      `CREATE TYPE ${名('记忆变更目标表枚举')} AS ENUM ('memory', 'clue', 'memory_clue_relation', 'dynamic_tool');`,
+      `CREATE TYPE ${名('记忆变更目标表枚举')} AS ENUM ('memory', 'clue', 'memory_clue_relation', 'skill', 'skill_clue_relation');`,
     )
   }
   let 记忆行操作类型枚举检查 = await sql`
@@ -162,7 +162,7 @@ async function 在事务中初始化数据库(数据库查询器: Kysely<记忆�
   await 校验记忆提交拓扑(数据库查询器)
 
   await 执行(`
-          CREATE TABLE IF NOT EXISTS ${名('当前动态工具表')} (
+          CREATE TABLE IF NOT EXISTS ${名('当前技能表')} (
             id TEXT PRIMARY KEY,
             名称 TEXT NOT NULL UNIQUE,
             描述 TEXT NOT NULL,
@@ -170,6 +170,16 @@ async function 在事务中初始化数据库(数据库查询器: Kysely<记忆�
             向量 public.vector,
             向量维度 INTEGER,
             创建时间 TIMESTAMPTZ NOT NULL
+          )
+        `)
+
+  await 执行(`
+          CREATE TABLE IF NOT EXISTS ${名('当前技能线索关联表')} (
+            技能id TEXT NOT NULL REFERENCES ${名('当前技能表')}(id) ON DELETE RESTRICT,
+            线索id TEXT NOT NULL REFERENCES ${名('当前线索表')}(id) ON DELETE RESTRICT,
+            向量 public.vector,
+            向量维度 INTEGER,
+            PRIMARY KEY (技能id, 线索id)
           )
         `)
 
@@ -257,6 +267,7 @@ async function 在事务中初始化数据库(数据库查询器: Kysely<记忆�
   await 执行(`CREATE INDEX IF NOT EXISTS 当前记忆表_等级_创建序号_idx ON ${名('当前记忆表')} (等级, 创建序号);`)
   await 执行(`CREATE INDEX IF NOT EXISTS 当前记忆表_创建时间_idx ON ${名('当前记忆表')} (创建时间);`)
   await 执行(`CREATE INDEX IF NOT EXISTS 当前记忆线索关联表_线索_idx ON ${名('当前记忆线索关联表')} (线索id);`)
+  await 执行(`CREATE INDEX IF NOT EXISTS 当前技能线索关联表_线索_idx ON ${名('当前技能线索关联表')} (线索id);`)
   await 执行(
     `CREATE UNIQUE INDEX IF NOT EXISTS 记忆行变更表_提交内序号_idx ON ${名('记忆行变更表')} (记忆提交id, 提交内序号);`,
   )
@@ -316,7 +327,7 @@ async function 在事务中初始化数据库(数据库查询器: Kysely<记忆�
         RAISE EXCEPTION '活动记忆提交的父提交必须是当前 HEAD: 父提交 %, HEAD %', v_父记忆提交id, v_当前记忆提交id;
       END IF;
 
-      IF TG_OP = 'UPDATE' AND TG_TABLE_NAME IN ('当前记忆表', '当前线索表', '当前动态工具表')
+      IF TG_OP = 'UPDATE' AND TG_TABLE_NAME IN ('当前记忆表', '当前线索表', '当前技能表')
         AND to_jsonb(OLD)->>'id' IS DISTINCT FROM to_jsonb(NEW)->>'id' THEN
         RAISE EXCEPTION '%不允许修改主键', TG_TABLE_NAME;
       END IF;
@@ -325,13 +336,18 @@ async function 在事务中初始化数据库(数据库查询器: Kysely<记忆�
           OR to_jsonb(OLD)->>'线索id' IS DISTINCT FROM to_jsonb(NEW)->>'线索id') THEN
         RAISE EXCEPTION '当前记忆线索关联表不允许修改主键';
       END IF;
+      IF TG_OP = 'UPDATE' AND TG_TABLE_NAME = '当前技能线索关联表'
+        AND (to_jsonb(OLD)->>'技能id' IS DISTINCT FROM to_jsonb(NEW)->>'技能id'
+          OR to_jsonb(OLD)->>'线索id' IS DISTINCT FROM to_jsonb(NEW)->>'线索id') THEN
+        RAISE EXCEPTION '当前技能线索关联表不允许修改主键';
+      END IF;
 
       IF TG_OP = 'DELETE' THEN RETURN OLD; END IF;
       RETURN NEW;
     END;
     $$ LANGUAGE plpgsql;
   `)
-  for (let 表名 of ['当前记忆表', '当前线索表', '当前记忆线索关联表', '当前动态工具表']) {
+  for (let 表名 of ['当前记忆表', '当前线索表', '当前记忆线索关联表', '当前技能表', '当前技能线索关联表']) {
     await 执行(`DROP TRIGGER IF EXISTS trg_校验记忆写入上下文 ON ${名(表名)};`)
     await 执行(`
       CREATE TRIGGER trg_校验记忆写入上下文
@@ -398,12 +414,19 @@ async function 在事务中初始化数据库(数据库查询器: Kysely<记忆�
         ELSE
           v_主键 := jsonb_build_object('记忆id', to_jsonb(NEW)->>'记忆id', '线索id', to_jsonb(NEW)->>'线索id');
         END IF;
-      ELSIF TG_TABLE_NAME = '当前动态工具表' THEN
-        v_目标表 := 'dynamic_tool';
+      ELSIF TG_TABLE_NAME = '当前技能表' THEN
+        v_目标表 := 'skill';
         IF TG_OP = 'DELETE' THEN
           v_主键 := jsonb_build_object('id', to_jsonb(OLD)->>'id');
         ELSE
           v_主键 := jsonb_build_object('id', to_jsonb(NEW)->>'id');
+        END IF;
+      ELSIF TG_TABLE_NAME = '当前技能线索关联表' THEN
+        v_目标表 := 'skill_clue_relation';
+        IF TG_OP = 'DELETE' THEN
+          v_主键 := jsonb_build_object('技能id', to_jsonb(OLD)->>'技能id', '线索id', to_jsonb(OLD)->>'线索id');
+        ELSE
+          v_主键 := jsonb_build_object('技能id', to_jsonb(NEW)->>'技能id', '线索id', to_jsonb(NEW)->>'线索id');
         END IF;
       ELSE
         RAISE EXCEPTION '未知的记忆投影表: %', TG_TABLE_NAME;
@@ -421,7 +444,7 @@ async function 在事务中初始化数据库(数据库查询器: Kysely<记忆�
     $$ LANGUAGE plpgsql;
   `)
 
-  for (let 表名 of ['当前记忆表', '当前线索表', '当前记忆线索关联表', '当前动态工具表']) {
+  for (let 表名 of ['当前记忆表', '当前线索表', '当前记忆线索关联表', '当前技能表', '当前技能线索关联表']) {
     await 执行(`DROP TRIGGER IF EXISTS trg_记录记忆行变更 ON ${名(表名)};`)
     await 执行(`
       CREATE TRIGGER trg_记录记忆行变更
