@@ -287,7 +287,7 @@ describe('博闻强记模式', () => {
     let 工具定义 = 工具列表?.find((t) => t.function?.name === 'search_conversation_messages')
     expect(JSON.stringify(工具定义)).toContain('query')
     expect(JSON.stringify(工具定义)).toContain('context_count')
-    expect(JSON.stringify(工具定义)).not.toContain('查询内容')
+    expect(JSON.stringify(工具定义)).not.toMatch(/[\u3400-\u9fff]/u)
 
     let 工具结果 = JSON.parse(读取工具消息(假.请求列表[1], 'search-english')) as {
       status?: string
@@ -295,5 +295,68 @@ describe('博闻强记模式', () => {
     }
     expect(工具结果.status).toBe('success')
     expect(工具结果.messages?.length).toBeGreaterThan(0)
+  })
+
+  it('英文模型语言包完整本地化回忆延伸的定义和嵌套结果', async (): Promise<void> => {
+    let 实例 = 夹具.新建智能体({
+      向量模型: { 类型: '在线', openai客户端: 创建假向量客户端({}), 模型名称: 'fake' },
+      博闻强记模式: true,
+      博闻强记消息搜索数量: 20,
+      模型语言包: 英文模型语言包,
+    })
+    实例列表.push(实例)
+    let 假 = 创建假客户端([
+      {
+        工具调用: [
+          {
+            id: 'add-english-memory',
+            名称: 'add_level_2_memory',
+            参数: {
+              content: 'alpha is a stable fact',
+              keywords: ['alpha'],
+              tags: ['verified'],
+              score: 80,
+              commit_message: 'Remember the stable alpha fact.',
+            },
+          },
+        ],
+      },
+      {
+        工具调用: [
+          {
+            id: 'extend-english-memory',
+            名称: 'extend_memory',
+            参数: { query: 'alpha' },
+          },
+        ],
+      },
+      提交(1),
+    ])
+    await 实例.对话(对话选项(假, 'remember alpha'))
+    let 工具列表 = 假.请求列表[0]?.tools as Array<{ function?: { name?: string } }> | undefined
+    let 工具定义 = 工具列表?.find((工具) => 工具.function?.name === 'extend_memory')
+    expect(JSON.stringify(工具定义)).not.toMatch(/[\u3400-\u9fff]/u)
+
+    let 工具结果文本 = 读取工具消息(假.请求列表[2], 'extend-english-memory')
+    expect(工具结果文本).not.toMatch(/[\u3400-\u9fff]/u)
+    let 工具结果 = z
+      .object({ status: z.literal('success'), memory_results: z.string() })
+      .parse(JSON.parse(工具结果文本))
+    let 记忆列表 = z
+      .array(
+        z.object({
+          level: z.literal('level_2'),
+          content: z.literal('alpha is a stable fact'),
+          keywords: z.array(z.string()),
+          tags: z.array(z.string()),
+          relevance: z.string().startsWith('overall:'),
+          created_at: z.string(),
+          related_messages: z.array(
+            z.object({ message_id: z.string(), relation: z.literal('created'), memory_commit_id: z.string() }),
+          ),
+        }),
+      )
+      .parse(JSON.parse(工具结果.memory_results))
+    expect(记忆列表[0]?.related_messages).toHaveLength(1)
   })
 })

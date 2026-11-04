@@ -1,5 +1,5 @@
 import { 生成中文默认记忆提示词, 生成英文默认记忆提示词 } from './default-memory-prompts'
-import { 英文字段映射, 英文工具描述, 英文描述映射 } from './model-language-en-mappings'
+import { 英文字段映射, 英文工具描述, 英文描述映射, 英文枚举值映射 } from './model-language-en-mappings'
 
 export type 模型语言包 = {
   工具调用格式标题: () => string
@@ -304,8 +304,7 @@ export let 英文模型语言包: 模型语言包 = {
     `Submitted data does not match the expected format:\n${错误}\n\nFix it and call ${名称} again.`,
   模型字段名: (名称): string => 英文字段映射[名称] ?? 名称,
   模型字段描述: (描述): string => 英文描述映射[描述] ?? 描述,
-  模型枚举值: (值): string =>
-    值 === '成功' ? 'success' : 值 === '失败' ? 'failure' : 值 === '与' ? 'and' : 值 === '或' ? 'or' : 值,
+  模型枚举值: (值): string => 英文枚举值映射[值] ?? 值,
   记忆工具描述: (名称, _默认描述): string => 英文工具描述[名称]?.() ?? `Use the ${名称} tool.`,
   默认记忆提示词: (启用工具名): string => 生成英文默认记忆提示词(启用工具名),
   当前零级记忆标题: (): string => '### Current level 0 memories (core rules)',

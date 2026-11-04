@@ -20,7 +20,17 @@ export let 英文字段映射: Record<string, string> = {
   会话id: 'conversation_id',
   消息id: 'message_id',
   记忆id: 'memory_id',
+  记忆提交id: 'memory_commit_id',
   角色: 'role',
+  等级: 'level',
+  相关度: 'relevance',
+  综合: 'overall',
+  重叠: 'overlap',
+  相似: 'similarity',
+  创建时间: 'created_at',
+  相关消息: 'related_messages',
+  关系: 'relation',
+  消息列表: 'messages',
   上下文消息数: 'context_count',
   时间范围: 'time_range',
   基准: 'base_time',
@@ -81,6 +91,7 @@ export let 英文描述映射: Record<string, string> = {
   // graph-rag.ts
   逐项精确匹配记忆表的关键词数组: 'Match keywords in the memory keyword list item by item',
   逐项精确匹配记忆表的标签数组: 'Match tags in the memory tag list item by item',
+  只对记忆表的内容字段执行正则过滤: 'Regular expression filter applied strictly to memory content',
   '必填的自然语言查询，仅用于生成查询向量并按语义相似度召回记忆':
     'Required natural-language vector query used to recall memories by semantic similarity',
 
@@ -145,8 +156,20 @@ export let 英文描述映射: Record<string, string> = {
   '提取出对该任务有用的背景信息，提供给子智能体。在开启纯净模式时，子智能体没有任何记忆，所有需要它知道的信息都必须通过这里传入。':
     'Contextual background information provided to the subagent. In clean mode, the subagent has no memories, so all required context must be passed here.',
   '如果为 true（建议），子智能体将是一个完全空白的纯净环境（无记忆），并且底层系统人设会被彻底替换为专家设定，从而获得最高级别的推演纯净度。如果为 false，子智能体会获得你当前所有记忆的快照副本，并完全继承你的基础人设，"专家设定"只会作为一条强制记忆注入，适合需要大量历史上下文的推演。':
-    'If true (recommended), subagent runs in a blank environment without memories, replacing system persona with expert role. If false, subagent inherits memory snapshots and persona.',
+    'If true (recommended), the subagent runs in a completely blank environment without memories, and its underlying system persona is fully replaced by the expert role for maximum reasoning purity. If false, the subagent receives a snapshot of all current memories and fully inherits the base persona; the expert role is injected only as a mandatory memory, which is suitable for reasoning that requires substantial historical context.',
   '子智能体得出的结论或报告。': 'Conclusion or report produced by the subagent.',
+}
+
+export let 英文枚举值映射: Record<string, string> = {
+  成功: 'success',
+  失败: 'failure',
+  与: 'and',
+  或: 'or',
+  零级: 'level_0',
+  一级: 'level_1',
+  二级: 'level_2',
+  未知: 'unknown',
+  新增: 'created',
 }
 
 export let 英文工具描述: Record<string, () => string> = {

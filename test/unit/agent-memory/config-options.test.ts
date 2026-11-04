@@ -217,6 +217,9 @@ describe('模型语言包', () => {
     let 系统提示词 = 取系统提示词(请求)
     expect(系统提示词).toContain('Memory system')
     expect(系统提示词).not.toContain('记忆系统操作指南')
+    expect(系统提示词).toContain('historical commits remain preserved')
+    expect(系统提示词).toContain('must provide test arguments for a smoke test')
+    expect(系统提示词).not.toMatch(/[\u3400-\u9fff]/u)
     let 工具列表 = (请求?.tools ?? []) as Array<{ function: { name: string } }>
     let 添加记忆工具 = 工具列表.find((工具) => 工具.function.name === 'add_level_1_memory')
     if (添加记忆工具 === undefined) throw new Error('缺少一级记忆工具')
@@ -225,6 +228,10 @@ describe('模型语言包', () => {
     expect(工具定义).toContain('content')
     expect(工具定义).toContain('commit_message')
     expect(工具定义).not.toMatch(/[\u3400-\u9fff]/u)
+    let 记忆工具名集合 = new Set<string>(全部记忆工具名)
+    for (let 工具 of 工具列表.filter((项) => 记忆工具名集合.has(项.function.name))) {
+      expect(JSON.stringify(工具)).not.toMatch(/[\u3400-\u9fff]/u)
+    }
     expect(取注入文本(请求, '### Current memory state')).toContain('Current level 0 memories')
   })
 
@@ -244,9 +251,9 @@ describe('模型语言包', () => {
             id: 'call_memory',
             名称: 'add_level_1_memory',
             参数: {
-              content: 'production port is 5433',
-              keywords: ['production', 'port'],
-              tags: ['verified'],
+              content: 'and',
+              keywords: ['or'],
+              tags: ['created', 'level_0'],
               score: 90,
               commit_message: 'Remember this stable production configuration.',
             },
@@ -268,6 +275,7 @@ describe('模型语言包', () => {
     let 工具消息 = 假.请求列表[1]?.messages.find((消息) => 消息['tool_call_id'] === 'call_memory')
     expect(工具消息?.['content']).toContain('current_state')
     expect(工具消息?.['content']).not.toMatch(/[\u3400-\u9fff]/u)
+    expect(await 实例.查询记忆()).toMatchObject([{ 内容: 'and', 关键词: ['or'], 标签: ['created', 'level_0'] }])
   })
 })
 

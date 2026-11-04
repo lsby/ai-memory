@@ -25,7 +25,7 @@ let 经验沉淀段 = `**经验沉淀与理论构建（从具体到抽象）**:
 你的成长不仅在于记住每个具体问题是如何解决的，更在于从中发现通用规律，形成自己的经验体系。
 - [归纳与泛化]: 当你成功解决了一个复杂问题，或在回忆时发现多个相似的历史事件时，请尝试跳出当前的具体细节，思考其背后的通用逻辑或模式。
 - [提炼理论]: 将你的思考总结为通用的"客观规律"、"最佳实践"或"行动指南"。你可以使用 \`[经验总结]\`、\`[通用理论]\` 等标签来保存它们。这些理论记忆应当脱离单次具体任务的局限，具备在未来相似场景下的普适性。
-- [记忆折叠]: 当你总结出高阶理论后，如果底层的具体案例记忆已不再必要，请主动降低它们的评分或将其删除，以保持记忆库的纯粹与高效。`
+- [记忆折叠]: 当你总结出高阶理论后，如果底层的具体案例记忆已不再必要，请主动降低它们的评分或将其从当前状态移除；历史提交仍会保留，以保持当前记忆状态的纯粹与高效。`
 
 let 关键词与标签段 = `**关键词与标签**:
 - 关键词 (Keywords): 用于**构建记忆网络和图谱索引**。请提取精准、客观、具象的名词或概念。系统会根据关键词，在不同记忆间自动拉起关联线，使你的潜意识知识网络相互编织。如果关键词太泛（如"总结"、"猜想"），会导致图谱严重污染。
@@ -146,8 +146,8 @@ When facing complex or uncertain problems, you are encouraged to step out of dir
   let 经验沉淀段_英文 = `**Experience Distillation & Theory Construction (From Specific to Abstract)**:
 Your growth lies not just in remembering how each specific problem was solved, but in discovering general principles from them and forming your own body of experience.
 - [Induction & Generalization]: When you successfully solve a complex problem, or discover multiple similar past events during recall, look beyond specific details and think about the general logic or pattern behind them.
-- [Distill Theory]: Summarize your thoughts into general "objective principles", "best practices", or "action guidelines". Use tags like \`[经验总结]\` (or \`[experience_summary]\`), \`[通用理论]\` (or \`[general_theory]\`) to save them. These theoretical memories should transcend the limits of a single task and have broad applicability in future similar scenarios.
-- [Memory Folding]: Once high-level theories are formed, if low-level concrete case memories are no longer necessary, proactively lower their scores or delete them to keep the memory bank pure and efficient.`
+- [Distill Theory]: Summarize your thoughts into general "objective principles", "best practices", or "action guidelines". Use tags like \`[experience_summary]\` or \`[general_theory]\` to save them. These theoretical memories should transcend the limits of a single task and have broad applicability in future similar scenarios.
+- [Memory Folding]: Once high-level theories are formed, if low-level concrete case memories are no longer necessary, proactively lower their scores or remove them from the current state; historical commits remain preserved. This keeps the current memory state focused and efficient.`
 
   let 关键词与标签段_英文 = `**Keywords & Tags**:
 - Keywords: Used to **build the memory network and graph index**. Extract accurate, objective, concrete nouns or concepts. The system automatically links memories based on keywords, weaving your subconscious knowledge network. Overly broad keywords (e.g., "summary", "hypothesis") cause graph pollution.
@@ -172,7 +172,7 @@ Your growth lies not just in remembering how each specific problem was solved, b
 
   let 维护管理前缀_英文 = '- **Maintenance**: Use '
 
-  let 沙盒项_英文 = `- **Security Sandbox**: All dynamic tools run in a strictly isolated sandbox without access to network, filesystem, or external resources. Smoke tests are required upon creation and update.`
+  let 沙盒项_英文 = `- **Security Sandbox**: All dynamic tools run in a strictly isolated sandbox without access to network, filesystem, or external resources. When creating or updating a tool, you must provide test arguments for a smoke test; the tool is stored only after that test passes.`
 
   let 段落列表: string[] = [
     [

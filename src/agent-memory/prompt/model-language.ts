@@ -24,7 +24,14 @@ let 内部字段名 = [
   '会话id',
   '消息id',
   '记忆id',
+  '记忆提交id',
   '角色',
+  '等级',
+  '相关度',
+  '创建时间',
+  '相关消息',
+  '关系',
+  '消息列表',
   '上下文消息数',
   '时间范围',
   '基准',
@@ -62,20 +69,33 @@ function 转换键(键: string, 方向: '对模型' | '对内部', 模型语言�
   return 内部字段名.find((内部名) => 模型语言包.模型字段名(内部名) === 键) ?? 键
 }
 
-export function 转换值(值: unknown, 方向: '对模型' | '对内部', 模型语言包: 模型语言包): unknown {
-  if (Array.isArray(值)) return 值.map((项) => 转换值(项, 方向, 模型语言包))
+let 枚举值字段 = new Set(['结果', '过滤内容模式', '等级', '关系'])
+let 内部枚举值列表 = ['成功', '失败', '与', '或', '零级', '一级', '二级', '未知', '新增']
+
+export function 转换值(
+  值: unknown,
+  方向: '对模型' | '对内部',
+  模型语言包: 模型语言包,
+  内部字段?: string | undefined,
+): unknown {
+  if (Array.isArray(值)) return 值.map((项) => 转换值(项, 方向, 模型语言包, 内部字段))
   if (值 !== null && typeof 值 === 'object') {
     let 条目 = Object.entries(值)
     if (方向 === '对内部') {
       条目 = 条目.filter(([_键, 项]) => 项 !== null && 项 !== undefined)
     }
-    return Object.fromEntries(条目.map(([键, 项]) => [转换键(键, 方向, 模型语言包), 转换值(项, 方向, 模型语言包)]))
+    return Object.fromEntries(
+      条目.map(([键, 项]) => {
+        let 转换后键 = 转换键(键, 方向, 模型语言包)
+        let 当前内部字段 = 方向 === '对模型' ? 键 : 转换后键
+        return [转换后键, 转换值(项, 方向, 模型语言包, 当前内部字段)]
+      }),
+    )
   }
-  if (方向 === '对模型' && typeof 值 === 'string') return 模型语言包.模型枚举值(值)
-  if (方向 === '对内部') {
-    for (let 内部枚举值 of ['成功', '失败', '与', '或']) {
-      if (值 === 模型语言包.模型枚举值(内部枚举值)) return 内部枚举值
-    }
+  if (typeof 值 !== 'string' || 内部字段 === undefined || 枚举值字段.has(内部字段) === false) return 值
+  if (方向 === '对模型') return 模型语言包.模型枚举值(值)
+  for (let 内部枚举值 of 内部枚举值列表) {
+    if (值 === 模型语言包.模型枚举值(内部枚举值)) return 内部枚举值
   }
   return 值
 }
@@ -102,7 +122,9 @@ export function 转换Schema(值: unknown, 模型语言包: 模型语言包, 保
     } else if (键 === 'required' && Array.isArray(项)) {
       结果[键] = 项.map((字段) => (typeof 字段 === 'string' ? 转换键(字段, '对模型', 模型语言包) : 字段))
     } else if (键 === 'enum' && Array.isArray(项)) {
-      结果[键] = 项.map((枚举值) => 转换值(枚举值, '对模型', 模型语言包))
+      结果[键] = 项.map((枚举值) => (typeof 枚举值 === 'string' ? 模型语言包.模型枚举值(枚举值) : 枚举值))
+    } else if (键 === 'default' && typeof 项 === 'string') {
+      结果[键] = 模型语言包.模型枚举值(项)
     } else {
       结果[键] = 转换Schema(项, 模型语言包, 保留描述)
     }
