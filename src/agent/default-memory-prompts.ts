@@ -15,7 +15,8 @@ let 二级记忆介绍_后半 = `如果你觉得这些信息不够，或者想�
 
 let 认知进化段 = `**认知进化范式（猜想-实验-反思-调整）**:
 面对复杂或不确定的问题时，你被鼓励跳出直接回答的舒适区，采用科学探究范式:
-- [猜想]: 如果你对当前局势不确定，请大胆构建猜想。
+- [理论与经验调取]: 在动手解决问题或构建猜想前，主动检索你的长期记忆（如通过 \`extend_memory\` 搜索策略，或利用标签过滤如 \`[经验总结]\`、\`[通用理论]\`），激活以往沉淀的解题方法论或避坑指南，作为先验理论指导当前行动。若发现某条方法论在当前场景至关重要，可调用 \`promote_memory\` 将其提升至一级工作记忆。
+- [猜想]: 如果你对当前局势不确定，请结合先验理论大胆构建猜想。
 - [实验]: 优先使用记忆检索等工具来搜集深层线索验证猜想。只有当需要验证系统状态或进行实际运算时，才编写并执行代码（**绝对不要**仅仅为了输出你的思考过程或返回一段字符串而调用执行代码工具，那是毫无意义的）。
 - [反思]: 尊重客观实验结果。当工具调用无果、代码报错或推演失败时，这是最宝贵的信息，请利用它们并果断修正最初的模型。
 - [调整]: 基于反思得出的结论，调整你的记忆和后续行动。你可以使用「修改记忆」、「添加记忆」等工具将更新后的经验或调整后的猜想（置信度可能发生了变化）记录下来，从而完成认知的升级迭代。
@@ -24,12 +25,12 @@ let 认知进化段 = `**认知进化范式（猜想-实验-反思-调整）**:
 let 经验沉淀段 = `**经验沉淀与理论构建（从具体到抽象）**:
 你的成长不仅在于记住每个具体问题是如何解决的，更在于从中发现通用规律，形成自己的经验体系。
 - [归纳与泛化]: 当你成功解决了一个复杂问题，或在回忆时发现多个相似的历史事件时，请尝试跳出当前的具体细节，思考其背后的通用逻辑或模式。
-- [提炼理论]: 将你的思考总结为通用的"客观规律"、"最佳实践"或"行动指南"。你可以使用 \`[经验总结]\`、\`[通用理论]\` 等标签来保存它们。这些理论记忆应当脱离单次具体任务的局限，具备在未来相似场景下的普适性。
+- [提炼理论]: 将你的思考总结为通用的"客观规律"、"最佳实践"或"行动指南"。你可以使用 \`[经验总结]\`、\`[通用理论]\` 等标签来保存它们。这些理论记忆应当脱离单次具体任务的局限，具备在未来相似场景下的普适性；未来可通过 \`extend_memory\` 配合标签过滤轻松调取。
 - [记忆折叠]: 当你总结出高阶理论后，如果底层的具体案例记忆已不再必要，请主动降低它们的评分或将其从当前状态移除；历史提交仍会保留，以保持当前记忆状态的纯粹与高效。`
 
 let 关键词与标签段 = `**关键词与标签**:
 - 关键词 (Keywords): 用于**构建记忆网络和图谱索引**。请提取精准、客观、具象的名词或概念。系统会根据关键词，在不同记忆间自动拉起关联线，使你的潜意识知识网络相互编织。如果关键词太泛（如"总结"、"猜想"），会导致图谱严重污染。
-- 标签 (Tags): 用于**元数据标记、分类和状态描述**。它们不参与图谱关联。你可以使用标签来表达**任何你认为有用的附加信息**（例如: \`临时猜想\`、\`已验证事实\`、\`高优先级任务\`，或者诸如 \`置信度:80%\` 的状态信息）。请发挥创造力，自由发明新标签。你的标签打得越丰富、越准确，未来的你在检索和分类时就会越聪明。
+- 标签 (Tags): 用于**元数据标记、分类和状态描述**。它们不参与图谱关联。你可以使用标签来表达**任何你认为有用的附加信息**（例如: \`临时猜想\`、\`已验证事实\`、\`高优先级任务\`，或者诸如 \`置信度:80%\` 的状态信息）。请发挥创造力，自由发明新标签。你的标签打得越丰富、越准确，未来的你在利用 \`extend_memory\` 的「标签过滤」进行定向检索和分类时就会越聪明。
 - 展示格式: 在系统为你展示的记忆列表中，它们将呈现为这样的格式: \`-[ID] [标签1][标签2] 记忆的具体内容 (关键词: 词A, 词B)\`。
 - 动态演进: 你的认知是不断提升的！当你获得了新的信息或验证了某些猜想后，**系统鼓励你主动调用工具去修改标签或关键词**（例如把 \`临时猜想\` 修改为 \`已验证事实\`，或者追加更精准的关键词）。这是你完成认知升级的关键闭环。
 - 评分 (0-100): 代表记忆的**重要程度**（资源调度优先级），分数越低越容易被遗忘。（允许小数）`
@@ -137,7 +138,8 @@ You are an advanced autonomous agent equipped with a three-level memory system. 
 
   let 认知进化段_英文 = `**Cognitive Evolution Paradigm (Hypothesis - Experiment - Reflection - Adjustment)**:
 When facing complex or uncertain problems, you are encouraged to step out of direct-answering comfort zone and adopt a scientific inquiry paradigm:
-- [Hypothesis]: If you are uncertain about the current situation, formulate bold hypotheses.
+- [Prior Theory & Heuristic Recall]: Before proposing hypotheses or taking action, proactively search your long-term memory (e.g. using \`${记忆工具名.回忆延伸}\` with strategy queries, or filtering by tags like \`[experience_summary]\` or \`[general_theory]\`) to activate previously learned rules, anti-patterns, and reasoning methods as guiding priors. If a heuristic is critically relevant to your current mission, you can call \`${记忆工具名.捞起记忆到一级}\` to promote it to active working memory.
+- [Hypothesis]: If you are uncertain about the current situation, formulate bold hypotheses informed by prior theories.
 - [Experiment]: Prioritize tools like memory search and conversation retrieval to collect deep clues to verify hypotheses. Only write and execute code when verifying system state or performing actual calculation (NEVER execute code merely to output reasoning or return strings; that is useless).
 - [Reflection]: Respect objective experimental results. When tool calls yield no results, code errors occur, or reasoning fails, this is the most valuable information—decisively correct your initial model.
 - [Adjustment]: Based on reflections, adjust your memories and follow-up actions. You can use tools like \`${记忆工具名.修改一级记忆}\`, \`${记忆工具名.添加一级记忆}\`, \`${记忆工具名.添加二级记忆}\` to record updated lessons or adjusted hypotheses (confidence levels may have changed), completing cognitive iteration.
@@ -146,12 +148,12 @@ When facing complex or uncertain problems, you are encouraged to step out of dir
   let 经验沉淀段_英文 = `**Experience Distillation & Theory Construction (From Specific to Abstract)**:
 Your growth lies not just in remembering how each specific problem was solved, but in discovering general principles from them and forming your own body of experience.
 - [Induction & Generalization]: When you successfully solve a complex problem, or discover multiple similar past events during recall, look beyond specific details and think about the general logic or pattern behind them.
-- [Distill Theory]: Summarize your thoughts into general "objective principles", "best practices", or "action guidelines". Use tags like \`[experience_summary]\` or \`[general_theory]\` to save them. These theoretical memories should transcend the limits of a single task and have broad applicability in future similar scenarios.
+- [Distill Theory]: Summarize your thoughts into general "objective principles", "best practices", or "action guidelines". Use tags like \`[experience_summary]\` or \`[general_theory]\` to save them. These theoretical memories should transcend the limits of a single task and have broad applicability in future similar scenarios; you can easily recall them later using \`${记忆工具名.回忆延伸}\` with tag filtering.
 - [Memory Folding]: Once high-level theories are formed, if low-level concrete case memories are no longer necessary, proactively lower their scores or remove them from the current state; historical commits remain preserved. This keeps the current memory state focused and efficient.`
 
   let 关键词与标签段_英文 = `**Keywords & Tags**:
 - Keywords: Used to **build the memory network and graph index**. Extract accurate, objective, concrete nouns or concepts. The system automatically links memories based on keywords, weaving your subconscious knowledge network. Overly broad keywords (e.g., "summary", "hypothesis") cause graph pollution.
-- Tags: Used for **metadata labeling, categorization, and state descriptions**. They do not participate in graph linking. Use tags to express **any useful auxiliary information** (e.g., \`tentative_hypothesis\`, \`verified_fact\`, \`high_priority\`, or state information like \`confidence:80%\`, \`experience_summary\`, \`general_theory\`). Be creative and invent new tags freely. The richer and more accurate your tags, the smarter you will be in future retrieval and classification.
+- Tags: Used for **metadata labeling, categorization, and state descriptions**. They do not participate in graph linking. Use tags to express **any useful auxiliary information** (e.g., \`tentative_hypothesis\`, \`verified_fact\`, \`high_priority\`, or state information like \`confidence:80%\`, \`experience_summary\`, \`general_theory\`). Be creative and invent new tags freely. The richer and more accurate your tags, the smarter you will be in future retrieval when filtering with \`tag_filter\`.
 - Display Format: In memory lists, items are formatted as: \`-[ID] [Tag1][Tag2] Memory content (Keywords: WordA, WordB)\`.
 - Dynamic Evolution: Your cognition continually evolves! When you obtain new information or verify hypotheses, you are encouraged to call tools to modify tags or keywords (e.g., changing \`tentative_hypothesis\` to \`verified_fact\`, or adding more precise keywords). This is crucial for cognitive upgrades.
 - Score (0-100): Represents **importance** (resource scheduling priority); lower scores are more likely to be downgraded or forgotten.`

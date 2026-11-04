@@ -446,6 +446,10 @@ async function runInteractiveTutor(): Promise<void> {
 }
 
 runInteractiveTutor().catch((err: unknown) => {
-  console.error('交互讲评实验异常退出:', err)
+  let msg = err instanceof Error ? (err.stack ?? err.message) : String(err)
+  console.error('交互讲评实验异常退出:\n' + msg)
+  if (err !== null && typeof err === 'object' && 'cause' in err) {
+    console.error('Caused by: ' + String((err as Record<string, unknown>)['cause']))
+  }
   process.exit(1)
 })

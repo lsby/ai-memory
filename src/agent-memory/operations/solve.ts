@@ -8,7 +8,7 @@ import { 智能体工具 } from '../../agent/types'
 import { 校验时区 } from '../../agent/utils/timezone'
 import { 转为JSON值 } from '../logger'
 import { 记忆工具名 } from '../prompt/memory-tool-names'
-import { 本地化记忆工具 } from '../prompt/model-language'
+import { 本地化记忆工具, 转换值 } from '../prompt/model-language'
 import { 深度推演工具 } from '../tools/deep-deduction'
 import { 加载并校验动态工具 } from '../tools/dynamic-loader'
 import { 提取动态工具向量文本 } from '../tools/dynamic-tool-api'
@@ -283,7 +283,8 @@ export async function 解决问题<T extends z.ZodType>(
         let 关键词片段: string[] = []
 
         if (数据.搜索结果_完整记忆 !== undefined) {
-          记忆片段 = z.array(当前记忆表Schema).parse(JSON.parse(数据.搜索结果_完整记忆))
+          let 内部数据 = 转换值(JSON.parse(数据.搜索结果_完整记忆), '对内部', 模型语言包)
+          记忆片段 = z.array(当前记忆表Schema).parse(内部数据)
         }
         if (数据.搜索结果_发散关键词 !== undefined) {
           关键词片段 = z.array(z.string()).parse(JSON.parse(数据.搜索结果_发散关键词))
