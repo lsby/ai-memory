@@ -25,10 +25,16 @@ function 取较大值<K>(映射: Map<K, number>, 键: K, 值: number): void {
   if (值 > (映射.get(键) ?? Number.NEGATIVE_INFINITY)) 映射.set(键, 值)
 }
 
-function 线索信息权重(记忆总数: number, 使用次数: number): number {
+export function 线索信息权重(记忆总数: number, 使用次数: number): number {
   if (记忆总数 <= 1) return 1
-  let 归一化IDF = Math.log((记忆总数 + 1) / (使用次数 + 1)) / Math.log(记忆总数 + 1)
+  let 有效使用次数 = Math.max(1, Math.min(记忆总数, 使用次数))
+  let 最大IDF = Math.log((记忆总数 + 1) / 2)
+  let 归一化IDF = Math.log((记忆总数 + 1) / (有效使用次数 + 1)) / 最大IDF
   return 0.1 + 0.9 * Math.max(0, Math.min(1, 归一化IDF))
+}
+
+function 最强路径得分(...得分列表: number[]): number {
+  return Math.max(...得分列表)
 }
 
 export function 回忆延伸工具(上下文: 联想检索上下文): 智能体工具 {
@@ -193,7 +199,11 @@ export function 回忆延伸工具(上下文: 联想检索上下文): 智能体�
           })
         }
         let 排序记忆id = Array.from(记忆候选.entries())
-          .sort((左, 右) => 右[1].直接 + 右[1].关联 + 右[1].线索桥接 - (左[1].直接 + 左[1].关联 + 左[1].线索桥接))
+          .sort(
+            (左, 右) =>
+              最强路径得分(右[1].直接, 右[1].关联, 右[1].线索桥接) -
+              最强路径得分(左[1].直接, 左[1].关联, 左[1].线索桥接),
+          )
           .slice(0, 配置.自动检索二级记忆数量)
           .map(([id]) => id)
 
@@ -206,7 +216,11 @@ export function 回忆延伸工具(上下文: 联想检索上下文): 智能体�
           })
         }
         let 排序线索id = Array.from(线索候选.entries())
-          .sort((左, 右) => 右[1].直接 + 右[1].关联 + 右[1].记忆桥接 - (左[1].直接 + 左[1].关联 + 左[1].记忆桥接))
+          .sort(
+            (左, 右) =>
+              最强路径得分(右[1].直接, 右[1].关联, 右[1].记忆桥接) -
+              最强路径得分(左[1].直接, 左[1].关联, 左[1].记忆桥接),
+          )
           .slice(0, 配置.自动检索线索数量)
           .map(([id]) => id)
 
