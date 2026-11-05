@@ -2,6 +2,11 @@
 
 `@lsby/ai-memory` 是一个专为 AI 智能体设计的**类脑长期记忆与自演进系统**。
 
+本仓库是 pnpm monorepo，发布两个相互独立的包：
+
+- `@lsby/ai-agent`：轻量普通智能体，不安装 PGlite、ONNX、Transformers 或 QuickJS。
+- `@lsby/ai-memory`：建立在 `@lsby/ai-agent` 之上的完整记忆扩展。
+
 基于嵌入式 **PGlite + pgvector**，它在本地 Node.js 进程内即可完整运行，无需搭建任何外部数据库。它打破了传统智能体“聊完即忘”与“死板外挂 RAG”的局限，为智能体构建了一套具备**分层认知、线索联想、仿生遗忘与技能自演进**的完整心智系统。
 
 ---
@@ -157,7 +162,19 @@
 
 ## 快速上手
 
-### 安装
+### 只使用普通智能体
+
+```bash
+pnpm add @lsby/ai-agent openai zod
+```
+
+```ts
+import { 智能体 } from '@lsby/ai-agent'
+```
+
+普通智能体包只包含模型调用、工具协议、结构化结果、对话与调试能力，不会安装或加载任何记忆运行时。
+
+### 安装记忆扩展
 
 ```bash
 pnpm add @lsby/ai-memory openai zod
@@ -224,8 +241,8 @@ let 外部实例 = new 带记忆的智能体({
 
 关于更高级的会话管理、底层并发控制与全量配置，请参阅：
 
-- [会话管理与消息分支设计规范](doc/session-and-message-design.md) - 不可变消息链、会话派生与压缩、博闻强记消息搜索
-- [高级存储、并发与配置指南](doc/advanced-storage-and-config.md) - 多租户 Schema 隔离、PGlite 并发互斥与死锁防护、全量配置参数速查表、自动压缩遥测与模型请求审计字段
+- [会话管理与消息分支设计规范](packages/ai-memory/docs/session-and-message-design.md) - 不可变消息链、会话派生与压缩、博闻强记消息搜索
+- [高级存储、并发与配置指南](packages/ai-memory/docs/advanced-storage-and-config.md) - 多租户 Schema 隔离、PGlite 并发互斥与死锁防护、全量配置参数速查表、自动压缩遥测与模型请求审计字段
 
 ---
 
