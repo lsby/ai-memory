@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { 带记忆的智能体 } from '../../../src/agent-memory/agent-memory'
-import { 记忆等级 } from '../../../src/index'
+import { 快照数据Schema, 记忆等级 } from '../../../src/index'
 import { model, 事件处理, 创建客户端, 打印分隔线, 检查环境变量 } from '../test-helper'
 
 检查环境变量()
@@ -168,22 +168,19 @@ let 运行测试 = async (): Promise<void> => {
 
   // 注入后查看状态
   let 快照 = await agent.保存快照()
-  let 快照数据 = JSON.parse(快照) as {
-    记忆列表: { 等级: string; 内容: string; 评分: number }[]
-    记忆关联列表: { 起点id: string; 终点id: string }[]
-  }
-  let 一级数量 = 快照数据.记忆列表.filter((m) => m.等级 === '一级').length
-  let 二级数量 = 快照数据.记忆列表.filter((m) => m.等级 === '二级').length
-  let 关联数量 = 快照数据.记忆关联列表.length
+  let 快照数据 = 快照数据Schema.parse(JSON.parse(快照))
+  let 一级数量 = 快照数据.记忆列表.filter((m) => m.等级 === 记忆等级.一级).length
+  let 二级数量 = 快照数据.记忆列表.filter((m) => m.等级 === 记忆等级.二级).length
+  let 关联数量 = 快照数据.记忆线索关联列表.length
   console.log(`\n📊 注入完毕: 一级=${String(一级数量)}条, 二级=${String(二级数量)}条, 图谱边=${String(关联数量)}条`)
 
   // 列出一级记忆
   console.log('\n📋 当前一级记忆(工作区):')
-  for (let m of 快照数据.记忆列表.filter((m) => m.等级 === '一级').sort((a, b) => b.评分 - a.评分)) {
+  for (let m of 快照数据.记忆列表.filter((m) => m.等级 === 记忆等级.一级).sort((a, b) => b.评分 - a.评分)) {
     console.log(`  [${String(m.评分)}分] ${m.内容}`)
   }
   console.log('\n📋 被降级到二级的记忆:')
-  for (let m of 快照数据.记忆列表.filter((m) => m.等级 === '二级').sort((a, b) => b.评分 - a.评分)) {
+  for (let m of 快照数据.记忆列表.filter((m) => m.等级 === 记忆等级.二级).sort((a, b) => b.评分 - a.评分)) {
     console.log(`  [${String(m.评分)}分] ${m.内容}`)
   }
 
