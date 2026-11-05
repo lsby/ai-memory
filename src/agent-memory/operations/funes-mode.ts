@@ -1,5 +1,5 @@
 import type { z } from 'zod'
-import type { 模型语言包 } from '../../agent/model-language'
+import type { 模型语言包 } from '../model-language'
 import type { 内部带记忆的解决问题选项 } from '../types'
 import type { 会话控制器 } from './conversation-controller'
 

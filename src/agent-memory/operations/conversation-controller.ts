@@ -1,8 +1,8 @@
 import type { Kysely } from 'kysely'
 import { randomUUID } from 'node:crypto'
 import { z } from 'zod'
-import type { 模型语言包 } from '../../agent/model-language'
 import { 智能体工具, type 智能体执行模式, type 智能体消息类型 } from '../../agent/types'
+import type { 模型语言包 } from '../model-language'
 import { 转换Schema, 转换值 } from '../prompt/model-language'
 import {
   创建会话 as 存储创建会话,

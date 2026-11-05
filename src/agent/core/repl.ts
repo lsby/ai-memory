@@ -1,14 +1,10 @@
 import * as fs from 'fs'
 import * as readline from 'node:readline/promises'
 import type { z } from 'zod'
-import type { 带记忆的智能体 } from '../../agent-memory/agent-memory'
 import type { REPL选项, 智能体事件, 智能体消息类型, 调试拦截钩子 } from '../types'
 import type { 智能体 } from './agent'
 
-export async function 开启交互调试<T extends z.ZodType>(
-  智能体实例: 智能体 | 带记忆的智能体,
-  选项: REPL选项<T>,
-): Promise<void> {
+export async function 开启交互调试<T extends z.ZodType>(智能体实例: 智能体, 选项: REPL选项<T>): Promise<void> {
   let rl = readline.createInterface({ input: process.stdin, output: process.stdout })
 
   let 拦截策略数组 = 选项.拦截策略 ?? []

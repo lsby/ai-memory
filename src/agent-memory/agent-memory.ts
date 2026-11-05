@@ -2,7 +2,6 @@ import type { PGlite } from '@electric-sql/pglite'
 import { Kysely } from 'kysely'
 import type OpenAI from 'openai'
 import { z } from 'zod'
-import { 持久化会话智能体 } from '../agent/core/persistent-conversation-agent'
 import { type 回合结果, type 智能体事件, type 智能体执行模式, type 智能体消息类型 } from '../agent/types'
 import { 构建智能体配置 } from './config'
 import { 创建向量缓存 as 外部创建向量缓存, 构建操作上下文 as 外部构建操作上下文, type 上下文依赖 } from './context'
@@ -36,6 +35,7 @@ import { 生成查询向量, 生成消息向量 } from './operations/message-vec
 import { 定时任务入口 as 外部定时任务入口, 执行记忆重组 as 外部执行记忆重组 } from './operations/reorganization'
 import * as 技能管理 from './operations/skill-management'
 import { 解决问题 as 外部解决问题 } from './operations/solve'
+import { 持久化会话智能体 } from './persistent-conversation-agent'
 import { 清理孤立线索, 生成记忆所需向量文本 } from './storage/clue-storage'
 import { 带互斥的PGlite方言, 默认schema } from './storage/connection'
 import { 创建PGlite就绪, 清除共享初始化锁, 获取或创建共享初始化锁, 销毁存储 } from './storage/memory-storage'
@@ -83,8 +83,8 @@ export class 带记忆的智能体 extends 持久化会话智能体 {
   private _已销毁 = false
 
   public constructor(选项: 带记忆的智能体选项) {
-    super(选项)
     let { 配置, 记忆提示词文本 } = 构建智能体配置(选项)
+    super({ ...选项, 模型语言包: 配置.模型语言包 })
     this.配置 = 配置
     this.记忆提示词文本 = 记忆提示词文本
     this.schema名 = 配置.存储.schema ?? 默认schema

@@ -1,7 +1,7 @@
 import Ajv from 'ajv'
 import { getQuickJS } from 'quickjs-emscripten'
 import { z } from 'zod'
-import { 中文模型语言包, type 模型语言包 } from '../../agent/model-language'
+import { 中文模型语言包, type 模型语言包 } from '../model-language'
 
 let 沙盒执行超时毫秒 = 5000
 

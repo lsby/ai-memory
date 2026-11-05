@@ -1,11 +1,11 @@
 import { sql } from 'kysely'
 import type OpenAI from 'openai'
 import { z } from 'zod'
-import type { 模型语言包 } from '../../agent/model-language'
 import type { 智能体消息类型, 模型用量 } from '../../agent/types'
 import { 统计字符数 } from '../../agent/utils/audit'
 import { 校验并复制额外请求参数 } from '../../agent/utils/extra-request-params'
 import { 创建事件组id, 记录交互日志 } from '../logger'
+import type { 模型语言包 } from '../model-language'
 import type { 公开会话, 压缩当前会话选项, 带事件组的对话选项, 带记忆的对话选项, 自动压缩配置 } from '../types'
 import type { 会话控制器 } from './conversation-controller'
 

@@ -1,6 +1,6 @@
 import { zodToJsonSchema } from 'zod-to-json-schema'
-import type { 模型语言包 } from '../../agent/model-language'
 import { 智能体工具 } from '../../agent/types'
+import type { 模型语言包 } from '../model-language'
 
 let 内部字段名 = [
   '结果',

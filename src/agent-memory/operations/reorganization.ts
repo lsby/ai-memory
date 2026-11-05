@@ -2,8 +2,8 @@ import type { Kysely } from 'kysely'
 import { sql } from 'kysely'
 import type OpenAI from 'openai'
 import { z } from 'zod'
-import type { 模型语言包 } from '../../agent/model-language'
 import type { 智能体事件 } from '../../agent/types'
+import type { 模型语言包 } from '../model-language'
 import { 格式化为本地时间字符串, type 带记忆的解决问题选项, type 记忆操作上下文, type 记忆数据库 } from '../types'
 
 export async function 执行记忆重组(

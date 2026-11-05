@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { z } from 'zod'
-import { 英文模型语言包 } from '../../../src/agent/model-language'
+import { 英文模型语言包 } from '../../../src/agent-memory/model-language'
 import { 带记忆的智能体, 记忆等级 } from '../../../src/index'
 import { 创建假客户端, 提交 } from '../../helpers/append-only-cache-helper'
 import { 使用共享PGlite } from '../../helpers/shared-pglite-fixture'

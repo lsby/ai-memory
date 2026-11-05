@@ -1,4 +1,4 @@
-import { 记忆工具名, type 记忆工具名类型 } from '../agent-memory/prompt/memory-tool-names'
+import { 记忆工具名, type 记忆工具名类型 } from './memory-tool-names'
 
 // 记忆提示词按段落拼装。段落正文里的文字不要随手改动, 它们是前缀的一部分,
 // 改了会让所有已有对话 前缀已变。历史不可变由库的存储和上下文机制保证,

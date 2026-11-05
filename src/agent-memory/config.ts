@@ -1,5 +1,5 @@
 import path from 'node:path'
-import { 中文模型语言包 } from '../agent/model-language'
+import { 中文模型语言包 } from './model-language'
 import { 生成默认记忆提示词 } from './prompt/memory-prompt'
 import { 全部记忆工具名, 记忆写工具名集合, 记忆工具名 } from './prompt/memory-tool-names'
 import { 校验schema名 } from './storage/connection'

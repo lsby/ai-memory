@@ -1,7 +1,7 @@
 import { getQuickJS } from 'quickjs-emscripten'
 import { z } from 'zod'
-import type { 模型语言包 } from '../../agent/model-language'
 import { 智能体工具 } from '../../agent/types'
+import type { 模型语言包 } from '../model-language'
 
 let 沙盒执行超时毫秒 = 5000
 

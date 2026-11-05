@@ -1,14 +1,16 @@
-import { 执行压缩当前会话 } from '../../agent-memory/operations/conversation-compression'
-import { 会话控制器 } from '../../agent-memory/operations/conversation-controller'
-import type { 公开会话, 公开消息, 创建派生会话选项, 压缩当前会话选项, 查询会话列表选项 } from '../../agent-memory/types'
-import type { 智能体执行模式, 智能体消息类型, 智能体选项 } from '../types'
-import { 智能体 } from './agent'
+import { 智能体 } from '../agent/core/agent'
+import type { 智能体执行模式, 智能体消息类型, 智能体选项 } from '../agent/types'
+import type { 模型语言包 } from './model-language'
+import { 执行压缩当前会话 } from './operations/conversation-compression'
+import { 会话控制器 } from './operations/conversation-controller'
+import type { 公开会话, 公开消息, 创建派生会话选项, 压缩当前会话选项, 查询会话列表选项 } from './types'
 
 /** 为拥有 PGlite 存储的智能体提供公共会话 API，具体存储生命周期由子类负责。 */
 export abstract class 持久化会话智能体 extends 智能体 {
+  declare protected readonly 模型语言包: 模型语言包
   private 会话控制器值: 会话控制器 | undefined
 
-  public constructor(选项: 智能体选项) {
+  public constructor(选项: Omit<智能体选项, '模型语言包'> & { 模型语言包: 模型语言包 }) {
     super(选项)
   }
 

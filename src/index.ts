@@ -1,4 +1,6 @@
 export { 带记忆的智能体 } from './agent-memory/agent-memory'
+export { 中文模型语言包, 英文模型语言包 } from './agent-memory/model-language'
+export type { 模型语言包, 记忆模型语言包 } from './agent-memory/model-language'
 export { 生成默认记忆提示词 } from './agent-memory/prompt/memory-prompt'
 export { 全部记忆工具名, 记忆工具名 } from './agent-memory/prompt/memory-tool-names'
 export type { 记忆工具名类型 } from './agent-memory/prompt/memory-tool-names'
@@ -48,8 +50,8 @@ export type {
   记忆行操作类型,
 } from './agent-memory/types'
 export { 智能体 } from './agent/core/agent'
-export { 中文模型语言包, 英文模型语言包 } from './agent/model-language'
-export type { 模型语言包 } from './agent/model-language'
+export { 中文模型语言包 as 中文基础模型语言包, 英文模型语言包 as 英文基础模型语言包 } from './agent/model-language'
+export type { 基础模型语言包 } from './agent/model-language'
 export {
   智能体函数消息Schema,
   智能体助手消息Schema,

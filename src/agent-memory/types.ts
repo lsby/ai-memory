@@ -3,7 +3,6 @@ import type { ColumnType, Kysely } from 'kysely'
 import type OpenAI from 'openai'
 import { z } from 'zod'
 import { 格式化当前时间 } from '../agent/message/injection'
-import type { 模型语言包 } from '../agent/model-language'
 import {
   智能体消息Schema,
   type 内部注入消息,
@@ -13,6 +12,7 @@ import {
   type 智能体选项,
   type 解决问题选项,
 } from '../agent/types'
+import type { 模型语言包 } from './model-language'
 
 export enum 记忆等级 {
   零级 = '零级',
@@ -259,8 +259,9 @@ export type 博闻强记配置 =
   | { 博闻强记模式: true; 博闻强记消息搜索数量: number }
   | { 博闻强记模式?: false | undefined; 博闻强记消息搜索数量?: never }
 
-export type 带记忆的智能体选项 = 智能体选项 &
-  博闻强记配置 & {
+export type 带记忆的智能体选项 = Omit<智能体选项, '模型语言包'> & {
+  模型语言包?: 模型语言包 | undefined
+} & 博闻强记配置 & {
     /**
      * 是否开启只读模式，默认 false。
      * 开启后：
