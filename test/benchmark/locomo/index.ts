@@ -3,7 +3,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { LocomoJudge } from './src/judge'
-import { loadLocomoSamples } from './src/loader'
+import { loadLocomoSamples, loadRepresentativeQAs } from './src/loader'
 import {
   formatDuration,
   formatTimestamp,
@@ -213,6 +213,10 @@ async function runBenchmarkSample(): Promise<void> {
 
     let sessionsToRun = maxSessions !== undefined ? sample.sessions.slice(0, maxSessions) : sample.sessions
     let qaToRun = maxQA !== undefined ? sample.qa.slice(0, maxQA) : sample.qa
+    if (cliOptions.representative === true) {
+      qaToRun = loadRepresentativeQAs()
+      console.log(`   🎯 已启用代表性 30 题基准子集 (涵盖 5 大类认知题型各 6 题，共 30 题)`)
+    }
 
     // 3. 初始化 Runner (开启本地文件存储)
     let runner = new LocomoRunner({
@@ -225,6 +229,7 @@ async function runBenchmarkSample(): Promise<void> {
       firstLevelCapacity,
       funesMode: cliOptions.funesMode,
       funesSearchLimit: cliOptions.funesSearchLimit,
+      deliberation: cliOptions.deliberation,
     })
     await runner.init()
 
@@ -331,6 +336,7 @@ async function runBenchmarkSample(): Promise<void> {
       reorganizeTimeMs,
       funesMode: cliOptions.funesMode,
       funesSearchLimit: cliOptions.funesSearchLimit,
+      deliberation: cliOptions.deliberation,
     })
 
     await runner.destroy()

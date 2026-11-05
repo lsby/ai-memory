@@ -2,6 +2,7 @@ import childProcess from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { 记忆等级 } from '../../../src/index'
 import { LocomoRunner } from '../locomo/src/runner'
 import { LocomoJudge, loadLocomoSamples } from './locomo-bridge'
 import { createGrowthAgent, runAnalysisPhase, runQueryPhase, runReflectionPhase } from './src/agent-runner'
@@ -307,6 +308,40 @@ async function runGrowthBenchmark(): Promise<void> {
         },
       )
       let memCountAfter = (await ctx.agent.查询记忆()).length
+      if (
+        reflection.generalizedHeuristic.trim() !== '' &&
+        reflection.generalizedHeuristic.trim() !== 'None' &&
+        memCountAfter === memCountBefore
+      ) {
+        let catLabels: Record<number, string> = {
+          1: 'single-hop fact retrieval',
+          2: 'temporal calculation and date reasoning',
+          3: 'multi-hop causal inference and intent',
+          4: 'conversational detail and nuanced preference',
+          5: 'adversarial verification and unmentioned topic check',
+        }
+        let keywords = qa.question
+          .toLowerCase()
+          .replace(/[^a-z0-9\s]/g, '')
+          .split(/\s+/)
+          .filter(
+            (w) =>
+              w.length > 3 &&
+              !['what', 'when', 'where', 'which', 'who', 'would', 'could', 'should', 'about', 'from'].includes(w),
+          )
+          .slice(0, 3)
+
+        let clues = [catLabels[qa.category] ?? 'reasoning strategy', ...keywords, 'verification heuristic']
+        await ctx.agent.添加记忆({
+          内容: reflection.generalizedHeuristic.trim(),
+          线索: clues,
+          评分: 95,
+          等级: 记忆等级.二级,
+          创建时间: new Date(),
+        })
+        memCountAfter = (await ctx.agent.查询记忆()).length
+        console.log(`   💡 [自动落盘] 二级法则已可靠存入记忆库，当前记忆总数: ${String(memCountAfter)} 条`)
+      }
 
       console.log(`   🔍 根因诊断: ${reflection.diagnosis.slice(0, 140)}...`)
       console.log(`   📖 沉淀法则: ${reflection.generalizedHeuristic.slice(0, 140)}...`)

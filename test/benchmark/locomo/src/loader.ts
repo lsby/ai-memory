@@ -1,10 +1,28 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import type { LocomoParsedSample, LocomoParsedSession, LocomoTurn } from './types'
+import type { LocomoParsedSample, LocomoParsedSession, LocomoQA, LocomoTurn } from './types'
 
 let __dirname = path.dirname(fileURLToPath(import.meta.url))
 let defaultDataPath = path.resolve(__dirname, '../data/locomo10.json')
+let defaultRepresentativePath = path.resolve(__dirname, '../data/representative-30.json')
+
+export function loadRepresentativeQAs(dataPath: string = defaultRepresentativePath): LocomoQA[] {
+  if (fs.existsSync(dataPath) === false) {
+    throw new Error(`Representative QA dataset file not found at: ${dataPath}`)
+  }
+
+  let raw = fs.readFileSync(dataPath, 'utf-8')
+  let rawList = JSON.parse(raw) as Array<Record<string, unknown>>
+
+  return rawList.map((q) => ({
+    question: String(q['question'] ?? ''),
+    answer:
+      typeof q['answer'] === 'string' || typeof q['answer'] === 'number' ? q['answer'] : String(q['answer'] ?? ''),
+    evidence: Array.isArray(q['evidence']) ? (q['evidence'] as unknown[]).map(String) : [],
+    category: Number(q['category'] ?? 0),
+  }))
+}
 
 export function loadLocomoSamples(dataPath: string = defaultDataPath): LocomoParsedSample[] {
   if (fs.existsSync(dataPath) === false) {

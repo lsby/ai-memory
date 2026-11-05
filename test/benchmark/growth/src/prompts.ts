@@ -73,8 +73,10 @@ export function buildFeedbackPrompt(params: {
     '     * Premature Surrender: Did you give up after one failed keyword search instead of expanding synonyms?',
     '3. Theory Construction & Memory Persistence:',
     '   - Synthesize a general, reusable reasoning rule, search tactic, or verification heuristic.',
-    '   - Call `add_level_2_memory` to commit this general heuristic to Level 2 memory with an importance score (e.g. 90-99) and natural associative clues, so you can retrieve it later via `search_memories`.',
-    '   - If this exact heuristic is already present in your memory and verified, you do not need to add duplicate entries.',
+    '   - If your answer was ❌ INCORRECT, you MUST call `add_level_2_memory` with an importance score (e.g. 90-99) and natural associative clues to persist a general verification or search strategy.',
+    '   - If your answer was ✅ CORRECT, and you have a newly verified general search heuristic, you may call `add_level_2_memory` as well.',
+    '4. Submission Requirement:',
+    '   - You MUST call `__submit_result__` with your `diagnosis` and `generalized_heuristic` to complete the reflection phase.',
     '',
     'Return your root cause diagnosis and generalized heuristic.',
   ].join('\n')

@@ -11,6 +11,8 @@ export interface CliOptions {
   reorganizeRounds?: number | undefined
   funesMode?: boolean | undefined
   funesSearchLimit?: number | undefined
+  representative?: boolean | undefined
+  deliberation?: boolean | undefined
 }
 
 export function formatDuration(ms: number): string {
@@ -44,13 +46,29 @@ export function parseCliOptions(): CliOptions {
   let funesMode =
     process.env['FUNES'] === 'true' || process.env['FUNES_MODE'] === 'true' || process.env['BO_WEN_QIANG_JI'] === 'true'
   let funesSearchLimit = process.env['FUNES_LIMIT'] !== undefined ? Number(process.env['FUNES_LIMIT']) : undefined
+  let representative =
+    process.env['LOCOMO_REPRESENTATIVE'] === 'true' ||
+    process.env['REPRESENTATIVE'] === 'true' ||
+    process.env['BALANCED'] === 'true'
+  let deliberation: boolean | undefined =
+    process.env['DELIBERATION'] === 'true'
+      ? true
+      : process.env['DELIBERATION'] === 'false' || process.env['NO_DELIBERATION'] === 'true'
+        ? false
+        : undefined
 
   let args = process.argv.slice(2)
   for (let i = 0; i < args.length; i++) {
     let arg = args[i]
     if (arg === undefined) continue
 
-    if (arg.startsWith('--config=')) {
+    if (arg === '--representative' || arg === '--balanced' || arg === '--rep') {
+      representative = true
+    } else if (arg === '--deliberation' || arg === '--2phase' || arg === '--two-phase') {
+      deliberation = true
+    } else if (arg === '--no-deliberation' || arg === '--no-2phase') {
+      deliberation = false
+    } else if (arg.startsWith('--config=')) {
       configName = arg.slice('--config='.length).trim()
     } else if ((arg === '--config' || arg === '-c') && args[i + 1] !== undefined) {
       configName = args[i + 1]?.trim()
@@ -95,7 +113,7 @@ export function parseCliOptions(): CliOptions {
     }
   }
 
-  return { configName, note, fromDb, reorganizeRounds, funesMode, funesSearchLimit }
+  return { configName, note, fromDb, reorganizeRounds, funesMode, funesSearchLimit, representative, deliberation }
 }
 
 export function sanitizeNoteForDir(note?: string): string {

@@ -1,0 +1,242 @@
+[
+  {
+    "category": 1,
+    "globalIndex": 4,
+    "qaIndex": 3,
+    "question": "What did Caroline research?",
+    "answer": "Adoption agencies",
+    "evidence": ["D2:8"]
+  },
+  {
+    "category": 1,
+    "globalIndex": 16,
+    "qaIndex": 15,
+    "question": "What activities does Melanie partake in?",
+    "answer": "pottery, camping, painting, swimming",
+    "evidence": ["D5:4", "D9:1", "D1:12", "D1:18"]
+  },
+  {
+    "category": 1,
+    "globalIndex": 33,
+    "qaIndex": 32,
+    "question": "What LGBTQ+ events has Caroline participated in?",
+    "answer": "Pride parade, school speech, support group",
+    "evidence": ["D5:1", "D8:17", "D3:1", "D1:3"]
+  },
+  {
+    "category": 1,
+    "globalIndex": 41,
+    "qaIndex": 40,
+    "question": "How many times has Melanie gone to the beach in 2023?",
+    "answer": 2,
+    "evidence": ["D10:8", "D6:16"]
+  },
+  {
+    "category": 1,
+    "globalIndex": 53,
+    "qaIndex": 52,
+    "question": "What are Melanie's pets' names?",
+    "answer": "Oliver, Luna, Bailey",
+    "evidence": ["D13:4", "D7:18"]
+  },
+  {
+    "category": 1,
+    "globalIndex": 66,
+    "qaIndex": 65,
+    "question": "What are some changes Caroline has faced during her transition journey?",
+    "answer": "Changes to her body, losing unsupportive friends",
+    "evidence": ["D16:15", "D11:14"]
+  },
+  {
+    "category": 2,
+    "globalIndex": 1,
+    "qaIndex": 0,
+    "question": "When did Caroline go to the LGBTQ support group?",
+    "answer": "7 May 2023",
+    "evidence": ["D1:3"]
+  },
+  {
+    "category": 2,
+    "globalIndex": 11,
+    "qaIndex": 10,
+    "question": "How long has Caroline had her current group of friends for?",
+    "answer": "4 years",
+    "evidence": ["D3:13"]
+  },
+  {
+    "category": 2,
+    "globalIndex": 26,
+    "qaIndex": 25,
+    "question": "When did Caroline go to the LGBTQ conference?",
+    "answer": "10 July 2023",
+    "evidence": ["D7:1"]
+  },
+  {
+    "category": 2,
+    "globalIndex": 36,
+    "qaIndex": 35,
+    "question": "When did Melanie go camping in July?",
+    "answer": "two weekends before 17 July 2023",
+    "evidence": ["D9:1"]
+  },
+  {
+    "category": 2,
+    "globalIndex": 54,
+    "qaIndex": 53,
+    "question": "When did Caroline apply to adoption agencies?",
+    "answer": "The week of 23 August 2023",
+    "evidence": ["D13:1"]
+  },
+  {
+    "category": 2,
+    "globalIndex": 68,
+    "qaIndex": 67,
+    "question": "When did Caroline go biking with friends?",
+    "answer": "The weekend before 13 September 2023",
+    "evidence": ["D16:1"]
+  },
+  {
+    "category": 3,
+    "globalIndex": 3,
+    "qaIndex": 2,
+    "question": "What fields would Caroline be likely to pursue in her educaton?",
+    "answer": "Psychology, counseling certification",
+    "evidence": ["D1:9", "D1:11"]
+  },
+  {
+    "category": 3,
+    "globalIndex": 23,
+    "qaIndex": 22,
+    "question": "Would Caroline likely have Dr. Seuss books on her bookshelf?",
+    "answer": "Yes, since she collects classic children's books",
+    "evidence": ["D6:9"]
+  },
+  {
+    "category": 3,
+    "globalIndex": 31,
+    "qaIndex": 30,
+    "question": "Would Melanie be considered a member of the LGBTQ community?",
+    "answer": "Likely no, she does not refer to herself as part of it",
+    "evidence": []
+  },
+  {
+    "category": 3,
+    "globalIndex": 47,
+    "qaIndex": 46,
+    "question": "Would Melanie be considered an ally to the transgender community?",
+    "answer": "Yes, she is supportive",
+    "evidence": []
+  },
+  {
+    "category": 3,
+    "globalIndex": 60,
+    "qaIndex": 59,
+    "question": "Would Caroline be considered religious?",
+    "answer": "Somewhat, but not extremely religious",
+    "evidence": ["D14:19", "D12:1"]
+  },
+  {
+    "category": 3,
+    "globalIndex": 70,
+    "qaIndex": 69,
+    "question": "What personality traits might Melanie say Caroline has?",
+    "answer": "Thoughtful, authentic, driven",
+    "evidence": ["D16:18", "D13:16", "D7:4"]
+  },
+  {
+    "category": 4,
+    "globalIndex": 83,
+    "qaIndex": 82,
+    "question": "What did the charity race raise awareness for?",
+    "answer": "mental health",
+    "evidence": ["D2:2"]
+  },
+  {
+    "category": 4,
+    "globalIndex": 94,
+    "qaIndex": 93,
+    "question": "What was grandma's gift to Caroline?",
+    "answer": "necklace",
+    "evidence": ["D4:3"]
+  },
+  {
+    "category": 4,
+    "globalIndex": 105,
+    "qaIndex": 104,
+    "question": "What book did Caroline recommend to Melanie?",
+    "answer": "\"Becoming Nicole\"",
+    "evidence": ["D7:11"]
+  },
+  {
+    "category": 4,
+    "globalIndex": 116,
+    "qaIndex": 115,
+    "question": "Why are flowers important to Melanie?",
+    "answer": "They remind her to appreciate the small moments and were a part of her wedding decor",
+    "evidence": ["D8:12"]
+  },
+  {
+    "category": 4,
+    "globalIndex": 127,
+    "qaIndex": 126,
+    "question": "What activity did Caroline used to do with her dad?",
+    "answer": "Horseback riding",
+    "evidence": ["D13:7"]
+  },
+  {
+    "category": 4,
+    "globalIndex": 138,
+    "qaIndex": 137,
+    "question": "What painting did Melanie show to Caroline on October 13, 2023?",
+    "answer": "A painting inspired by sunsets with a pink sky.",
+    "evidence": ["D17:12"]
+  },
+  {
+    "category": 5,
+    "globalIndex": 153,
+    "qaIndex": 152,
+    "question": "What did Caroline realize after her charity race?",
+    "answer": "",
+    "evidence": ["D2:3"]
+  },
+  {
+    "category": 5,
+    "globalIndex": 160,
+    "qaIndex": 159,
+    "question": "What was grandma's gift to Melanie?",
+    "answer": "",
+    "evidence": ["D4:3"]
+  },
+  {
+    "category": 5,
+    "globalIndex": 167,
+    "qaIndex": 166,
+    "question": "What kind of place does Melanie want to create for people?",
+    "answer": "",
+    "evidence": ["D4:15"]
+  },
+  {
+    "category": 5,
+    "globalIndex": 174,
+    "qaIndex": 173,
+    "question": "What inspired Caroline's sculpture for the art show?",
+    "answer": "",
+    "evidence": ["D9:16"]
+  },
+  {
+    "category": 5,
+    "globalIndex": 181,
+    "qaIndex": 180,
+    "question": "What activity did Melanie used to do with her dad?",
+    "answer": "",
+    "evidence": ["D13:7"]
+  },
+  {
+    "category": 5,
+    "globalIndex": 188,
+    "qaIndex": 187,
+    "question": "What precautionary sign did Caroline see at the café?",
+    "answer": "",
+    "evidence": ["D16:16"]
+  }
+]

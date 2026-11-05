@@ -12,6 +12,7 @@ export interface PrintBenchmarkReportOptions {
   reorganizeTimeMs?: number | undefined
   funesMode?: boolean | undefined
   funesSearchLimit?: number | undefined
+  deliberation?: boolean | undefined
 }
 
 export function printBenchmarkReport(options: PrintBenchmarkReportOptions): void {
@@ -26,6 +27,7 @@ export function printBenchmarkReport(options: PrintBenchmarkReportOptions): void
     reorganizeTimeMs,
     funesMode,
     funesSearchLimit,
+    deliberation,
   } = options
 
   console.log('\n=====================================================')
@@ -39,6 +41,11 @@ export function printBenchmarkReport(options: PrintBenchmarkReportOptions): void
   }
   if (note !== undefined && note !== '') {
     console.log(`本次备注: ${note}`)
+  }
+  if (deliberation !== false) {
+    console.log('心智机制: 两阶段心智反思 (Phase 1A 激活认知法则 + Phase 1B 搜证作答)')
+  } else {
+    console.log('心智机制: 单阶段直接检索作答')
   }
   if (funesMode === true) {
     console.log(`博闻强记模式: 开启 (消息检索上限: ${String(funesSearchLimit ?? 20)})`)

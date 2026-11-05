@@ -18,6 +18,7 @@ export interface LocomoRunnerOptions {
   storageDir?: string | undefined
   funesMode?: boolean | undefined
   funesSearchLimit?: number | undefined
+  deliberation?: boolean | undefined
 }
 
 export class LocomoRunner {
@@ -28,6 +29,7 @@ export class LocomoRunner {
   private useNativeToolCalls: boolean
   private funesMode: boolean
   private funesSearchLimit: number
+  private deliberationMode: boolean
 
   private handleEvent = async (event: 智能体事件): Promise<void> => {
     if (this.logEvents === false) return
@@ -52,6 +54,7 @@ export class LocomoRunner {
     this.useNativeToolCalls = options.useNativeToolCalls ?? false
     this.funesMode = options.funesMode ?? false
     this.funesSearchLimit = options.funesSearchLimit ?? 20
+    this.deliberationMode = options.deliberation ?? true
 
     // 开放全套记忆存取与检索工具（排除动态代码编写工具）
     let 内存记忆工具筛选 = (工具名: string): boolean => 工具名.includes('skill') === false && 工具名 !== 'execute_code'
@@ -226,9 +229,65 @@ export class LocomoRunner {
             ]
           : []
 
+      let startMs = Date.now()
+      let recalledRule = 'None'
+      let actionPlan = ''
+
+      if (this.deliberationMode === true) {
+        let analysisPrompt = [
+          `Question to Solve: ${qa.question}`,
+          'Instructions for Question Analysis & Theory Activation:',
+          '- Identify the question type (e.g. relative date calculation, speaker attribution, career/qualification details, relationship inference, event timing).',
+          '- Call `search_memories` with natural-language contents to search Level 2 long-term memory for applicable heuristics, lessons, or guidelines.',
+          '- Summarize the recalled heuristics and formulate your strategic action plan for solving this question.',
+        ].join('\n')
+
+        let analysisResult = await this.agent.私有反思({
+          命令: analysisPrompt,
+          召回查询内容: qa.question,
+          预期结果Schema: z.object({
+            problem_category: z.string().describe('The pattern or category of this question'),
+            recalled_heuristics: z
+              .string()
+              .describe(
+                'Rules, heuristics, or lessons retrieved from long-term memory via search_memories, or "None" if new',
+              ),
+            action_plan: z.string().describe('Strategic plan for searching and reasoning on this specific question'),
+          }),
+          预期结果描述:
+            'Analyze the question, retrieve applicable heuristics from long-term memory via search_memories, and form an action plan',
+          回调: this.handleEvent,
+          openai客户端: this.openaiClient,
+          模型名称: this.modelName,
+          温度: 0,
+          是否支持函数调用: this.useNativeToolCalls,
+          临时追加工具列表: [],
+        })
+
+        recalledRule = analysisResult.结果?.recalled_heuristics ?? 'None'
+        actionPlan = analysisResult.结果?.action_plan ?? ''
+        this.clearInMemoryHistory()
+      }
+
+      let activeRuleSection =
+        recalledRule !== 'None' && recalledRule.trim() !== ''
+          ? recalledRule
+          : '- No specific prior rule matched. Follow standard verification procedures.'
+      let planSection =
+        actionPlan !== '' && actionPlan.trim() !== ''
+          ? actionPlan
+          : '- Search conversation messages for evidence and verify facts directly.'
+
       let queryPrompt = [
         `Question: ${qa.question}`,
-        'Instructions:',
+        '',
+        '--- Active Guidelines Recalled from Long-Term Memory ---',
+        activeRuleSection,
+        '',
+        '--- Planned Search & Reasoning Strategy ---',
+        planSection,
+        '',
+        'Instructions for Investigation & Answering:',
         '- Review Memories & Gather Facts: Review all memories concerning the people, events, and timeline asked about. Actively use your available tools (`search_conversation_messages` and `date_calculator`) to verify details or discover original context before submitting the final answer.',
         '- Date & Calendar Calculations: When questions ask for specific dates, day of the week, elapsed durations, or relative times (e.g., "last week", "3 days ago", "X years ago"), use the `date_calculator` tool to perform or verify calendar math instead of relying solely on mental estimation.',
         '- Targeted & Direct: State the specific fact, name, date, or answer directly and avoid lengthy unrelated conversation recitals.',
@@ -238,7 +297,6 @@ export class LocomoRunner {
         ...funesGuidance,
       ].join('\n')
 
-      let startMs = Date.now()
       let roundResult = await this.agent.私有反思({
         命令: queryPrompt,
         召回查询内容: qa.question,
