@@ -1,6 +1,6 @@
 {
   "name": "@lsby/ai-memory",
-  "version": "0.6.6",
+  "version": "0.6.7",
   "description": "A PGlite-backed memory extension for @lsby/ai-agent.",
   "keywords": [
     "ai",
