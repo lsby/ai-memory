@@ -24,7 +24,9 @@ import { 尝试自动压缩, 确定对话事件组 } from './operations/conversa
 import { 会话控制器 } from './operations/conversation-controller'
 import { 准备博闻强记选项 } from './operations/funes-mode'
 import {
+  写入前缀快照 as 外部写入前缀快照,
   更新记忆 as 外部更新记忆,
+  查询前缀快照 as 外部查询前缀快照,
   查询技能 as 外部查询技能,
   查询线索 as 外部查询线索,
   查询记忆 as 外部查询记忆,
@@ -35,6 +37,7 @@ import { 生成查询向量, 生成消息向量 } from './operations/message-vec
 import { 定时任务入口 as 外部定时任务入口, 执行记忆重组 as 外部执行记忆重组 } from './operations/reorganization'
 import * as 技能管理 from './operations/skill-management'
 import { 解决问题 as 外部解决问题 } from './operations/solve'
+import { 补算缺失向量 as 外部补算缺失向量 } from './operations/vector-backfill'
 import { 持久化会话智能体 } from './persistent-conversation-agent'
 import { 清理孤立线索, 生成记忆所需向量文本 } from './storage/clue-storage'
 import { 带互斥的PGlite方言, 默认schema } from './storage/connection'
@@ -68,6 +71,8 @@ import {
   type 更新记忆选项,
   type 查询交互日志选项,
   type 查询记忆选项,
+  type 补算缺失向量结果,
+  type 补算缺失向量选项,
   type 记忆数据库,
 } from './types'
 
@@ -235,6 +240,11 @@ export class 带记忆的智能体 extends 持久化会话智能体 {
     return 记忆
   }
 
+  /** 给 向量 IS NULL 的行补算向量，详见 docs/advanced-storage-and-config.md 的“补算缺失向量”。 */
+  public async 补算缺失向量(选项: 补算缺失向量选项 = {}): Promise<补算缺失向量结果> {
+    return await 外部补算缺失向量(this.获取技能管理依赖(), 选项)
+  }
+
   public async 查询记忆(选项: 查询记忆选项 = {}): Promise<公开记忆[]> {
     await this.确保已初始化()
     return await 外部查询记忆(this.数据库查询器, 选项)
@@ -313,11 +323,7 @@ export class 带记忆的智能体 extends 持久化会话智能体 {
 
   public async 查询前缀快照(id: string): Promise<公开前缀快照 | null> {
     await this.确保已初始化()
-    let 已校验id = z.string().trim().min(1).parse(id)
-    return (
-      (await this.数据库查询器.selectFrom('前缀快照表').selectAll().where('id', '=', 已校验id).executeTakeFirst()) ??
-      null
-    )
+    return await 外部查询前缀快照(this.数据库查询器, id)
   }
 
   /** 返回当前记忆分支的 HEAD；尚无提交时返回 null。 */
@@ -462,11 +468,7 @@ export class 带记忆的智能体 extends 持久化会话智能体 {
 
   protected override async 同步前缀快照(前缀id: string, 系统提示词: string, 工具定义: object[]): Promise<void> {
     await this.确保已初始化()
-    await this.数据库查询器
-      .insertInto('前缀快照表')
-      .values({ id: 前缀id, 系统提示词, 工具定义: JSON.stringify(工具定义), 创建时间: new Date() })
-      .onConflict((冲突) => 冲突.column('id').doNothing())
-      .execute()
+    await 外部写入前缀快照(this.数据库查询器, 前缀id, 系统提示词, 工具定义)
   }
 
   public async 私有反思<T extends z.ZodType>(选项: 带记忆的对话选项<T>): Promise<回合结果<T>> {

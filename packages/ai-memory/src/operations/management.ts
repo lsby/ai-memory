@@ -5,6 +5,7 @@ import { 增量排版 } from '../tools/layout'
 import {
   更新记忆选项Schema,
   记忆等级,
+  type 公开前缀快照,
   type 公开技能,
   type 公开技能线索关联,
   type 公开线索,
@@ -122,6 +123,24 @@ export async function 查询技能线索关联(数据库查询器: Kysely<记忆
   let 查询 = 数据库查询器.selectFrom('当前技能线索关联表').select(['技能id', '线索id'])
   if (技能id !== undefined) 查询 = 查询.where('技能id', '=', z.string().trim().min(1).parse(技能id))
   return await 查询.execute()
+}
+
+export async function 查询前缀快照(数据库查询器: Kysely<记忆数据库>, id: string): Promise<公开前缀快照 | null> {
+  let 已校验id = z.string().trim().min(1).parse(id)
+  return (await 数据库查询器.selectFrom('前缀快照表').selectAll().where('id', '=', 已校验id).executeTakeFirst()) ?? null
+}
+
+export async function 写入前缀快照(
+  数据库查询器: Kysely<记忆数据库>,
+  前缀id: string,
+  系统提示词: string,
+  工具定义: object[],
+): Promise<void> {
+  await 数据库查询器
+    .insertInto('前缀快照表')
+    .values({ id: 前缀id, 系统提示词, 工具定义: JSON.stringify(工具定义), 创建时间: new Date() })
+    .onConflict((冲突) => 冲突.column('id').doNothing())
+    .execute()
 }
 
 export async function 查询记忆提交(数据库查询器: Kysely<记忆数据库>, 数量: number = 50): Promise<公开记忆提交[]> {
