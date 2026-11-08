@@ -38,6 +38,7 @@ import { 定时任务入口 as 外部定时任务入口, 执行记忆重组 as �
 import * as 技能管理 from './operations/skill-management'
 import { 解决问题 as 外部解决问题 } from './operations/solve'
 import { 补算缺失向量 as 外部补算缺失向量 } from './operations/vector-backfill'
+import * as 向量状态 from './operations/vector-status'
 import { 持久化会话智能体 } from './persistent-conversation-agent'
 import { 清理孤立线索, 生成记忆所需向量文本 } from './storage/clue-storage'
 import { 带互斥的PGlite方言, 默认schema } from './storage/connection'
@@ -67,6 +68,7 @@ import {
   type 带记忆的对话选项,
   type 带记忆的智能体选项,
   type 带记忆的解决问题选项,
+  type 执行记忆重组选项,
   type 批量注入记忆项,
   type 更新记忆选项,
   type 查询交互日志选项,
@@ -245,6 +247,16 @@ export class 带记忆的智能体 extends 持久化会话智能体 {
     return await 外部补算缺失向量(this.获取技能管理依赖(), 选项)
   }
 
+  /** 只读：每条记忆、线索的向量状态，不含内容文本，详见 docs 的“读取向量状态”。 */
+  public async 读取向量状态(): Promise<向量状态.向量状态结果> {
+    return await 向量状态.读取向量状态(this.获取技能管理依赖())
+  }
+
+  /** 只读：向量状态汇总数字（count 查询）。 */
+  public async 统计向量状态(): Promise<向量状态.向量状态统计> {
+    return await 向量状态.统计向量状态(this.获取技能管理依赖())
+  }
+
   public async 查询记忆(选项: 查询记忆选项 = {}): Promise<公开记忆[]> {
     await this.确保已初始化()
     return await 外部查询记忆(this.数据库查询器, 选项)
@@ -374,16 +386,7 @@ export class 带记忆的智能体 extends 持久化会话智能体 {
     )
   }
 
-  public async 执行记忆重组(选项: {
-    openai客户端: OpenAI
-    模型名称: string
-    当前时间?: Date
-    种子线索?: string[]
-    回调?: (事件: 智能体事件) => Promise<void>
-    事件组id?: string
-    是否支持函数调用?: boolean | undefined
-    温度?: number | undefined
-  }): Promise<void> {
+  public async 执行记忆重组(选项: 执行记忆重组选项): Promise<void> {
     await this.确保已初始化()
     await 外部执行记忆重组(
       this.数据库查询器,

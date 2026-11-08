@@ -4,6 +4,7 @@ export type { 基础模型语言包 } from '@lsby/ai-agent'
 export { 带记忆的智能体 } from './agent-memory'
 export { 中文模型语言包, 英文模型语言包 } from './model-language'
 export type { 模型语言包, 记忆模型语言包 } from './model-language'
+export type { 向量状态线索项, 向量状态结果, 向量状态统计, 向量状态记忆项 } from './operations/vector-status'
 export { 生成默认记忆提示词 } from './prompt/memory-prompt'
 export { 全部记忆工具名, 记忆工具名 } from './prompt/memory-tool-names'
 export type { 记忆工具名类型 } from './prompt/memory-tool-names'
@@ -43,6 +44,7 @@ export type {
   带记忆的对话选项,
   带记忆的智能体选项,
   快照数据,
+  执行记忆重组选项,
   批量注入记忆项,
   更新记忆选项,
   查询交互日志选项,
