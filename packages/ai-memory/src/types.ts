@@ -207,15 +207,30 @@ export type 消息表 = {
   创建时间: Date
 }
 
+export type 执行记忆重组选项 = {
+  openai客户端: OpenAI
+  模型名称: string
+  当前时间?: Date
+  种子线索?: string[]
+  回调?: (事件: 智能体事件) => Promise<void>
+  事件组id?: string
+  是否支持函数调用?: boolean | undefined
+  温度?: number | undefined
+}
+
 export type 补算缺失向量选项 = {
   /** 本次最多处理多少行（五张表合计），默认 100。 */
   单次上限?: number
+  /** 只补这条记忆本身和它的所有记忆线索关联行。与 线索id 互斥。 */
+  记忆id?: string
+  /** 只补这条线索本身（不含关联行）。与 记忆id 互斥。 */
+  线索id?: string
 }
 
 export type 补算缺失向量结果 = {
   /** 本次成功写入向量的行数。 */
   已补算数: number
-  /** 补算后仍然 向量 IS NULL 的行数（含本次算失败的）。 */
+  /** 补算后仍然 向量 IS NULL 的行数（含本次算失败的）。指定了 记忆id/线索id 时只统计该范围。 */
   剩余数: number
   /** 本次向量计算失败、保持 NULL 的行数。 */
   失败数: number
