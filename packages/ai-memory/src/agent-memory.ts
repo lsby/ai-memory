@@ -73,6 +73,7 @@ import {
   type 更新记忆选项,
   type 查询交互日志选项,
   type 查询记忆选项,
+  type 添加记忆选项,
   type 补算缺失向量结果,
   type 补算缺失向量选项,
   type 记忆数据库,
@@ -222,9 +223,11 @@ export class 带记忆的智能体 extends 持久化会话智能体 {
     记忆项: 批量注入记忆项,
     回调?: (事件: 智能体事件) => Promise<void>,
     事件组id?: string,
+    选项: 添加记忆选项 = {},
   ): Promise<公开记忆> {
     let 已校验记忆项 = 批量注入记忆项Schema.parse(记忆项)
-    let 缓存 = await 外部创建向量缓存(this.配置, 生成记忆所需向量文本(已校验记忆项.内容, 已校验记忆项.线索), 回调)
+    let 向量文本 = 生成记忆所需向量文本(已校验记忆项.内容, 已校验记忆项.线索)
+    let 缓存 = await 外部创建向量缓存(this.配置, 向量文本, 回调, 选项.计算向量 === false)
     let id = await this.执行记忆变更任务(
       '添加记忆',
       async (trx): Promise<string> => {

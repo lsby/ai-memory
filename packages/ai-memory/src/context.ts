@@ -26,8 +26,14 @@ export async function 创建向量缓存(
   配置: 内部带记忆的智能体配置,
   内容列表: string[],
   回调?: (事件: 智能体事件) => Promise<void>,
+  跳过向量: boolean = false,
 ): Promise<向量缓存> {
   let 缓存 = 新向量缓存()
+  if (跳过向量 === true) {
+    // 预填“无模型”：写入时向量留空，事务内不会发起向量请求，也不会触发未预取重试
+    for (let 内容 of 内容列表) 缓存.结果.set(内容, { 类型: '无模型' })
+    return 缓存
+  }
   await 预取向量(缓存, 内容列表, 配置.向量模型, 回调)
   return 缓存
 }
