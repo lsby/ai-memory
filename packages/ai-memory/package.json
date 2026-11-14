@@ -46,7 +46,7 @@
     "check:all": "pnpm run check:format && pnpm run check:lint && pnpm run check:type",
     "check:format": "prettier --check .",
     "check:lint": "eslint .",
-    "check:type": "tsc --noEmit",
+    "check:type": "pnpm run build:all && tsc --noEmit",
     "format": "prettier --write .",
     "prepublishOnly": "pnpm run verify:release",
     "publish:npm": "pnpm publish --access public",
