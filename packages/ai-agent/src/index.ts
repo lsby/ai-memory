@@ -34,6 +34,7 @@ export type {
   模型用量,
   模型请求审计记录,
   调试拦截钩子,
+  超轮次回调参数,
   追加注入消息,
 } from './types'
 export { 统计字符数 } from './utils/audit'

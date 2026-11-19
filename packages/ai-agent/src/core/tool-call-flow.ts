@@ -1,5 +1,4 @@
 import type { z } from 'zod'
-import { 提交结果函数名 } from '../constants'
 import { 中文模型语言包, type 模型语言包 } from '../model-language'
 import type { 智能体回调, 智能体消息类型, 解决问题选项 } from '../types'
 import { 智能体工具 } from '../types'
@@ -56,7 +55,3 @@ export async function 处理工具调用并验证<T extends z.ZodType>(
   }
   return { 类型: '继续' }
 }
-
-/** 工具调用里是否有提交结果以外的普通工具。收尾轮里有就不执行, 避免产生副作用。 */
-export let 含非提交结果调用 = (工具调用列表: { 名称: string }[]): boolean =>
-  工具调用列表.some((调用) => 调用.名称 !== 提交结果函数名)

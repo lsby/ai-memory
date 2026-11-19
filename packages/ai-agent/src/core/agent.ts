@@ -7,7 +7,7 @@ import { 构建当前时间注入, 追加注入消息到列表 } from '../messag
 import { 前缀是否一致, 构造前缀已变结果, 计算前缀指纹 } from '../message/prefix'
 import { 追加系统纠正消息 } from '../message/system-correction'
 import { 从文本提取工具调用, 从文本提取结果 } from '../message/text-fallback'
-import { 中文模型语言包, type 模型语言包, 读取超轮次收尾文案 } from '../model-language'
+import { 中文模型语言包, type 模型语言包 } from '../model-language'
 import type {
   REPL选项,
   内部解决问题选项,
@@ -33,15 +33,14 @@ import { 校验时区 } from '../utils/timezone'
 import { 创建模型响应记录器, 创建模型请求回调 } from './model-request-events'
 import { 开启交互调试 as runRepl } from './repl'
 import { 流式请求AI } from './stream-request'
-import { 以文本结果伪造提交并验证, 包装纯文本结果 } from './text-result-fallback'
-import { 含非提交结果调用, 处理工具调用并验证 } from './tool-call-flow'
+import { 以文本结果伪造提交并验证, 包装纯文本结果, 执行超轮次回调 } from './text-result-fallback'
+import { 处理工具调用并验证 } from './tool-call-flow'
 
 export class 智能体 {
   protected 工具列表: 智能体工具[]
   private 系统提示词: string
   private 最大校验重试次数: number
   private 最大循环轮次: number
-  private 超轮次收尾: boolean
   private 请求AI时间间隔ms: number
   private 工具返回文本最大长度?: number
   private 额外请求参数: Record<string, unknown> | undefined
@@ -57,7 +56,6 @@ export class 智能体 {
     this.系统提示词 = 选项.系统提示词 ?? ''
     this.最大校验重试次数 = 选项.最大校验重试次数 ?? 3
     this.最大循环轮次 = 选项.最大循环轮次 ?? 15
-    this.超轮次收尾 = 选项.超轮次收尾 ?? true
     this.请求AI时间间隔ms = 选项.请求AI时间间隔ms ?? 0
     this.工具返回文本最大长度 = 选项.工具返回文本最大长度 ?? 50000
     this.额外请求参数 = 校验并复制额外请求参数(选项.额外请求参数)
@@ -273,10 +271,6 @@ export class 智能体 {
       ...(结束原因 !== undefined ? { 结束原因 } : {}),
       用量: 用量列表,
     })
-    let 结束收尾失败 = async (): Promise<回合结果<T>> => {
-      await 回调({ 类型: '流程信息', 内容: `收尾请求没有拿到结果，超出最大循环轮次 (${String(this.最大循环轮次)})` })
-      return 结束(null, '超出最大轮次')
-    }
 
     // 本轮追加顺序: 记忆状态 -> 召回 -> 调用方注入(按传入顺序) -> 当前时间 -> 用户命令
     追加注入消息到列表(消息列表, [...(选项.内部注入消息 ?? []), ...(选项.追加注入消息 ?? [])])
@@ -301,14 +295,11 @@ export class 智能体 {
       return 信号.aborted === true
     }
 
-    // 收尾轮: 正常轮次之外多出的一次请求, 工具列表不变, 只靠纠正消息让模型直接提交结果
-    let 总请求上限 = this.最大循环轮次 + (this.超轮次收尾 === true ? 1 : 0)
-    while (总轮次 < 总请求上限) {
+    while (总轮次 < this.最大循环轮次) {
       if (是否中断() === true) {
         await 回调({ 类型: '流程信息', 内容: '操作被中断' })
         return 结束(null, '中断')
       }
-      let 是否收尾轮 = 总轮次 >= this.最大循环轮次
       总轮次++
       await 回调({ 类型: '流程信息', 内容: `第 ${String(总轮次)} 轮开始` })
 
@@ -319,15 +310,6 @@ export class 智能体 {
           await 回调({ 类型: '流程信息', 内容: '操作被中断' })
           return 结束(null, '中断')
         }
-      }
-
-      if (是否收尾轮 === true) {
-        await 回调({
-          类型: '流程信息',
-          内容: `超出最大循环轮次 (${String(this.最大循环轮次)})，发起一次不带工具的收尾请求`,
-        })
-        追加系统纠正消息(消息列表, null, 读取超轮次收尾文案(this.模型语言包, 提交结果函数名))
-        if (更新当前会话审计状态 === true) await this.同步对话消息(消息列表, 执行模式)
       }
 
       // 流式请求 AI
@@ -396,10 +378,6 @@ export class 智能体 {
           await 回调({ 类型: '流程信息', 内容: '操作被中断' })
           return 结束(null, '中断')
         }
-        if (是否收尾轮 === true && 含非提交结果调用(流式结果.工具调用列表) === true) {
-          await 记录模型响应('完成')
-          return 结束收尾失败()
-        }
         let 结果 = await 处理工具调用并验证(
           流式结果.工具调用列表,
           消息列表,
@@ -429,10 +407,6 @@ export class 智能体 {
       if (流式结果.完整文本.trim() !== '') {
         let 文本中的工具调用 = 从文本提取工具调用(流式结果.完整文本, 合并工具列表)
         if (文本中的工具调用 !== null && 文本中的工具调用.length > 0) {
-          if (是否收尾轮 === true && 含非提交结果调用(文本中的工具调用) === true) {
-            await 记录模型响应('完成')
-            return 结束收尾失败()
-          }
           await 回调({ 类型: '流程信息', 内容: '从文本中提取到工具调用结构, 按工具调用流程处理' })
           let 结果 = await 处理工具调用并验证(
             文本中的工具调用,
@@ -490,10 +464,6 @@ export class 智能体 {
         }
 
         // 文本提取失败, 让 AI 改用函数调用
-        if (是否收尾轮 === true) {
-          await 记录模型响应('完成')
-          return 结束收尾失败()
-        }
         校验失败次数++
         if (校验失败次数 > this.最大校验重试次数) {
           消息列表.push({ role: 'assistant', content: 流式结果.完整文本 })
@@ -520,16 +490,27 @@ export class 智能体 {
       }
 
       // 空回复
-      if (是否收尾轮 === true) {
-        await 记录模型响应('空响应')
-        return 结束收尾失败()
-      }
       await 回调({ 类型: '流程信息', 内容: 'AI 返回了空内容, 继续重试' })
       追加系统纠正消息(消息列表, null, this.模型语言包.空回复())
       if (更新当前会话审计状态 === true) await this.同步对话消息(消息列表, 执行模式)
       await 记录模型响应('空响应')
     }
 
+    let 回调结果 = await 执行超轮次回调({
+      选项,
+      消息列表,
+      最大循环轮次: this.最大循环轮次,
+      校验失败次数,
+      最大校验重试次数: this.最大校验重试次数,
+      回调,
+      模型语言包: this.模型语言包,
+    })
+    if (选项.超轮次回调 !== undefined && 更新当前会话审计状态 === true) await this.同步对话消息(消息列表, 执行模式)
+    if (回调结果 === '中断') {
+      await 回调({ 类型: '流程信息', 内容: '操作被中断' })
+      return 结束(null, '中断')
+    }
+    if (回调结果 !== null) return 结束(回调结果)
     await 回调({ 类型: '流程信息', 内容: `超出最大循环轮次 (${String(this.最大循环轮次)})` })
     return 结束(null, '超出最大轮次')
   }
