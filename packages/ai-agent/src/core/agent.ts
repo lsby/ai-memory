@@ -7,7 +7,7 @@ import { 构建当前时间注入, 追加注入消息到列表 } from '../messag
 import { 前缀是否一致, 构造前缀已变结果, 计算前缀指纹 } from '../message/prefix'
 import { 追加系统纠正消息 } from '../message/system-correction'
 import { 从文本提取工具调用, 从文本提取结果 } from '../message/text-fallback'
-import { 中文模型语言包, type 模型语言包 } from '../model-language'
+import { 中文模型语言包, type 模型语言包, 读取超轮次收尾文案 } from '../model-language'
 import type {
   REPL选项,
   内部解决问题选项,
@@ -30,17 +30,18 @@ import { 校验并复制额外请求参数 } from '../utils/extra-request-params
 import { 复制消息列表, 提取可见消息, 智能体状态Schema } from '../utils/session-state'
 import { 校验工具列表, 校验结果Schema } from '../utils/setup-validation'
 import { 校验时区 } from '../utils/timezone'
-import { 运行结果验证器 } from '../utils/validator'
 import { 创建模型响应记录器, 创建模型请求回调 } from './model-request-events'
 import { 开启交互调试 as runRepl } from './repl'
 import { 流式请求AI } from './stream-request'
-import { 处理工具调用并验证 } from './tool-call-flow'
+import { 以文本结果伪造提交并验证, 包装纯文本结果 } from './text-result-fallback'
+import { 含非提交结果调用, 处理工具调用并验证 } from './tool-call-flow'
 
 export class 智能体 {
   protected 工具列表: 智能体工具[]
   private 系统提示词: string
   private 最大校验重试次数: number
   private 最大循环轮次: number
+  private 超轮次收尾: boolean
   private 请求AI时间间隔ms: number
   private 工具返回文本最大长度?: number
   private 额外请求参数: Record<string, unknown> | undefined
@@ -56,6 +57,7 @@ export class 智能体 {
     this.系统提示词 = 选项.系统提示词 ?? ''
     this.最大校验重试次数 = 选项.最大校验重试次数 ?? 3
     this.最大循环轮次 = 选项.最大循环轮次 ?? 15
+    this.超轮次收尾 = 选项.超轮次收尾 ?? true
     this.请求AI时间间隔ms = 选项.请求AI时间间隔ms ?? 0
     this.工具返回文本最大长度 = 选项.工具返回文本最大长度 ?? 50000
     this.额外请求参数 = 校验并复制额外请求参数(选项.额外请求参数)
@@ -271,6 +273,10 @@ export class 智能体 {
       ...(结束原因 !== undefined ? { 结束原因 } : {}),
       用量: 用量列表,
     })
+    let 结束收尾失败 = async (): Promise<回合结果<T>> => {
+      await 回调({ 类型: '流程信息', 内容: `收尾请求没有拿到结果，超出最大循环轮次 (${String(this.最大循环轮次)})` })
+      return 结束(null, '超出最大轮次')
+    }
 
     // 本轮追加顺序: 记忆状态 -> 召回 -> 调用方注入(按传入顺序) -> 当前时间 -> 用户命令
     追加注入消息到列表(消息列表, [...(选项.内部注入消息 ?? []), ...(选项.追加注入消息 ?? [])])
@@ -295,11 +301,14 @@ export class 智能体 {
       return 信号.aborted === true
     }
 
-    while (总轮次 < this.最大循环轮次) {
+    // 收尾轮: 正常轮次之外多出的一次请求, 工具列表不变, 只靠纠正消息让模型直接提交结果
+    let 总请求上限 = this.最大循环轮次 + (this.超轮次收尾 === true ? 1 : 0)
+    while (总轮次 < 总请求上限) {
       if (是否中断() === true) {
         await 回调({ 类型: '流程信息', 内容: '操作被中断' })
         return 结束(null, '中断')
       }
+      let 是否收尾轮 = 总轮次 >= this.最大循环轮次
       总轮次++
       await 回调({ 类型: '流程信息', 内容: `第 ${String(总轮次)} 轮开始` })
 
@@ -310,6 +319,15 @@ export class 智能体 {
           await 回调({ 类型: '流程信息', 内容: '操作被中断' })
           return 结束(null, '中断')
         }
+      }
+
+      if (是否收尾轮 === true) {
+        await 回调({
+          类型: '流程信息',
+          内容: `超出最大循环轮次 (${String(this.最大循环轮次)})，发起一次不带工具的收尾请求`,
+        })
+        追加系统纠正消息(消息列表, null, 读取超轮次收尾文案(this.模型语言包, 提交结果函数名))
+        if (更新当前会话审计状态 === true) await this.同步对话消息(消息列表, 执行模式)
       }
 
       // 流式请求 AI
@@ -378,6 +396,10 @@ export class 智能体 {
           await 回调({ 类型: '流程信息', 内容: '操作被中断' })
           return 结束(null, '中断')
         }
+        if (是否收尾轮 === true && 含非提交结果调用(流式结果.工具调用列表) === true) {
+          await 记录模型响应('完成')
+          return 结束收尾失败()
+        }
         let 结果 = await 处理工具调用并验证(
           流式结果.工具调用列表,
           消息列表,
@@ -407,6 +429,10 @@ export class 智能体 {
       if (流式结果.完整文本.trim() !== '') {
         let 文本中的工具调用 = 从文本提取工具调用(流式结果.完整文本, 合并工具列表)
         if (文本中的工具调用 !== null && 文本中的工具调用.length > 0) {
+          if (是否收尾轮 === true && 含非提交结果调用(文本中的工具调用) === true) {
+            await 记录模型响应('完成')
+            return 结束收尾失败()
+          }
           await 回调({ 类型: '流程信息', 内容: '从文本中提取到工具调用结构, 按工具调用流程处理' })
           let 结果 = await 处理工具调用并验证(
             文本中的工具调用,
@@ -433,96 +459,41 @@ export class 智能体 {
           continue
         }
 
-        // 再尝试直接提取最终结果 JSON
+        // 再尝试直接提取最终结果 JSON; 提取不到再试纯文本兜底(预期结果只有一个字段时自动包装)
         let 文本提取结果 = 从文本提取结果(流式结果.完整文本, 选项.预期结果Schema)
-        if (文本提取结果 !== null) {
-          let 伪造id = 'call_fallback_json_' + Date.now().toString()
-          await 本次模型回调({ 类型: '工具调用开始', 工具名称: 提交结果函数名, id: 伪造id, 参数: 文本提取结果 })
-          let 工具执行结果 = { 结果: '成功' as const, 信息: this.模型语言包.提交结果成功() }
-          await 本次模型回调({
-            类型: '工具调用结果',
-            工具名称: 提交结果函数名,
-            id: 伪造id,
-            结果: 工具执行结果,
-            耗时ms: 0,
-          })
-
-          消息列表.push({ role: 'assistant', content: 流式结果.完整文本 })
-
-          let 验证失败 = await 运行结果验证器(
-            文本提取结果,
+        let 包装结果 = 文本提取结果 === null ? 包装纯文本结果(流式结果.完整文本, 选项.预期结果Schema) : null
+        let 兜底结果 = 文本提取结果 ?? 包装结果?.数据 ?? null
+        if (兜底结果 !== null) {
+          if (包装结果 !== null) {
+            await 回调({ 类型: '流程信息', 内容: `触发纯文本兜底: 自动将文本包装至字段 [${包装结果.字段名}]` })
+          }
+          let 验证失败 = await 以文本结果伪造提交并验证({
+            结果数据: 兜底结果,
+            伪造id前缀: 包装结果 !== null ? 'call_fallback_text_' : 'call_fallback_json_',
+            助手文本: 流式结果.完整文本,
             选项,
             消息列表,
             校验失败次数,
-            this.最大校验重试次数,
+            最大校验重试次数: this.最大校验重试次数,
             回调,
-            this.模型语言包,
-          )
+            本次模型回调,
+            模型语言包: this.模型语言包,
+          })
           if (更新当前会话审计状态 === true) await this.同步对话消息(消息列表, 执行模式)
           await 记录模型响应('完成')
           if (验证失败 !== null) {
             校验失败次数 = 验证失败.新校验失败次数
             continue
           }
-          await 回调({ 类型: '最终结果', 结果: 文本提取结果 })
-          return 结束(文本提取结果)
-        }
-
-        // ====== 新增：纯文本兜底（自动包装） ======
-        let 兜底JsonSchema = zodToJsonSchema(选项.预期结果Schema)
-        if (
-          typeof 兜底JsonSchema === 'object' &&
-          'type' in 兜底JsonSchema &&
-          兜底JsonSchema.type === 'object' &&
-          'properties' in 兜底JsonSchema &&
-          typeof 兜底JsonSchema.properties === 'object'
-        ) {
-          let 属性列表 = 兜底JsonSchema.properties
-          if (Object.keys(属性列表).length === 1) {
-            let 唯一字段名 = Object.keys(属性列表)[0]
-            if (唯一字段名 !== undefined) {
-              let 包装结果 = { [唯一字段名]: 流式结果.完整文本.trim() }
-              let 校验结果 = 选项.预期结果Schema.safeParse(包装结果)
-              if (校验结果.success === true) {
-                await 回调({ 类型: '流程信息', 内容: `触发纯文本兜底: 自动将文本包装至字段 [${唯一字段名}]` })
-
-                let 伪造id = 'call_fallback_text_' + Date.now().toString()
-                let 伪造参数 = 校验结果.data as Record<string, unknown>
-                await 本次模型回调({ 类型: '工具调用开始', 工具名称: 提交结果函数名, id: 伪造id, 参数: 伪造参数 })
-                let 工具执行结果 = { 结果: '成功' as const, 信息: this.模型语言包.提交结果成功() }
-                await 本次模型回调({
-                  类型: '工具调用结果',
-                  工具名称: 提交结果函数名,
-                  id: 伪造id,
-                  结果: 工具执行结果,
-                  耗时ms: 0,
-                })
-
-                消息列表.push({ role: 'assistant', content: 流式结果.完整文本 })
-
-                let 验证失败 = await 运行结果验证器(
-                  校验结果.data as Record<string, unknown>,
-                  选项,
-                  消息列表,
-                  校验失败次数,
-                  this.最大校验重试次数,
-                  回调,
-                  this.模型语言包,
-                )
-                if (更新当前会话审计状态 === true) await this.同步对话消息(消息列表, 执行模式)
-                await 记录模型响应('完成')
-                if (验证失败 !== null) {
-                  校验失败次数 = 验证失败.新校验失败次数
-                  continue
-                }
-                await 回调({ 类型: '最终结果', 结果: 校验结果.data as Record<string, unknown> })
-                return 结束(校验结果.data as z.infer<T>)
-              }
-            }
-          }
+          await 回调({ 类型: '最终结果', 结果: 兜底结果 })
+          return 结束(兜底结果)
         }
 
         // 文本提取失败, 让 AI 改用函数调用
+        if (是否收尾轮 === true) {
+          await 记录模型响应('完成')
+          return 结束收尾失败()
+        }
         校验失败次数++
         if (校验失败次数 > this.最大校验重试次数) {
           消息列表.push({ role: 'assistant', content: 流式结果.完整文本 })
@@ -549,6 +520,10 @@ export class 智能体 {
       }
 
       // 空回复
+      if (是否收尾轮 === true) {
+        await 记录模型响应('空响应')
+        return 结束收尾失败()
+      }
       await 回调({ 类型: '流程信息', 内容: 'AI 返回了空内容, 继续重试' })
       追加系统纠正消息(消息列表, null, this.模型语言包.空回复())
       if (更新当前会话审计状态 === true) await this.同步对话消息(消息列表, 执行模式)

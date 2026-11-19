@@ -16,6 +16,8 @@ export type 基础模型语言包 = {
   后置验证失败: (错误: string) => string
   无结构化数据: (提交函数名: string) => string
   空回复: () => string
+  /** 可选: 工具调用轮次用完后, 收尾请求里追加的纠正消息。不提供时使用内置中文文案, 所以已有的自定义语言包不受影响。 */
+  超轮次收尾?: (提交函数名: string) => string
   工具已中断: () => string
   工具参数无法解析: (参数: string) => string
   未知工具: (名称: string) => string
@@ -31,6 +33,13 @@ export type 基础模型语言包 = {
   模型字段描述: (描述: string) => string
   模型枚举值: (内部值: string) => string
 }
+
+let 默认超轮次收尾文案 = (名称: string): string =>
+  `工具调用次数已到上限, 不要再调用任何其他工具。请立刻根据已有信息调用 ${名称} 提交最终结果。`
+
+/** 读取收尾请求的纠正消息文案: 语言包没有自定义时使用内置默认文案。 */
+export let 读取超轮次收尾文案 = (语言包: 基础模型语言包, 提交函数名: string): string =>
+  (语言包.超轮次收尾 ?? 默认超轮次收尾文案)(提交函数名)
 
 /** @deprecated 请使用 基础模型语言包。 */
 export type 模型语言包 = 基础模型语言包
@@ -55,6 +64,7 @@ export let 中文模型语言包: 基础模型语言包 = {
   无结构化数据: (名称): string =>
     `你的回复中没有包含有效的结构化数据。请使用 ${名称} 函数调用来提交你的最终结果, 或在回复中包含一个 JSON 代码块, 内容以 \`{"type": "function", "function": {"name":\` 开头, 格式需要符合预期结果的 Schema。`,
   空回复: (): string => '你的回复是空的, 请重新回答。',
+  超轮次收尾: 默认超轮次收尾文案,
   工具已中断: (): string => '操作已中断，工具未执行',
   工具参数无法解析: (参数): string => `参数解析失败: ${参数}`,
   未知工具: (名称): string => `未知工具: ${名称}`,
@@ -95,6 +105,8 @@ export let 英文模型语言包: 基础模型语言包 = {
   无结构化数据: (名称): string =>
     `Your response did not contain valid structured data. Submit the final result by calling ${名称}, or include a JSON code block beginning with \`{"type": "function", "function": {"name":\` that matches the expected schema.`,
   空回复: (): string => 'Your response was empty. Try again.',
+  超轮次收尾: (名称): string =>
+    `The tool call limit has been reached. Do not call any other tool. Immediately call ${名称} to submit the final result based on the information you already have.`,
   工具已中断: (): string => 'Operation aborted; tool not executed.',
   工具参数无法解析: (参数): string => `Could not parse arguments: ${参数}`,
   未知工具: (名称): string => `Unknown tool: ${名称}`,
