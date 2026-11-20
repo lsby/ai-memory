@@ -4,27 +4,31 @@
   "type": "module",
   "scripts": {
     "build:all": "pnpm --filter @lsby/ai-agent run build:all && pnpm --filter @lsby/ai-memory run build:all",
+    "changeset": "changeset",
     "check:all": "pnpm run check:format && pnpm run check:lint && pnpm run check:type",
     "check:format": "pnpm --recursive run check:format",
     "check:lint": "pnpm --recursive run check:lint",
     "check:type": "pnpm --recursive run check:type",
     "format": "pnpm --recursive run format",
     "prepare": "husky",
-    "publish:agent": "pnpm --filter @lsby/ai-agent run publish:npm",
-    "publish:memory": "pnpm --filter @lsby/ai-memory run publish:npm",
-    "release:agent": "pnpm --filter @lsby/ai-agent run release",
-    "release:memory": "pnpm --filter @lsby/ai-memory run release",
+    "release:publish": "pnpm run verify:release && changeset publish",
+    "release:status": "changeset status",
+    "release:version": "changeset version && pnpm install --lockfile-only",
     "test": "pnpm --filter @lsby/ai-agent run test && pnpm --filter @lsby/ai-memory run test",
     "test:coverage": "pnpm --filter @lsby/ai-agent run test:coverage && pnpm --filter @lsby/ai-memory run test:coverage",
     "test:integration": "pnpm --recursive run test:integration",
-    "version:agent": "pnpm --filter @lsby/ai-agent run version:bump",
-    "version:memory": "pnpm --filter @lsby/ai-memory run version:bump",
     "verify:release": "pnpm run check:all && pnpm run test:coverage && pnpm run build:all"
   },
   "devDependencies": {
+    "@changesets/cli": "2.31.1",
     "husky": "^9.1.7"
   },
   "packageManager": "pnpm@9.5.0",
+  "pnpm": {
+    "overrides": {
+      "@changesets/git": "3.0.2"
+    }
+  },
   "engines": {
     "node": ">=20"
   }

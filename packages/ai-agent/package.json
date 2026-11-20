@@ -55,14 +55,11 @@
     "check:type": "tsc --noEmit",
     "format": "prettier --write .",
     "prepublishOnly": "pnpm run verify:release",
-    "publish:npm": "pnpm publish --access public",
-    "release": "pnpm run verify:release && bumpp --git-check --commit \"chore(release): @lsby/ai-agent v%s\" --tag \"@lsby/ai-agent@%s\"",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "test:watch": "vitest",
-    "verify:release": "pnpm run check:all && pnpm run test:coverage && pnpm run build:all",
-    "version:bump": "bumpp --no-commit --no-tag --no-push"
+    "verify:release": "pnpm run check:all && pnpm run test:coverage && pnpm run build:all"
   },
   "dependencies": {
     "jsonrepair": "^3.13.1",
@@ -77,7 +74,6 @@
     "@types/eslint": "^9.6.1",
     "@types/node": "^22.13.14",
     "@vitest/coverage-v8": "^3.0.9",
-    "bumpp": "^10.3.1",
     "eslint": "^9.39.2",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-jsdoc": "^62.0.0",

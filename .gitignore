@@ -1,6 +1,7 @@
 node_modules/
 /packages/*/dist/
 /packages/*/coverage/
+/packages/*/release-packages/
 /packages/ai-memory/test/benchmark/*/output/
 /packages/ai-memory/test/benchmark/db-baseline/
 /.env
