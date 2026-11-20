@@ -5,7 +5,7 @@
   "scripts": {
     "build:all": "pnpm --filter @lsby/ai-agent run build:all && pnpm --filter @lsby/ai-memory run build:all",
     "changeset": "changeset",
-    "check:all": "pnpm run check:format && pnpm run check:lint && pnpm run check:type",
+    "check:all": "pnpm run build:all && pnpm run check:format && pnpm run check:lint && pnpm run check:type",
     "check:format": "pnpm --recursive run check:format",
     "check:lint": "pnpm --recursive run check:lint",
     "check:type": "pnpm --recursive run check:type",

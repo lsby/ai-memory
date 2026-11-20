@@ -43,7 +43,7 @@
     "build:all": "pnpm run build:cjs && pnpm run build:esm",
     "build:cjs": "tsup src/index.ts --platform node --format cjs --clean --dts -d dist/cjs",
     "build:esm": "tsup src/index.ts --platform node --format esm --clean --dts -d dist/esm",
-    "check:all": "pnpm run check:format && pnpm run check:lint && pnpm run check:type",
+    "check:all": "pnpm --filter @lsby/ai-agent run build:all && pnpm run check:format && pnpm run check:lint && pnpm run check:type",
     "check:format": "prettier --check .",
     "check:lint": "eslint .",
     "check:type": "pnpm run build:all && tsc --noEmit",
