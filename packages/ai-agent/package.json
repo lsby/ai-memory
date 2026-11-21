@@ -1,6 +1,6 @@
 {
   "name": "@lsby/ai-agent",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "A lightweight TypeScript agent library for OpenAI-compatible models.",
   "keywords": [
     "ai",
