@@ -99,6 +99,17 @@ export type 智能体消息类型 = z.infer<typeof 智能体消息Schema>
 export type 智能体事件 =
   | { 类型: 'AI文本片段'; 内容: string }
   | {
+      类型: '工具调用参数片段'
+      工具调用索引: number
+      id: string
+      工具名称: string
+      片段: string
+      已累积参数: string
+      模型请求id: string
+      模型请求序号: number
+      前缀id: string
+    }
+  | {
       类型: '工具调用开始'
       工具名称: string
       id: string

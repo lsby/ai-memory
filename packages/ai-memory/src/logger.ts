@@ -109,6 +109,9 @@ export async function 执行带日志的分支切换(
   })
 }
 
+// 工具调用参数片段是高频流式事件，不落库，因此不在日志类型枚举里
+type 可落库事件 = Exclude<智能体事件, { 类型: '工具调用参数片段' }>
+
 export async function 执行带日志的推理流程<T extends ZodType>(
   数据库查询器: Kysely<记忆数据库>,
   流程内容: JSON值,
@@ -119,10 +122,17 @@ export async function 执行带日志的推理流程<T extends ZodType>(
 ): Promise<回合结果<T>> {
   let 已校验事件组id = 创建事件组id(事件组id)
   let 开始时间 = new Date()
-  let 待关联工具事件: { 事件: 智能体事件; 记忆提交id: string | null; 上下文消息id: string | null }[] = []
+  let 待关联工具事件: { 事件: 可落库事件; 记忆提交id: string | null; 上下文消息id: string | null }[] = []
   let 日志回调 = async (事件: 智能体事件): Promise<void> => {
     await 原回调(事件)
-    if (事件.类型 === 'AI文本片段' || 事件.类型 === '原始AI返回' || 事件.类型 === '最终结果') return
+    // AI文本片段与工具调用参数片段都是高频流式事件，只透传给外部回调，不落库
+    if (
+      事件.类型 === 'AI文本片段' ||
+      事件.类型 === '工具调用参数片段' ||
+      事件.类型 === '原始AI返回' ||
+      事件.类型 === '最终结果'
+    )
+      return
     if (
       (事件.类型 === '工具调用开始' || 事件.类型 === '工具调用结果' || 事件.类型 === '工具调用失败') &&
       事件.模型请求id !== undefined
@@ -162,7 +172,7 @@ export async function 执行带日志的推理流程<T extends ZodType>(
   let 写入推理事件 = async (
     目标数据库: Kysely<记忆数据库>,
     目标事件组id: string,
-    事件: 智能体事件,
+    事件: 可落库事件,
     读取上下文消息id?: () => string | null,
     关联消息id?: string,
     关联记忆提交id?: string | null,

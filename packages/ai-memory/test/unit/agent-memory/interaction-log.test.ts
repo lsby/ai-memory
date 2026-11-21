@@ -1,6 +1,7 @@
 import type { PGlite } from '@electric-sql/pglite'
-import { 交互日志事件Schema, 带记忆的智能体, 记忆等级 } from '@lsby/ai-memory'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { 交互日志事件Schema, 带记忆的智能体, 记忆等级, type 智能体事件 } from '@lsby/ai-memory'
+import OpenAI from 'openai'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 import { 使用共享PGlite } from '../../helpers/shared-pglite-fixture'
 import { 创建带向量的PGlite } from '../../helpers/shared-storage-helper'
@@ -80,6 +81,45 @@ describe('交互事件日志', () => {
     await expect(智能体实例.查询交互日志({ 偏移: -1 })).rejects.toThrow()
     await expect(智能体实例.查询交互日志({ 数量: 1001 })).rejects.toThrow()
     await expect(智能体实例.查询交互日志({ 事件组id: '   ' })).rejects.toThrow()
+  })
+
+  it('工具调用参数片段透传给外部回调但不落库', async (): Promise<void> => {
+    智能体实例 = 夹具.新建智能体()
+    let 收到事件: 智能体事件[] = []
+    let 模拟客户端 = new OpenAI({ apiKey: 'test' })
+    async function* 创建流(): AsyncGenerator<object> {
+      yield {
+        choices: [
+          {
+            delta: {
+              tool_calls: [{ index: 0, id: 'c1', function: { name: '__submit_result__', arguments: '{"值":' } }],
+            },
+          },
+        ],
+      }
+      yield { choices: [{ delta: { tool_calls: [{ index: 0, function: { arguments: '1}' } }] } }] }
+    }
+    vi.spyOn(模拟客户端.chat.completions, 'create').mockReturnValue(创建流() as never)
+
+    await 智能体实例
+      .对话({
+        命令: '测试',
+        预期结果Schema: z.object({ 值: z.number() }),
+        预期结果描述: '数值',
+        回调: async (事件): Promise<void> => {
+          收到事件.push(事件)
+        },
+        openai客户端: 模拟客户端,
+        模型名称: 'mock-model',
+        事件组id: 'args-stream-group',
+      })
+      .catch((): void => {})
+
+    let 已累积参数列表 = 收到事件.flatMap((事件) => (事件.类型 === '工具调用参数片段' ? [事件.已累积参数] : []))
+    expect(已累积参数列表).toEqual(['{"值":', '{"值":1}'])
+    let 日志列表 = await 智能体实例.查询交互日志({ 事件组id: 'args-stream-group' })
+    expect(日志列表.length).toBeGreaterThan(0)
+    expect(日志列表.map((日志) => 日志.事件类型 as string)).not.toContain('工具调用参数片段')
   })
 
   it('分支切换事件记录请求、结果和切换后的 HEAD', async (): Promise<void> => {

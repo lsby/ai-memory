@@ -138,6 +138,25 @@ export async function 流式请求AI(
               已有条目.参数片段 += 片段.function.arguments
             }
           }
+          let 新参数片段 = 片段.function?.arguments ?? ''
+          let 当前条目 = 工具调用映射.get(索引) ?? null
+          if (新参数片段 !== '' && 当前条目 !== null) {
+            try {
+              await 回调({
+                类型: '工具调用参数片段',
+                工具调用索引: 索引,
+                id: 当前条目.id,
+                工具名称: 当前条目.名称,
+                片段: 新参数片段,
+                已累积参数: 当前条目.参数片段,
+                模型请求id: 已解析模型请求上下文.id,
+                模型请求序号: 已解析模型请求上下文.序号,
+                前缀id: 已解析模型请求上下文.前缀id,
+              })
+            } catch (e) {
+              console.error('[Agent Stream] Callback error on 工具调用参数片段:', e)
+            }
+          }
         }
       }
     }

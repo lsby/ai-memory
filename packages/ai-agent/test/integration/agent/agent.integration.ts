@@ -145,6 +145,8 @@ let 事件处理 = async (事件: 智能体事件): Promise<void> => {
     case 'AI文本片段':
       process.stdout.write(事件.内容)
       break
+    case '工具调用参数片段':
+      break
     case '工具调用开始':
       console.log(`\n🔧 调用工具: ${事件.工具名称}`, JSON.stringify(事件.参数))
       break
