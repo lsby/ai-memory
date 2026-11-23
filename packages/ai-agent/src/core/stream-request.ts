@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import type OpenAI from 'openai'
 import { 工具调用引导前缀 } from '../constants'
+import { 插入本轮临时消息 } from '../message/injection'
 import { 转换为模型消息 } from '../message/message-serialization'
 import type { 智能体回调, 智能体消息类型, 模型请求上下文, 累积工具调用 } from '../types'
 
@@ -22,6 +23,7 @@ export async function 流式请求AI(
   频率惩罚?: number,
   额外请求参数?: Record<string, unknown>,
   模型请求上下文?: 模型请求上下文,
+  本轮临时消息?: { 插入位置: number; 内容列表: string[] },
 ): Promise<{
   完整文本: string
   原始完整文本?: string
@@ -40,11 +42,12 @@ export async function 流式请求AI(
   let 已解析模型请求上下文 = 模型请求上下文 ?? { id: randomUUID(), 序号: 1, 前缀id: '' }
 
   let 实际工具列表 = 工具列表
-  let 实际消息列表 = 消息列表
+  let 实际消息列表 =
+    本轮临时消息 === undefined ? 消息列表 : 插入本轮临时消息(消息列表, 本轮临时消息.插入位置, 本轮临时消息.内容列表)
   if (是否支持函数调用 === false) {
     实际工具列表 = []
     if (是否使用引导前缀 !== false) {
-      实际消息列表 = [...消息列表, { role: 'assistant', content: 工具调用引导前缀 }]
+      实际消息列表 = [...实际消息列表, { role: 'assistant', content: 工具调用引导前缀 }]
     }
   }
 

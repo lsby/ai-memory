@@ -44,3 +44,10 @@ export function 格式化当前时间(当前时间: Date, 时区?: string): stri
 export function 构建当前时间注入(当前时间: Date, 时区: string | undefined, 模型语言包: 模型语言包): string {
   return 模型语言包.当前时间(格式化当前时间(当前时间, 时区))
 }
+
+/** 组装请求用: 在消息列表的插入位置处插入本轮临时消息(user 角色), 返回新数组, 不改动原列表 */
+export function 插入本轮临时消息(消息列表: 智能体消息类型[], 插入位置: number, 临时消息?: string[]): 智能体消息类型[] {
+  if (临时消息 === undefined || 临时消息.length === 0) return 消息列表
+  let 临时消息列表: 智能体消息类型[] = 临时消息.map((内容) => ({ role: 'user', content: 内容 }))
+  return [...消息列表.slice(0, 插入位置), ...临时消息列表, ...消息列表.slice(插入位置)]
+}

@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { zodToJsonSchema } from 'zod-to-json-schema'
 import { 提交结果函数名 } from '../constants'
 import { 构建openai工具列表, 构建系统工具与格式说明 } from '../message/build-messages'
-import { 构建当前时间注入, 追加注入消息到列表 } from '../message/injection'
+import { 插入本轮临时消息, 构建当前时间注入, 追加注入消息到列表 } from '../message/injection'
 import { 前缀是否一致, 构造前缀已变结果, 计算前缀指纹 } from '../message/prefix'
 import { 追加系统纠正消息 } from '../message/system-correction'
 import { 从文本提取工具调用, 从文本提取结果 } from '../message/text-fallback'
@@ -286,6 +286,8 @@ export class 智能体 {
       }
       消息列表.push({ role: 'user', content: 选项.命令 })
     }
+    // 本轮临时消息只在组装请求时插入到这个位置, 不进消息列表
+    let 临时消息插入位置 = 消息列表.length
     if (更新当前会话审计状态 === true) await this.同步对话消息(消息列表, 执行模式)
     let 校验失败次数 = 0
     let 总轮次 = 0
@@ -313,7 +315,12 @@ export class 智能体 {
       }
 
       // 流式请求 AI
-      let 发出字符数 = 统计模型输入字符数(消息列表, openai工具列表, 选项.是否支持函数调用, 选项.是否使用引导前缀)
+      let 发出字符数 = 统计模型输入字符数(
+        插入本轮临时消息(消息列表, 临时消息插入位置, 选项.本轮临时消息),
+        openai工具列表,
+        选项.是否支持函数调用,
+        选项.是否使用引导前缀,
+      )
       let 本次请求消息起点 = 消息列表.length
       let 模型请求上下文 = { id: randomUUID(), 序号: 总轮次, 前缀id: 前缀指纹 }
       let 本次模型回调 = 创建模型请求回调(回调, 模型请求上下文)
@@ -333,6 +340,7 @@ export class 智能体 {
         选项.频率惩罚,
         this.额外请求参数,
         模型请求上下文,
+        选项.本轮临时消息 !== undefined ? { 插入位置: 临时消息插入位置, 内容列表: 选项.本轮临时消息 } : undefined,
       )
       let 记录模型响应 = 创建模型响应记录器({
         回调,
