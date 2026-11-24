@@ -1,7 +1,8 @@
 import { spawn } from 'node:child_process'
 import fs from 'node:fs/promises'
 import path from 'node:path'
-import readline from 'node:readline/promises'
+import readline from 'node:readline'
+import readlinePromises from 'node:readline/promises'
 
 export type 包信息 = {
   名称: string
@@ -447,7 +448,7 @@ export async function 检查Git工作区干净与远程同步(
 }
 
 export async function 交互输入(问题: string): Promise<string> {
-  let rl = readline.createInterface({
+  let rl = readlinePromises.createInterface({
     input: process.stdin,
     output: process.stdout,
   })
@@ -459,10 +460,69 @@ export async function 交互输入(问题: string): Promise<string> {
   }
 }
 
-export async function 交互确认(问题: string): Promise<boolean> {
-  let 回答 = await 交互输入(`${问题} (y/N): `)
-  let 小写 = 回答.toLowerCase()
-  return 小写 === 'y' || 小写 === 'yes'
+export async function 交互确认(问题: string, 默认是 = false): Promise<boolean> {
+  if (!process.stdin.isTTY) {
+    let 回答 = await 交互输入(`${问题} (y/N): `)
+    let 小写 = 回答.toLowerCase()
+    return 小写 === 'y' || 小写 === 'yes'
+  }
+
+  let 当前值 = 默认是
+  let 渲染 = (初次: boolean): void => {
+    if (!初次) {
+      process.stdout.write('\r\x1b[2K')
+    }
+    let 否样式 = !当前值 ? '\x1b[36m[ 否 ]\x1b[0m' : '  否  '
+    let 是样式 = 当前值 ? '\x1b[36m[ 是 ]\x1b[0m' : '  是  '
+    process.stdout.write(`${问题}  ${否样式}  ${是样式}  (←/→ 切换，回车确认)`)
+  }
+
+  readline.emitKeypressEvents(process.stdin)
+  process.stdin.setRawMode(true)
+  process.stdin.resume()
+  process.stdout.write('\x1b[?25l')
+  渲染(true)
+
+  return new Promise<boolean>((resolve) => {
+    let 清理 = (): void => {
+      process.stdin.removeListener('keypress', 按键处理)
+      process.stdin.setRawMode(false)
+      process.stdin.pause()
+      process.stdout.write('\x1b[?25h\n')
+    }
+
+    let 按键处理 = (_str: string, key: readline.Key): void => {
+      if (key.ctrl === true && key.name === 'c') {
+        清理()
+        process.exit(130)
+      }
+      if (key.name === 'left' || key.name === 'right' || key.name === 'tab') {
+        当前值 = !当前值
+        渲染(false)
+        return
+      }
+      if (key.name === 'y' || key.name === 'Y') {
+        当前值 = true
+        渲染(false)
+        清理()
+        resolve(true)
+        return
+      }
+      if (key.name === 'n' || key.name === 'N') {
+        当前值 = false
+        渲染(false)
+        清理()
+        resolve(false)
+        return
+      }
+      if (key.name === 'return' || key.name === 'enter') {
+        清理()
+        resolve(当前值)
+      }
+    }
+
+    process.stdin.on('keypress', 按键处理)
+  })
 }
 
 export async function 交互选择<T>(
@@ -473,23 +533,89 @@ export async function 交互选择<T>(
     throw new Error('交互选择列表不能为空')
   }
 
-  console.log(`\n${标题}`)
-  for (let i = 0; i < 选项列表.length; i += 1) {
-    let 选项 = 选项列表[i]
-    if (选项 !== undefined) {
-      console.log(`  [${i + 1}] ${选项.标签}`)
+  if (!process.stdin.isTTY) {
+    console.log(`\n${标题}`)
+    for (let i = 0; i < 选项列表.length; i += 1) {
+      let 选项 = 选项列表[i]
+      if (选项 !== undefined) {
+        console.log(`  [${i + 1}] ${选项.标签}`)
+      }
+    }
+    while (true) {
+      let 输入 = await 交互输入(`请输入选项编号 (1-${选项列表.length}): `)
+      let 编号 = Number(输入)
+      if (Number.isInteger(编号) && 编号 >= 1 && 编号 <= 选项列表.length) {
+        let 选中 = 选项列表[编号 - 1]
+        if (选中 !== undefined) {
+          return 选中.值
+        }
+      }
+      console.log('输入无效，请重新输入对应的数字编号。')
     }
   }
 
-  while (true) {
-    let 输入 = await 交互输入(`请输入选项编号 (1-${选项列表.length}): `)
-    let 编号 = Number(输入)
-    if (Number.isInteger(编号) && 编号 >= 1 && 编号 <= 选项列表.length) {
-      let 选中 = 选项列表[编号 - 1]
-      if (选中 !== undefined) {
-        return 选中.值
+  let 当前索引 = 0
+  let 总行数 = 选项列表.length + 1
+
+  let 渲染 = (初次: boolean): void => {
+    if (!初次) {
+      process.stdout.write(`\x1b[${总行数}A\x1b[0J`)
+    }
+    process.stdout.write(`${标题} (↑/↓ 选择，回车确认)\n`)
+    for (let i = 0; i < 选项列表.length; i += 1) {
+      let 选项 = 选项列表[i]
+      if (选项 === undefined) {
+        continue
+      }
+      if (i === 当前索引) {
+        process.stdout.write(`  \x1b[36m❯ ${选项.标签}\x1b[0m\n`)
+      } else {
+        process.stdout.write(`    ${选项.标签}\n`)
       }
     }
-    console.log('输入无效，请重新输入对应的数字编号。')
   }
+
+  process.stdout.write('\n')
+  readline.emitKeypressEvents(process.stdin)
+  process.stdin.setRawMode(true)
+  process.stdin.resume()
+  process.stdout.write('\x1b[?25l')
+  渲染(true)
+
+  return new Promise<T>((resolve, reject) => {
+    let 清理 = (): void => {
+      process.stdin.removeListener('keypress', 按键处理)
+      process.stdin.setRawMode(false)
+      process.stdin.pause()
+      process.stdout.write('\x1b[?25h')
+    }
+
+    let 按键处理 = (_str: string, key: readline.Key): void => {
+      if (key.ctrl === true && key.name === 'c') {
+        清理()
+        process.exit(130)
+      }
+      if (key.name === 'up' || key.name === 'k') {
+        当前索引 = (当前索引 - 1 + 选项列表.length) % 选项列表.length
+        渲染(false)
+        return
+      }
+      if (key.name === 'down' || key.name === 'j') {
+        当前索引 = (当前索引 + 1) % 选项列表.length
+        渲染(false)
+        return
+      }
+      if (key.name === 'return' || key.name === 'enter') {
+        清理()
+        let 选中 = 选项列表[当前索引]
+        if (选中 === undefined) {
+          reject(new Error('选中的选项不存在'))
+          return
+        }
+        resolve(选中.值)
+      }
+    }
+
+    process.stdin.on('keypress', 按键处理)
+  })
 }
