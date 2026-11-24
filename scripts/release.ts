@@ -1,0 +1,238 @@
+import path from 'node:path'
+import {
+  交互确认,
+  交互输入,
+  交互选择,
+  包信息,
+  扫描工作区包,
+  执行命令继承输出,
+  查找包,
+  检查Git工作区干净与远程同步,
+  计算下一版本,
+  计算关联发布包,
+} from './workspace-utils.js'
+
+type 升级计划项 = {
+  包: 包信息
+  目标版本: string
+}
+
+function 打印用法(): void {
+  console.log(`用法: pnpm release <包名> <版本> [-y|--yes]
+
+参数说明:
+  <包名>     要发布的包名，如 ai-agent / @lsby/ai-agent / ai-memory / @lsby/ai-memory
+  <版本>     升级类型或具体版本号（必填），如 patch / minor / major / 0.2.0
+  -y, --yes  跳过交互提示（关联包默认按 patch 升级，并直接执行）`)
+}
+
+async function 选择包升级版本(
+  包: 包信息,
+  默认版本参数?: string
+): Promise<string> {
+  if (默认版本参数 !== undefined) {
+    let 直接版本 = 计算下一版本(包.版本, 默认版本参数)
+    if (直接版本 !== null) {
+      return 直接版本
+    }
+  }
+
+  let patch版本 = 计算下一版本(包.版本, 'patch') ?? 包.版本
+  let minor版本 = 计算下一版本(包.版本, 'minor') ?? 包.版本
+  let major版本 = 计算下一版本(包.版本, 'major') ?? 包.版本
+
+  let 选择结果 = await 交互选择<string>(
+    `请选择 ${包.名称} (当前 ${包.版本}) 的升级方式:`,
+    [
+      { 标签: `patch (${包.版本} -> ${patch版本})`, 值: patch版本 },
+      { 标签: `minor (${包.版本} -> ${minor版本})`, 值: minor版本 },
+      { 标签: `major (${包.版本} -> ${major版本})`, 值: major版本 },
+      { 标签: '自定义版本号', 值: '__custom__' },
+    ]
+  )
+
+  if (选择结果 !== '__custom__') {
+    return 选择结果
+  }
+
+  while (true) {
+    let 自定义输入 = await 交互输入(`请输入 ${包.名称} 的目标版本号 (如 1.2.3): `)
+    let 计算结果 = 计算下一版本(包.版本, 自定义输入)
+    if (
+      计算结果 !== null &&
+      自定义输入 !== 'patch' &&
+      自定义输入 !== 'minor' &&
+      自定义输入 !== 'major'
+    ) {
+      return 计算结果
+    }
+    console.log('版本号格式无效，请输入合法的语义化版本号（如 1.2.3）。')
+  }
+}
+
+async function 主流程(): Promise<void> {
+  let 根目录 = process.cwd()
+  let 原始参数 = process.argv.slice(2)
+
+  let 跳过确认 = false
+  let 位置参数: string[] = []
+
+  for (let 参数 of 原始参数) {
+    if (参数 === '-y' || 参数 === '--yes') {
+      跳过确认 = true
+    } else if (参数 === '-h' || 参数 === '--help') {
+      打印用法()
+      return
+    } else {
+      位置参数.push(参数)
+    }
+  }
+
+  let 包名参数 = 位置参数[0]
+  let 版本参数 = 位置参数[1]
+
+  if (包名参数 === undefined || 版本参数 === undefined || 位置参数.length > 2) {
+    console.error('错误：必须同时指定 <包名> 和 <版本>，不允许省略版本。')
+    打印用法()
+    process.exitCode = 1
+    return
+  }
+
+  let 所有包 = await 扫描工作区包(根目录)
+  let 目标包 = 查找包(所有包, 包名参数)
+  if (目标包 === null) {
+    console.error(`错误：未找到名为 "${包名参数}" 的工作区包。`)
+    console.error(`可用包：${所有包.map((item) => item.短名称).join(', ')}`)
+    process.exitCode = 1
+    return
+  }
+
+  let 主包目标版本 = 计算下一版本(目标包.版本, 版本参数)
+  if (主包目标版本 === null) {
+    console.error(
+      `错误：无效的版本参数 "${版本参数}"，请使用 patch / minor / major 或合法版本号（如 1.2.3）。`
+    )
+    process.exitCode = 1
+    return
+  }
+
+  console.log('正在检查 Git 工作区状态与远程同步情况...')
+  let git检查 = await 检查Git工作区干净与远程同步(根目录)
+  if (!git检查.成功) {
+    console.error(`错误：${git检查.错误信息}`)
+    process.exitCode = 1
+    return
+  }
+
+  let 待升级包列表 = 计算关联发布包(所有包, 目标包.名称)
+  if (待升级包列表.length > 1) {
+    let 下游包名 = 待升级包列表
+      .filter((item) => item.名称 !== 目标包.名称)
+      .map((item) => item.名称)
+      .join(', ')
+    console.log(`检测到以下包依赖了 ${目标包.名称}，将一并升级：${下游包名}`)
+  }
+
+  // 所有交互选择必须在最开始全部完成，之后不再弹出任何交互
+  let 升级计划: 升级计划项[] = []
+  for (let 包 of 待升级包列表) {
+    if (包.名称 === 目标包.名称) {
+      升级计划.push({ 包, 目标版本: 主包目标版本 })
+      continue
+    }
+
+    if (跳过确认) {
+      let 默认下游版本 = 计算下一版本(包.版本, 'patch')
+      if (默认下游版本 === null) {
+        throw new Error(`无法为 ${包.名称} 计算 patch 版本`)
+      }
+      升级计划.push({ 包, 目标版本: 默认下游版本 })
+    } else {
+      let 选定版本 = await 选择包升级版本(包)
+      升级计划.push({ 包, 目标版本: 选定版本 })
+    }
+  }
+
+  console.log('\n即将执行以下版本升级并推送到 GitHub：')
+  for (let 项 of 升级计划) {
+    console.log(`  - ${项.包.名称}: ${项.包.版本} -> ${项.目标版本}`)
+  }
+
+  if (!跳过确认) {
+    let 已确认 = await 交互确认('\n确认无误并开始升级版本、提交并推送到 GitHub 吗？')
+    if (!已确认) {
+      console.log('已取消 release 操作。')
+      return
+    }
+  }
+
+  // 无人值守执行阶段
+  for (let 项 of 升级计划) {
+    let 相对清单路径 = path.relative(根目录, 项.包.清单路径)
+    let bumpp退出码 = await 执行命令继承输出(
+      'pnpm',
+      [
+        'exec',
+        'bumpp',
+        '--release',
+        项.目标版本,
+        相对清单路径,
+        '--no-commit',
+        '--no-tag',
+        '--no-push',
+        '--yes',
+      ],
+      根目录
+    )
+    if (bumpp退出码 !== 0) {
+      throw new Error(`bumpp 升级 ${项.包.名称} 失败，退出码 ${bumpp退出码}`)
+    }
+  }
+
+  let 清单路径列表 = 升级计划.map((项) => path.relative(根目录, 项.包.清单路径))
+  let add退出码 = await 执行命令继承输出('git', ['add', ...清单路径列表], 根目录)
+  if (add退出码 !== 0) {
+    throw new Error('git add 失败')
+  }
+
+  let 提交摘要 = 升级计划
+    .map((项) => `${项.包.短名称}@${项.目标版本}`)
+    .join(', ')
+  let commit退出码 = await 执行命令继承输出(
+    'git',
+    ['commit', '-m', `chore(release): ${提交摘要}`],
+    根目录
+  )
+  if (commit退出码 !== 0) {
+    throw new Error('git commit 失败')
+  }
+
+  for (let 项 of 升级计划) {
+    let tag名称 = `${项.包.名称}@${项.目标版本}`
+    let tag退出码 = await 执行命令继承输出('git', ['tag', tag名称], 根目录)
+    if (tag退出码 !== 0) {
+      throw new Error(`创建 git tag ${tag名称} 失败`)
+    }
+  }
+
+  let push退出码 = await 执行命令继承输出(
+    'git',
+    ['push', '--follow-tags'],
+    根目录
+  )
+  if (push退出码 !== 0) {
+    throw new Error('git push --follow-tags 失败')
+  }
+
+  console.log('\n版本升级并推送 GitHub 完成！')
+  console.log('接下来可以运行 `pnpm publish:npm` 发布到 npm。')
+}
+
+main().catch((err: unknown) => {
+  console.error(err instanceof Error ? err.message : String(err))
+  process.exitCode = 1
+})
+
+async function main(): Promise<void> {
+  await 主流程()
+}

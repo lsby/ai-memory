@@ -54,12 +54,10 @@
     "check:lint": "eslint .",
     "check:type": "tsc --noEmit",
     "format": "prettier --write .",
-    "prepublishOnly": "pnpm run verify:release",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:integration": "vitest run --config vitest.integration.config.ts",
-    "test:watch": "vitest",
-    "verify:release": "pnpm run check:all && pnpm run test:coverage && pnpm run build:all"
+    "test:watch": "vitest"
   },
   "dependencies": {
     "jsonrepair": "^3.13.1",
