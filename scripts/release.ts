@@ -297,7 +297,6 @@ async function 主流程(): Promise<void> {
 
   // 无人值守执行阶段
   for (let 项 of 升级计划) {
-    let 相对清单路径 = path.relative(根目录, 项.包.清单路径)
     let bumpp退出码 = await 执行命令继承输出(
       'pnpm',
       [
@@ -305,13 +304,15 @@ async function 主流程(): Promise<void> {
         'bumpp',
         '--release',
         项.目标版本,
-        相对清单路径,
+        '--current-version',
+        项.包.版本,
+        'package.json',
         '--no-commit',
         '--no-tag',
         '--no-push',
         '--yes',
       ],
-      根目录
+      项.包.目录
     )
     if (bumpp退出码 !== 0) {
       throw new Error(`bumpp 升级 ${项.包.名称} 失败，退出码 ${bumpp退出码}`)
