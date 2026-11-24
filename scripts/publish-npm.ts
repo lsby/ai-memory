@@ -2,6 +2,7 @@ import {
   交互确认,
   包信息,
   扫描工作区包,
+  是否在Caret兼容范围内,
   执行命令,
   执行命令继承输出,
   拓扑排序,
@@ -96,7 +97,6 @@ async function 主流程(): Promise<void> {
     线上版本映射.set(项.包.名称, 项.线上版本)
   }
 
-  let 检查范围名集合 = new Set<string>(检查范围包.map((item) => item.名称))
   let 待发布包列表: 包信息[] = []
 
   for (let 包 of 检查范围包) {
@@ -111,23 +111,21 @@ async function 主流程(): Promise<void> {
     return
   }
 
-  // 检查是否漏掉了关联的下游包
+  // 仅当发布的新版本超出下游包原有 ^ 兼容范围且下游包未同步升级时，才阻止发布
   let 待发布名集合 = new Set<string>(待发布包列表.map((item) => item.名称))
   for (let 包 of 待发布包列表) {
+    let 线上版本 = 线上版本映射.get(包.名称) ?? null
+    if (线上版本 === null || 是否在Caret兼容范围内(线上版本, 包.版本)) {
+      continue
+    }
     let 关联全部 = 计算关联发布包(所有包, 包.名称)
     for (let 关联包 of 关联全部) {
-      if (!待发布名集合.has(关联包.名称)) {
-        if (!检查范围名集合.has(关联包.名称)) {
-          待发布名集合.add(关联包.名称)
-        }
-        let 关联线上版本 = 线上版本映射.get(关联包.名称) ?? null
-        if (关联线上版本 !== null && 比较语义化版本(关联包.版本, 关联线上版本) <= 0) {
-          console.error(
-            `错误：${包.名称} 将被发布，但依赖它的 ${关联包.名称} 本地版本 (${关联包.版本}) 未高于 npm 线上版本 (${关联线上版本})。请先运行 pnpm release 升级关联包版本。`
-          )
-          process.exitCode = 1
-          return
-        }
+      if (关联包.名称 !== 包.名称 && !待发布名集合.has(关联包.名称)) {
+        console.error(
+          `错误：${包.名称} 的新版本 (${包.版本}) 已超出 ^${线上版本} 兼容范围，但依赖它的 ${关联包.名称} 没有同步升级发布。请先运行 pnpm release 升级 ${关联包.名称}。`
+        )
+        process.exitCode = 1
+        return
       }
     }
   }

@@ -387,6 +387,75 @@ export function 计算下一版本(当前版本: string, 升级方式: string): 
   }
 }
 
+export function 是否在Caret兼容范围内(旧版本: string, 新版本: string): boolean {
+  let 旧 = 解析版本(旧版本)
+  let 新 = 解析版本(新版本)
+  if (旧 === null || 新 === null) {
+    return false
+  }
+  if (比较语义化版本(新版本, 旧版本) < 0) {
+    return false
+  }
+  if (旧.major > 0) {
+    return 新.major === 旧.major
+  }
+  if (旧.minor > 0) {
+    return 新.major === 0 && 新.minor === 旧.minor
+  }
+  return 新.major === 0 && 新.minor === 0 && 新.patch === 旧.patch
+}
+
+export type 包变更状态 = {
+  上次Tag: string | null
+  有变更: boolean
+  变更文件数: number
+}
+
+export async function 检测包变更状态(
+  根目录: string,
+  包: 包信息
+): Promise<包变更状态> {
+  let tag结果 = await 执行命令(
+    'git',
+    ['tag', '--list', `${包.名称}@*`, '--sort=-v:refname'],
+    根目录
+  )
+  if (tag结果.退出码 !== 0) {
+    return { 上次Tag: null, 有变更: true, 变更文件数: 0 }
+  }
+
+  let tag列表 = tag结果.标准输出
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+
+  let 最新Tag = tag列表[0]
+  if (最新Tag === undefined) {
+    return { 上次Tag: null, 有变更: true, 变更文件数: 0 }
+  }
+
+  let 相对目录 = path.relative(根目录, 包.目录).replace(/\\/g, '/')
+  let diff结果 = await 执行命令(
+    'git',
+    ['diff', '--name-only', `${最新Tag}..HEAD`, '--', 相对目录],
+    根目录
+  )
+  if (diff结果.退出码 !== 0) {
+    return { 上次Tag: 最新Tag, 有变更: true, 变更文件数: 0 }
+  }
+
+  let 变更文件 = diff结果.标准输出
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+
+  return {
+    上次Tag: 最新Tag,
+    有变更: 变更文件.length > 0,
+    变更文件数: 变更文件.length,
+  }
+}
+
 export async function 检查Git工作区干净与远程同步(
   根目录: string
 ): Promise<{ 成功: boolean; 错误信息: string }> {
