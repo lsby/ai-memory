@@ -24,11 +24,11 @@ export type 交互选项<T> = {
   值: T
 }
 
-function 解析命令可执行名(命令: string): string {
-  if (process.platform === 'win32' && (命令 === 'pnpm' || 命令 === 'npm' || 命令 === 'npx')) {
-    return `${命令}.cmd`
-  }
-  return 命令
+function 需要Shell(命令: string): boolean {
+  return (
+    process.platform === 'win32' &&
+    (命令 === 'pnpm' || 命令 === 'npm' || 命令 === 'npx')
+  )
 }
 
 export function 执行命令(
@@ -37,11 +37,10 @@ export function 执行命令(
   工作目录: string
 ): Promise<命令结果> {
   return new Promise((resolve, reject) => {
-    let 可执行名 = 解析命令可执行名(命令)
-    let 子进程 = spawn(可执行名, 参数, {
+    let 子进程 = spawn(命令, 参数, {
       cwd: 工作目录,
       stdio: ['ignore', 'pipe', 'pipe'],
-      shell: false,
+      shell: 需要Shell(命令),
     })
 
     let 标准输出 = ''
@@ -75,11 +74,10 @@ export function 执行命令继承输出(
   工作目录: string
 ): Promise<number> {
   return new Promise((resolve, reject) => {
-    let 可执行名 = 解析命令可执行名(命令)
-    let 子进程 = spawn(可执行名, 参数, {
+    let 子进程 = spawn(命令, 参数, {
       cwd: 工作目录,
       stdio: 'inherit',
-      shell: false,
+      shell: 需要Shell(命令),
     })
 
     子进程.on('error', (err: Error) => {
